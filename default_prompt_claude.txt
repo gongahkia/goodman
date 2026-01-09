@@ -1,0 +1,2 @@
+specifically referencing the PRD document (the only doc currenty in the repo), help
+me implement the specified project. clarify requirements as required, and for each feature worked on (1 line within the PRD document), make 1 git commit to allow for easy rollback as necessary. git commit messages can be short and 1 line long as well. after working on each feature, remove that line from the PRD document so it only contains tasks not yet done. ultrathink. 

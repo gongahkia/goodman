@@ -1,0 +1,194 @@
+STARTUP SIMULATOR - Product Requirements Document (Todo Format)
+Tech Stack: React+TypeScript, Node.js/FastAPI, PostgreSQL, Redis, Three.js/D3.js, Claude/GPT-4 APIs, WebSockets
+================================================================================
+
+--- PHASE 1: MVP FOUNDATION ---
+
+# Project Setup & Infrastructure
+Setup monorepo structure with frontend and backend workspaces
+Initialize React+TypeScript app with Vite for frontend
+Initialize Node.js/Express backend with TypeScript
+Setup PostgreSQL database with Prisma ORM
+Configure Redis for caching and session management
+Setup Docker Compose for local development environment
+Create CI/CD pipeline with GitHub Actions
+Configure environment variables and secrets management
+
+# Core Data Models
+Design simulation entity schema (id, name, description, industry, stage, parameters)
+Design agent entity schema (type, role, personality, knowledge_base, behavior_rules)
+Design stakeholder types taxonomy (customer, competitor, investor, regulator, employee, partner, critic)
+Design simulation_run schema (simulation_id, start_time, duration, status, results)
+Design interaction_log schema (agent_id, timestamp, action, target, outcome)
+Design metric_snapshot schema (simulation_run_id, timestamp, metric_type, value)
+Implement database migrations and seed data
+
+# Simulation Engine Core
+Build simulation orchestrator that manages agent lifecycle
+Implement time progression system with configurable speed (1x to 1000x)
+Create agent spawning logic based on simulation parameters
+Build agent decision-making loop (perceive → reason → act → learn)
+Implement inter-agent communication protocol
+Create event bus for simulation events (agent_created, interaction_occurred, metric_changed)
+Build simulation state manager with snapshot capabilities
+Implement pause/resume/stop simulation controls
+
+# AI Agent System (MVP)
+Integrate Claude/GPT-4 API for agent intelligence
+Design agent prompt templates for different stakeholder types
+Implement customer agent that evaluates product-market fit
+Implement competitor agent that responds to market moves
+Implement investor agent that assesses viability and traction
+Implement critic agent that provides constructive feedback
+Build agent memory system (short-term and long-term context)
+Create agent personality variation system using prompt engineering
+Implement agent response caching to reduce API costs
+
+# Basic Frontend UI
+Create simulation setup form (name, description, industry, stage, duration)
+Build simulation dashboard showing live agent count and key metrics
+Implement real-time event feed showing agent actions
+Create agent inspector panel to view individual agent details
+Build basic simulation controls (start, pause, stop, restart)
+Design responsive layout for desktop and tablet
+Implement WebSocket connection for real-time updates
+
+# Basic Data Generation
+Generate procedural customer feedback based on product description
+Generate competitor market moves based on industry dynamics
+Generate investor questions and concerns based on business model
+Generate regulatory considerations based on industry type
+Create critique report at simulation end summarizing insights
+Calculate basic metrics (adoption_rate, churn_rate, market_share, burn_rate)
+
+# Testing & Documentation
+Write unit tests for simulation engine core functions
+Write integration tests for agent interaction flows
+Write API endpoint tests for backend
+Create README with setup instructions and architecture overview
+Document simulation parameters and their effects
+Document agent types and behavior rules
+
+--- PHASE 2: ENHANCED FEATURES ---
+
+# Advanced Agent Intelligence
+Implement multi-agent debate system for complex decisions
+Add agent learning from past simulation runs
+Create agent relationship graph (alliances, rivalries, dependencies)
+Implement emergent behavior detection and flagging
+Add agent goal-setting and strategy formulation
+Build agent sentiment analysis tracking over time
+Implement adaptive agent difficulty (agents get smarter over time)
+Create agent archetypes library (early_adopter, skeptic, influencer, etc)
+Add multi-turn conversation support between agents
+Implement agent coalition formation (groups with shared interests)
+
+# Procedural Animation System
+Integrate Three.js for 3D visualization of simulation space
+Create animated agent avatars with distinct visual identities
+Build force-directed graph layout for agent relationships
+Implement particle effects for interactions (transactions, communications)
+Create data visualization charts with animated transitions (D3.js)
+Build market dynamics visualization (supply/demand curves)
+Implement timeline scrubber with animation replay
+Create heatmap visualization for market penetration by geography
+Build animated stakeholder sentiment gauge
+Add transition animations for simulation state changes
+
+# Rich Data & Analytics
+Implement scenario branching (what-if simulations)
+Create comparative analysis across multiple simulation runs
+Build predictive models for key outcomes using historical data
+Generate detailed stakeholder breakdown with demographics
+Create risk assessment report with probability scores
+Implement sensitivity analysis for input parameters
+Build custom metric builder for users to define KPIs
+Create export functionality (JSON, CSV, PDF reports)
+Implement data warehouse for cross-simulation analytics
+Build ROI calculator based on simulation outcomes
+
+# Enhanced Stakeholder Diversity
+Add employee agent (morale, productivity, retention)
+Add partner agent (collaboration, integration, mutual benefit)
+Add media agent (publicity, reputation, viral potential)
+Add supplier agent (pricing, reliability, negotiation)
+Add advisor/mentor agent (guidance, connections, validation)
+Add customer segments (early_adopter, mainstream, laggard)
+Implement geographic market variations (cultural, regulatory, economic)
+Add industry-specific agents (healthcare: FDA, fintech: SEC, etc)
+
+# Improved UI/UX
+Build interactive simulation canvas with drag-and-drop agents
+Create simulation template library (SaaS, marketplace, hardware, etc)
+Implement dark mode and theme customization
+Build collaborative features (share simulations, comments)
+Create simulation history with version control
+Add onboarding tutorial with sample simulations
+Build simulation comparison view (side-by-side)
+Implement advanced filters and search for agents/events
+Create customizable dashboard with widget system
+Add accessibility features (WCAG 2.1 AA compliance)
+
+# Performance & Scale
+Implement agent pooling and recycling for large simulations
+Add database query optimization and indexing
+Build caching layer for frequently accessed data
+Implement pagination for large result sets
+Add background job processing for long-running simulations
+Create simulation queue system for concurrent runs
+Optimize WebSocket message batching
+Implement lazy loading for UI components
+
+--- PHASE 3: FULL FEATURE SET ---
+
+# Complex Simulation Features
+Build multi-phase simulation (idea → MVP → launch → growth → scale)
+Implement crisis scenarios (PR disaster, funding gap, key employee loss)
+Create competitive market simulation with 3+ competitors
+Add macro-economic factors (recession, boom, policy changes)
+Build technology disruption events (new platform, obsolescence)
+Implement seasonal and cyclical business patterns
+Create merger/acquisition simulation capabilities
+Add pivot scenarios with reputational consequences
+
+# Advanced Procedural Generation
+Generate realistic user testimonials and reviews
+Create procedural pitch deck based on simulation results
+Generate media articles about startup (positive/negative)
+Build procedural investor term sheets with conditions
+Create social media buzz simulation with virality metrics
+Generate employee interview transcripts
+Build procedural patent/IP landscape analysis
+Create competitive intelligence reports
+
+# Advanced Analytics & AI
+Implement LLM-powered insight generation from simulation data
+Build pattern recognition for success/failure indicators
+Create recommendation engine for optimal strategies
+Implement anomaly detection for unexpected outcomes
+Build predictive success scoring with confidence intervals
+Create causal inference analysis (which actions drove outcomes)
+Implement reinforcement learning for agent behavior optimization
+Build meta-analysis across user community simulations
+
+# Export & Integration
+Create comprehensive PDF reports with executive summary
+Build PowerPoint export with key charts and insights
+Implement API for external tool integration
+Create webhooks for simulation events
+Build Slack/Discord bot for simulation notifications
+Add calendar integration for scheduled simulations
+Create embeddable widgets for websites/notion
+Implement data export to analytics platforms (Mixpanel, Amplitude)
+
+# Polish & Optimization
+Conduct comprehensive security audit and penetration testing
+Implement rate limiting and abuse prevention
+Add comprehensive error handling and user-friendly messages
+Create detailed logging and monitoring (DataDog/Sentry)
+Build admin dashboard for platform management
+Implement A/B testing framework for feature experiments
+Add analytics for user behavior and feature usage
+Create comprehensive help documentation and video tutorials
+Build feedback collection system in-app
+Implement performance monitoring and alerting

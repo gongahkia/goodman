@@ -1,0 +1,157 @@
+MotherTongue - Browser Extension PRD
+A browser extension that visually transforms AI chat interfaces (ChatGPT, Claude, Gemini, Perplexity) with motherly themed UI elements
+
+=== PROJECT SETUP ===
+(A) Research browser extension manifest v3 requirements and best practices +setup @research
+(A) Set up browser extension project structure with manifest.json +setup @dev
+(A) Configure build system for multi-browser support (Chrome, Firefox, Edge) +setup @dev
+(B) Research DOM structure and CSS selectors for target platforms (ChatGPT, Claude, Gemini, Perplexity) +setup @research
+(B) Create git repository with proper .gitignore and README +setup @admin
+(B) Define extension permissions requirements (activeTab, storage, scripting) +setup @planning
+
+=== CORE ARCHITECTURE ===
+(A) Design content script injection system for each AI platform +architecture @dev
+(A) Create theme system architecture supporting multiple motherly tone presets +architecture @dev
+(A) Design settings storage schema using chrome.storage.sync API +architecture @dev
+(B) Implement base CSS injection framework with shadow DOM isolation +core @dev
+(B) Create theme loader that switches between visual presets dynamically +core @dev
+(B) Build platform detector to identify which AI service is active +core @dev
+(C) Implement mutation observer to handle dynamic content loading +core @dev
+(C) Create CSS module bundler for theme assets +build @dev
+
+=== VISUAL THEME SYSTEM ===
+(A) Design "Supportive & Encouraging" theme visual language (warm colors, hearts, pride elements) +themes @design
+(A) Design "Practical & Wise" theme visual language (earthy tones, classic elements, wisdom motifs) +themes @design
+(A) Design "Playfully Nagging" theme visual language (reminder badges, gentle alerts, loving persistence) +themes @design
+(B) Create avatar/icon system for each theme with multiple expression states +themes @design
+(B) Design custom CSS for chat message bubbles per theme +themes @design
+(B) Create decorative border and background patterns for each theme +themes @design
+(B) Design custom scrollbar styling per theme +themes @design
+(C) Create loading animation variations for each theme +themes @design
+(C) Design hover and interaction state styling for buttons and inputs +themes @design
+(C) Create notification badge designs for motherly reminders +themes @design
+
+=== CHATGPT INTEGRATION ===
+(A) Map ChatGPT DOM selectors for message containers and input areas +chatgpt @research
+(A) Implement ChatGPT-specific CSS overrides for dark and light modes +chatgpt @dev
+(B) Style ChatGPT message bubbles with theme-specific decorations +chatgpt @dev
+(B) Add avatar replacement for ChatGPT responses with motherly icons +chatgpt @dev
+(B) Customize ChatGPT sidebar and navigation with theme colors +chatgpt @dev
+(C) Style ChatGPT input box with motherly placeholder text and borders +chatgpt @dev
+(C) Add decorative elements to ChatGPT header area +chatgpt @dev
+
+=== CLAUDE INTEGRATION ===
+(A) Map Claude.ai DOM selectors for message containers and input areas +claude @research
+(A) Implement Claude-specific CSS overrides for existing themes +claude @dev
+(B) Style Claude message bubbles with theme-specific decorations +claude @dev
+(B) Add avatar replacement for Claude responses with motherly icons +claude @dev
+(B) Customize Claude sidebar and project navigation with theme colors +claude @dev
+(C) Style Claude input box with motherly placeholder text and borders +claude @dev
+(C) Add decorative elements to Claude header area +claude @dev
+
+=== GEMINI INTEGRATION ===
+(A) Map Gemini DOM selectors for message containers and input areas +gemini @research
+(A) Implement Gemini-specific CSS overrides for existing themes +gemini @dev
+(B) Style Gemini message bubbles with theme-specific decorations +gemini @dev
+(B) Add avatar replacement for Gemini responses with motherly icons +gemini @dev
+(B) Customize Gemini navigation and controls with theme colors +gemini @dev
+(C) Style Gemini input box with motherly placeholder text and borders +gemini @dev
+(C) Add decorative elements to Gemini header area +gemini @dev
+
+=== PERPLEXITY INTEGRATION ===
+(A) Map Perplexity DOM selectors for message containers and input areas +perplexity @research
+(A) Implement Perplexity-specific CSS overrides for existing themes +perplexity @dev
+(B) Style Perplexity message bubbles with theme-specific decorations +perplexity @dev
+(B) Add avatar replacement for Perplexity responses with motherly icons +perplexity @dev
+(B) Customize Perplexity sources panel and navigation with theme colors +perplexity @dev
+(C) Style Perplexity input box with motherly placeholder text and borders +perplexity @dev
+(C) Add decorative elements to Perplexity header area +perplexity @dev
+
+=== SETTINGS & PREFERENCES ===
+(A) Design settings popup UI with theme preview cards +settings @design
+(A) Implement settings popup HTML structure and navigation +settings @dev
+(B) Create theme selection interface with visual previews +settings @dev
+(B) Build enable/disable toggle for each AI platform individually +settings @dev
+(B) Implement theme persistence using chrome.storage.sync +settings @dev
+(C) Add intensity slider for theme strength (subtle to full) +settings @dev
+(C) Create custom color picker for user accent color overrides +settings @dev
+(C) Implement reset to defaults functionality +settings @dev
+(C) Add export/import settings as JSON feature +settings @dev
+
+=== ASSETS & RESOURCES ===
+(A) Create or source 3 motherly avatar variations per theme (9 total) +assets @design priority:high
+(B) Design background patterns and textures for each theme +assets @design
+(B) Create decorative SVG elements (hearts, flowers, wisdom symbols, reminder icons) +assets @design
+(C) Optimize all images and SVGs for web performance +assets @optimization
+(C) Create icon.png files for extension (16x16, 48x48, 128x128) +assets @design
+(C) Design promotional images for browser extension stores +assets @marketing
+
+=== PERFORMANCE & OPTIMIZATION ===
+(A) Implement lazy loading for theme assets to minimize initial load +performance @dev
+(B) Optimize CSS injection to prevent flash of unstyled content +performance @dev
+(B) Minimize CSS bundle size with tree shaking and minification +performance @dev
+(C) Implement debouncing for DOM mutation observers +performance @dev
+(C) Profile memory usage and optimize for long browsing sessions +performance @testing
+(C) Add performance monitoring for theme switching speed +performance @testing
+
+=== QUALITY ASSURANCE ===
+(A) Test extension on ChatGPT with all three themes +testing @qa
+(A) Test extension on Claude with all three themes +testing @qa
+(A) Test extension on Gemini with all three themes +testing @qa
+(A) Test extension on Perplexity with all three themes +testing @qa
+(B) Verify theme persistence across browser restarts +testing @qa
+(B) Test enable/disable toggle functionality for each platform +testing @qa
+(B) Verify no conflicts with platform dark/light mode switches +testing @qa
+(C) Test on multiple screen sizes and resolutions +testing @qa
+(C) Verify accessibility features (screen reader compatibility, keyboard navigation) +testing @qa
+(C) Test performance with heavy chat histories +testing @qa
+(C) Cross-browser testing (Chrome, Firefox, Edge) +testing @qa
+
+=== USER EXPERIENCE ENHANCEMENTS ===
+(B) Add subtle animations for theme transitions +ux @dev
+(B) Implement first-run welcome screen explaining the extension +ux @dev
+(C) Create tooltip system for UI elements with motherly encouragement +ux @dev
+(C) Add keyboard shortcut to quickly toggle extension on/off +ux @dev
+(C) Implement theme randomizer for daily variety +ux @dev
+(C) Add ambient sound toggle (optional gentle background music) +ux @dev priority:low
+
+=== DEPLOYMENT & DISTRIBUTION ===
+(A) Create Chrome Web Store developer account and listing +deployment @admin
+(A) Write compelling extension description and feature list +deployment @marketing
+(B) Create Firefox Add-ons developer account and listing +deployment @admin
+(B) Prepare screenshots and demo video for store listings +deployment @marketing
+(C) Set up Edge Add-ons developer account and listing +deployment @admin
+(C) Create extension privacy policy document +deployment @legal
+(C) Set up update distribution pipeline +deployment @devops
+
+=== DOCUMENTATION ===
+(B) Write comprehensive README with installation instructions +docs @writing
+(B) Create user guide with theme descriptions and screenshots +docs @writing
+(C) Document code with JSDoc comments for maintainability +docs @dev
+(C) Create contribution guidelines for open source contributors +docs @writing
+(C) Write troubleshooting guide for common issues +docs @writing
+
+=== POST-LAUNCH ENHANCEMENTS ===
+(C) Collect user feedback on theme preferences and missing features +feedback @community priority:low
+(C) Design additional theme variations based on user requests +themes @design priority:low
+(C) Consider text tone modification as optional advanced feature +enhancement @planning priority:low
+(C) Explore integration with additional AI platforms (Copilot, others) +enhancement @research priority:low
+(C) Implement user-created theme sharing marketplace +enhancement @planning priority:low
+(C) Add holiday/seasonal theme variations +themes @design priority:low
+
+=== TECHNICAL DEBT & MAINTENANCE ===
+(C) Monitor and fix platform UI changes that break selectors +maintenance @dev priority:ongoing
+(C) Update extension for manifest v4 when available +maintenance @dev priority:future
+(C) Refactor CSS for better modularity and reusability +maintenance @dev priority:low
+(C) Implement automated testing suite for platform integrations +testing @dev priority:low
+(C) Set up CI/CD pipeline for automated builds and testing +devops @admin priority:low
+
+NOTES:
+- Priority levels: (A)=Critical, (B)=Important, (C)=Nice-to-have
+- Projects: +setup, +architecture, +core, +themes, +chatgpt, +claude, +gemini, +perplexity, +settings, +assets, +performance, +testing, +ux, +deployment, +docs, +feedback, +enhancement, +maintenance
+- Contexts: @research, @dev, @design, @qa, @admin, @marketing, @legal, @devops, @writing, @community
+- Focus on visual transformation only; no AI response text modification
+- All themes must be toggleable and customizable by user
+- Extension must not interfere with platform functionality
+- Maintain performance: <50ms theme application time
+- Target: Manifest V3 for future-proofing

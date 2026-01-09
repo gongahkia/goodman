@@ -1,0 +1,154 @@
+# FLUID PARTICLE SIMULATION - Product Requirements Document
+# Project: Real-time particle-based fluid and wave simulation in Java
+# Platform: Java CLI with GUI rendering (Swing/JavaFX)
+# Physics: Visually convincing particle dynamics and wave behavior
+# Features: Liquid simulation, wave physics, interactive objects (surfers, boats)
+
+# === PROJECT SETUP & ARCHITECTURE ===
+(A) Create Maven/Gradle project structure with proper dependency management @setup +foundation
+(A) Define core architecture: Physics engine, Particle system, Renderer, Input handler @setup +foundation
+(A) Set up main game loop with fixed timestep physics and variable rendering @setup +foundation
+(B) Implement configuration system for simulation parameters (particle count, gravity, viscosity) @setup +config
+(B) Create Vec2D utility class for 2D vector math operations @setup +math
+(B) Create spatial grid/hash for efficient particle neighbor queries @setup +optimization
+(C) Set up logging framework for debugging and performance metrics @setup +tools
+
+# === PARTICLE SYSTEM CORE ===
+(A) Define Particle class with position, velocity, acceleration, mass, density, pressure @core +particles
+(A) Implement particle spawning system with configurable emission rates and patterns @core +particles
+(A) Create particle pool object pooling system to minimize GC overhead @core +optimization
+(B) Add particle lifecycle management (creation, update, death/recycling) @core +particles
+(B) Implement particle color/state system for visualization (liquid type, temperature, velocity) @core +particles
+(C) Add particle metadata tags for different fluid types (water, oil, etc.) @core +particles
+
+# === FLUID DYNAMICS ENGINE ===
+(A) Implement simplified SPH (Smoothed Particle Hydrodynamics) solver @physics +fluids
+(A) Calculate particle density using smoothing kernel (poly6 or spiky kernel) @physics +fluids
+(A) Calculate pressure forces based on density deviation from rest density @physics +fluids
+(A) Implement viscosity forces for realistic fluid dampening @physics +fluids
+(B) Add surface tension forces for realistic liquid behavior at boundaries @physics +fluids
+(B) Implement gravity and external forces system @physics +forces
+(B) Create collision detection and response for particles against boundaries @physics +collision
+(B) Add particle-particle collision detection with spatial hashing @physics +collision
+(C) Implement adaptive timestep for numerical stability @physics +optimization
+(C) Add vorticity confinement to prevent numerical dampening of rotational motion @physics +advanced
+
+# === WAVE SIMULATION ===
+(A) Implement wave generation system with amplitude, frequency, wavelength parameters @physics +waves
+(A) Create sine/cosine based wave displacement for surface particles @physics +waves
+(A) Add wave propagation using particle velocity transfer @physics +waves
+(B) Implement wave reflection at boundaries (walls, obstacles) @physics +waves
+(B) Add wave interference patterns when multiple waves interact @physics +waves
+(B) Create wave breaking behavior when amplitude exceeds threshold @physics +waves
+(C) Implement Gerstner waves for more realistic ocean-like motion @physics +advanced
+(C) Add wind force system affecting surface wave generation @physics +environmental
+
+# === BOUNDARY & CONTAINER ===
+(A) Define simulation bounds/container with configurable dimensions @core +world
+(A) Implement boundary particle system or signed distance field for walls @core +world
+(B) Create dynamic boundary system for moving obstacles @core +world
+(B) Add boundary friction and restitution properties @physics +collision
+(C) Implement periodic boundaries for infinite ocean effect @core +advanced
+
+# === OBJECT PHYSICS - SURFER ===
+(A) Create Surfer rigid body class with position, rotation, velocity, angular velocity @objects +surfer
+(A) Implement buoyancy force calculation based on submerged particle count @objects +surfer
+(B) Add surfer-particle collision detection and response @objects +surfer
+(B) Calculate wave forces acting on surfer (lift from wave slope) @objects +surfer
+(B) Implement surfer balance/tipping physics based on force distribution @objects +surfer
+(C) Add surfer drag forces from water resistance @objects +surfer
+(C) Implement surfer control system (lean forward/back for speed and direction) @objects +surfer
+(C) Add surfer wipeout detection when angle exceeds stability threshold @objects +surfer
+
+# === OBJECT PHYSICS - BOAT ===
+(A) Create Boat rigid body class with hull shape definition @objects +boat
+(A) Implement boat buoyancy using Archimedes principle with hull volume @objects +boat
+(B) Calculate boat stability and righting moment based on center of mass vs buoyancy @objects +boat
+(B) Add boat-wave interaction (pitching and rolling from wave slopes) @objects +boat
+(B) Implement boat drag and resistance forces @objects +boat
+(C) Add boat propulsion system (motor or sail forces) @objects +boat
+(C) Implement boat steering and rudder physics @objects +boat
+(C) Add boat wake generation (particles displaced by hull) @objects +boat
+
+# === RENDERING SYSTEM ===
+(A) Set up JavaFX or Swing window with double buffering @rendering +setup
+(A) Implement camera system with pan and zoom controls @rendering +camera
+(A) Create particle renderer drawing circles/sprites at particle positions @rendering +particles
+(B) Add color gradient based on particle velocity magnitude for visualization @rendering +particles
+(B) Implement metaball rendering for smooth liquid surface visualization @rendering +advanced
+(B) Create wave surface mesh rendering from particle positions @rendering +waves
+(B) Add object sprite rendering for surfer and boat with rotation @rendering +objects
+(C) Implement particle opacity based on depth for 3D effect @rendering +visual
+(C) Add motion blur effect for fast-moving particles @rendering +visual
+(C) Create foam/splash particle effects at wave peaks and impacts @rendering +effects
+(C) Implement simple lighting and shading for depth perception @rendering +visual
+
+# === USER INTERACTION ===
+(A) Implement mouse click to spawn particle bursts or waves @input +interaction
+(A) Add keyboard controls for camera movement (arrow keys or WASD) @input +camera
+(B) Create draggable obstacles that particles interact with @input +interaction
+(B) Add mouse drag to create directional force/wind on particles @input +interaction
+(B) Implement spawn controls for surfer and boat objects @input +objects
+(C) Add keyboard controls for surfer (tilt, direction) @input +surfer
+(C) Add keyboard controls for boat (throttle, steering) @input +boat
+(C) Create UI sliders for real-time parameter adjustment (gravity, viscosity, wave height) @input +ui
+
+# === SIMULATION SCENARIOS ===
+(B) Create calm ocean scenario with gentle ambient waves @scenarios +presets
+(B) Create storm scenario with high-amplitude chaotic waves @scenarios +presets
+(B) Create beach/shore scenario with wave breaking on sloped terrain @scenarios +presets
+(B) Create surfing challenge scenario with optimal wave generation @scenarios +presets
+(C) Create boat navigation scenario with obstacles and varying conditions @scenarios +presets
+(C) Add scenario save/load functionality @scenarios +features
+
+# === PERFORMANCE OPTIMIZATION ===
+(A) Profile particle update loop and identify bottlenecks @optimization +profiling
+(B) Implement spatial partitioning grid for O(n) neighbor search instead of O(n²) @optimization +spatial
+(B) Use parallel streams for particle updates where thread-safe @optimization +parallel
+(B) Implement frustum culling to skip rendering off-screen particles @optimization +rendering
+(C) Add level-of-detail system reducing simulation quality for distant particles @optimization +lod
+(C) Implement GPU acceleration for particle physics using JOCL/JavaCL @optimization +gpu
+(C) Add adaptive particle count based on performance metrics @optimization +adaptive
+
+# === VISUAL POLISH ===
+(C) Add background gradient (sky to deep ocean) @polish +visual
+(C) Create particle trail effect for fast-moving particles @polish +effects
+(C) Add splash sound effects triggered by high-velocity impacts @polish +audio
+(C) Implement wave crest whitecap rendering @polish +visual
+(C) Add sun reflection shimmer on water surface @polish +visual
+(C) Create depth fog effect for distant particles @polish +visual
+
+# === CLI INTERFACE ===
+(B) Add command-line arguments for headless mode (output to image sequence) @cli +features
+(B) Implement CLI parameter input (particle count, wave settings, duration) @cli +features
+(B) Create status output to console (FPS, particle count, simulation time) @cli +output
+(C) Add export functionality to save simulation state @cli +features
+(C) Implement replay system from saved simulation data @cli +features
+
+# === TESTING & VALIDATION ===
+(B) Create unit tests for vector math utilities @testing +unit
+(B) Create unit tests for particle spawning and lifecycle @testing +unit
+(B) Test wave generation with known parameters and validate output @testing +integration
+(B) Test buoyancy forces with known submerged volumes @testing +integration
+(C) Performance test with 1000, 5000, 10000 particles and measure FPS @testing +performance
+(C) Validate energy conservation in physics simulation @testing +validation
+(C) Test edge cases (empty simulation, single particle, boundary conditions) @testing +edge
+
+# === DOCUMENTATION ===
+(C) Write README with project description and build instructions @docs
+(C) Document physics equations and algorithm choices @docs +technical
+(C) Create user guide for controls and features @docs +user
+(C) Add code comments for complex physics calculations @docs +code
+(C) Document performance characteristics and optimization trade-offs @docs +technical
+
+# === FUTURE ENHANCEMENTS ===
+(C) Add multiple fluid types with different densities and viscosities @future +physics
+(C) Implement 3D simulation mode @future +expansion
+(C) Add temperature simulation and boiling/evaporation effects @future +physics
+(C) Create multiplayer synchronization for multiple surfers/boats @future +networking
+(C) Add weather system (rain particles, changing wind) @future +environmental
+(C) Implement fluid-structure interaction with deformable objects @future +advanced
+(C) Add scripting support for custom scenarios (Lua/JavaScript) @future +extensibility
+(C) Create web export using TeaVM or GWT @future +platforms
+(C) Add VR support for immersive wave riding @future +platforms
+(C) Implement machine learning for realistic surfer AI behavior @future +ai

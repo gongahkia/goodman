@@ -1,0 +1,179 @@
+NOTEWEAVE - PRD & TODO
+Ephemeral visual note-taking web app optimized for studying
+No database | Local-first | Rich editing | Native diagrams & mindmaps
+
+=== CORE INFRASTRUCTURE ===
+(A) Setup modern web project with Vite + React/Vanilla JS + TypeScript
+(A) Configure hot reload and development environment
+(A) Design localStorage schema for notes, themes, and user preferences
+(A) Implement localStorage wrapper with error handling and quota management
+(A) Create note data model: id, title, content, format type, timestamps, tags
+(A) Build note list/grid view with search and filter by tags
+(A) Implement create/delete/duplicate note operations
+(A) Add keyboard shortcuts system (Ctrl+N new note, Ctrl+K search, etc)
+(A) Design responsive layout: sidebar + main editor + optional right panel
+(A) Set up routing for multi-note navigation without page reload
+(B) Add PWA manifest for installable web app experience
+(B) Implement service worker for offline functionality
+(C) Add analytics events (privacy-focused, no tracking) for feature usage
+
+=== RICH TEXT EDITOR ===
+(A) Integrate Quill.js or TipTap for WYSIWYG rich text editing
+(A) Support bold, italic, underline, strikethrough formatting
+(A) Add heading levels H1-H6 with proper semantic markup
+(A) Implement bulleted and numbered lists with nesting
+(A) Add blockquotes and code blocks with syntax highlighting
+(A) Support text alignment: left, center, right, justify
+(A) Implement link insertion and editing with preview
+(A) Add image paste from clipboard and drag-drop (stored as base64)
+(A) Support tables with add/remove rows and columns
+(B) Add text color and background color pickers
+(B) Implement font family selector (serif, sans-serif, monospace)
+(B) Add font size controls
+(B) Support horizontal rules and dividers
+(B) Implement undo/redo with reasonable history depth
+(B) Add format painter/copy formatting tool
+(C) Support emoji picker integration
+(C) Add special characters insertion menu
+
+=== MARKDOWN SUPPORT ===
+(A) Integrate CodeMirror or Monaco for markdown editing mode
+(A) Implement live markdown preview in split-pane view
+(A) Support GitHub Flavored Markdown syntax
+(A) Add syntax highlighting for code blocks in preview
+(A) Implement auto-completion for markdown syntax
+(A) Support task lists with checkboxes [ ] and [x]
+(B) Add markdown table formatting helper
+(B) Implement markdown shortcuts (Ctrl+B for bold, etc)
+(B) Support front matter for metadata
+(C) Add markdown templates for common study formats
+
+=== EXCALIDRAW INTEGRATION (Priority 1) ===
+(A) Embed Excalidraw library as primary drawing mode
+(A) Create seamless toggle between text and drawing mode
+(A) Store Excalidraw data in note content with proper serialization
+(A) Support basic shapes: rectangle, circle, arrow, line, text
+(A) Implement freehand drawing with pen tool
+(A) Add selection, move, resize, and rotate tools
+(A) Support multiple colors and stroke widths
+(A) Implement layers/z-index control (bring to front, send to back)
+(A) Add eraser tool for removing elements
+(A) Support grouping and ungrouping elements
+(B) Implement snap-to-grid and alignment guides
+(B) Add shape libraries for common study diagrams (biology, chemistry, etc)
+(B) Support image insertion into drawings
+(B) Add arrow connectors that stick to shapes
+(B) Implement collaborative-style cursor (even for single user, for UX)
+(C) Add export drawing as PNG/SVG
+(C) Support drawing templates (flowchart, mind map, org chart)
+
+=== MERMAID DIAGRAMS ===
+(A) Integrate Mermaid.js for code-to-diagram rendering
+(A) Support flowcharts with standard notation
+(A) Support sequence diagrams for process flows
+(A) Add class diagrams for OOP concepts
+(A) Implement state diagrams for FSM visualization
+(B) Support ER diagrams for database design
+(B) Add Gantt charts for project planning
+(B) Implement pie charts and bar charts for data viz
+(B) Support git graphs for version control concepts
+(C) Add live preview while typing mermaid code
+(C) Implement syntax validation and error highlighting
+
+=== MINDMAPPING FEATURES ===
+(A) Build native mindmap component with node-edge graph
+(A) Support central topic node with branching child nodes
+(A) Implement drag-and-drop node repositioning
+(A) Add/delete/edit nodes with keyboard shortcuts
+(A) Support collapsing and expanding branches
+(A) Add node colors and icons for categorization
+(A) Implement automatic layout algorithm (radial or tree)
+(B) Support different node shapes (rectangle, circle, rounded)
+(B) Add edge styling (straight, curved, orthogonal)
+(B) Implement node relationships beyond parent-child
+(B) Support floating notes and images on mindmap
+(B) Add zoom and pan controls for large mindmaps
+(B) Implement minimap for navigation
+(C) Add mindmap export as image or structured format
+(C) Support importing from other mindmap tools
+(C) Add AI-assisted mindmap generation from text notes
+
+=== THEME SYSTEM ===
+(A) Design theme structure: colors, fonts, spacing, editor styles
+(A) Implement light theme as default
+(A) Implement dark theme with OLED-friendly option
+(A) Add sepia/reading theme for reduced eye strain
+(A) Create dracula/monokai theme for developers
+(B) Support custom theme creation with color picker
+(B) Add theme preview before applying
+(B) Store theme preference in localStorage
+(B) Implement theme sync with system dark mode
+(C) Create themed templates for different subjects
+(C) Add seasonal/festive theme packs
+(C) Support theme import/export as JSON
+
+=== STORAGE & PERSISTENCE ===
+(A) Implement auto-save every 2-3 seconds while editing
+(A) Add visual indicator for save status (saved/saving/error)
+(A) Handle localStorage quota exceeded errors gracefully
+(A) Implement note compression for larger storage capacity
+(A) Add warning when storage is 80%+ full
+(B) Support clearing old notes or unused data
+(B) Implement note archiving system
+(B) Add data integrity check on app load
+(C) Support export all notes as single JSON file
+(C) Add import from JSON backup file
+
+=== STUDY-SPECIFIC FEATURES ===
+(A) Add flashcard mode: convert notes to Q&A cards
+(A) Implement spaced repetition algorithm for flashcard review
+(A) Support Cornell note-taking template
+(A) Add Pomodoro timer integration for study sessions
+(B) Implement note linking and backlinks for Zettelkasten method
+(B) Add tag-based organization and tag cloud
+(B) Support note templates for different subjects
+(B) Add quick capture mode for rapid note entry
+(C) Implement daily notes with automatic date insertion
+(C) Add study statistics and insights dashboard
+(C) Support bibliography and citation management
+
+=== EXPORT CAPABILITIES ===
+(A) Export individual note as markdown file
+(A) Export rich text notes as HTML
+(A) Export drawings as PNG with transparent background
+(B) Export entire workspace as ZIP archive
+(B) Support PDF export with proper formatting
+(C) Add print-friendly CSS for physical notes
+
+=== UI/UX POLISH ===
+(A) Design clean, minimal interface with focus on content
+(A) Implement smooth transitions and animations
+(A) Add loading states and skeleton screens
+(A) Support drag-and-drop note reordering
+(A) Implement context menus for quick actions
+(B) Add tooltips and onboarding for first-time users
+(B) Support keyboard navigation for accessibility
+(B) Implement focus mode to hide sidebar and distractions
+(C) Add customizable workspace layouts
+(C) Support split-pane editing for referencing multiple notes
+
+=== FUTURE: GOOGLE DOCS EXTENSION ===
+(C) Research Chrome Extension APIs for Google Docs integration
+(C) Design extension architecture to inject noteweave features
+(C) Build popup UI for quick note capture from Docs
+(C) Implement sync between extension and standalone app
+(C) Add import from Google Docs to noteweave format
+(C) Support export from noteweave back to Google Docs
+
+=== TECHNICAL DEBT & OPTIMIZATION ===
+(B) Add comprehensive error boundaries and fallbacks
+(B) Implement lazy loading for heavy components
+(B) Optimize re-renders with React.memo and useMemo
+(B) Add unit tests for core functionality
+(B) Implement E2E tests for critical user flows
+(C) Add performance monitoring and optimization
+(C) Audit bundle size and optimize imports
+(C) Implement code splitting for faster initial load
+
+Priority Legend: (A) = Must have | (B) = Should have | (C) = Nice to have
+Total: 147 tasks organized by feature area and priority
