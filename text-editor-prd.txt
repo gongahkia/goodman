@@ -1,0 +1,242 @@
+# Text Editor PRD - Daily Driver Vim-Compatible CLI Editor
+# Target: Production-ready text editor with extended Vim features
+# Stack: Rust (recommended) or Zig/C for performance
+# Max Implementation: 150 tasks
+
+## Phase 1: Project Foundation (15 tasks)
+(A) 2026-01-09 Research and select language (Rust recommended for safety+performance, Zig for simplicity, C for control) +foundation @research
+(A) 2026-01-09 Evaluate terminal rendering libraries (Rust: crossterm/termion, Zig: libvaxis, C: ncurses) +foundation @research
+(A) 2026-01-09 Set up project structure with build system (Cargo for Rust, Zig build, Make for C) +foundation @setup
+(A) 2026-01-09 Configure development environment with linter and formatter +foundation @setup
+(B) 2026-01-09 Initialize version control and define branching strategy +foundation @setup
+(B) 2026-01-09 Create project architecture document defining module boundaries +foundation @design
+(B) 2026-01-09 Design event loop architecture (input -> process -> render cycle) +foundation @design
+(B) 2026-01-09 Set up logging infrastructure for debugging +foundation @setup
+(C) 2026-01-09 Create error handling strategy and custom error types +foundation @design
+(C) 2026-01-09 Set up unit testing framework and CI pipeline +foundation @testing
+(C) 2026-01-09 Configure cross-platform build targets (Linux, macOS, Windows) +foundation @setup
+(C) 2026-01-09 Research tree-sitter for syntax highlighting integration +foundation @research
+(C) 2026-01-09 Research LSP client libraries (tower-lsp for Rust) +foundation @research
+(C) 2026-01-09 Define configuration file format (TOML/YAML/custom) +foundation @design
+(C) 2026-01-09 Create basic project README with build instructions +foundation @docs
+
+## Phase 2: Core Editor Infrastructure (12 tasks)
+(A) 2026-01-09 Implement terminal initialization and cleanup (raw mode, alternate screen) +core @implementation
+(A) 2026-01-09 Create main event loop with input polling and rendering cycle +core @implementation
+(A) 2026-01-09 Implement keyboard input capture and key mapping system +core @implementation
+(A) 2026-01-09 Build terminal screen buffer and rendering abstraction +core @implementation
+(A) 2026-01-09 Implement cursor positioning and movement in terminal +core @implementation
+(B) 2026-01-09 Create color and styling system for terminal output +core @implementation
+(B) 2026-01-09 Implement status line rendering (mode, file, line/col, modified flag) +core @implementation
+(B) 2026-01-09 Build command line area for user input and messages +core @implementation
+(B) 2026-01-09 Create viewport system for scrolling through large files +core @implementation
+(C) 2026-01-09 Implement line numbering display (absolute and relative) +core @implementation
+(C) 2026-01-09 Build message/notification system for user feedback +core @implementation
+(C) 2026-01-09 Create graceful shutdown and cleanup handlers +core @implementation
+
+## Phase 3: Text Buffer & Data Structures (10 tasks)
+(A) 2026-01-09 Implement rope or gap buffer data structure for efficient text storage +buffer @implementation
+(A) 2026-01-09 Create text buffer API (insert, delete, get_line, get_range) +buffer @implementation
+(A) 2026-01-09 Implement UTF-8 handling and character boundary detection +buffer @implementation
+(A) 2026-01-09 Build cursor position tracking (line, column, byte offset) +buffer @implementation
+(A) 2026-01-09 Implement line ending handling (LF, CRLF, CR) for cross-platform support +buffer @implementation
+(B) 2026-01-09 Create selection/range tracking for visual mode +buffer @implementation
+(B) 2026-01-09 Build efficient line indexing for O(log n) line access +buffer @implementation
+(B) 2026-01-09 Implement buffer dirty flag and modification tracking +buffer @implementation
+(C) 2026-01-09 Create buffer metadata (file path, encoding, file type) +buffer @implementation
+(C) 2026-01-09 Write comprehensive buffer unit tests for edge cases +buffer @testing
+
+## Phase 4: Vim Modal System (8 tasks)
+(A) 2026-01-09 Implement mode state machine (Normal, Insert, Visual, VisualLine, VisualBlock, Command) +vim @implementation
+(A) 2026-01-09 Create mode switching logic and key bindings (i, I, a, A, o, O, v, V, Ctrl-v, Esc, :) +vim @implementation
+(A) 2026-01-09 Build mode indicator in status line +vim @implementation
+(B) 2026-01-09 Implement Insert mode text entry and basic editing +vim @implementation
+(B) 2026-01-09 Create Visual mode selection rendering +vim @implementation
+(B) 2026-01-09 Implement VisualLine mode full-line selection +vim @implementation
+(C) 2026-01-09 Build VisualBlock mode rectangular selection +vim @implementation
+(C) 2026-01-09 Write tests for mode transitions and edge cases +vim @testing
+
+## Phase 5: Vim Motions (15 tasks)
+(A) 2026-01-09 Implement basic character motions (h, j, k, l) +vim-motions @implementation
+(A) 2026-01-09 Create word motions (w, W, b, B, e, E, ge, gE) +vim-motions @implementation
+(A) 2026-01-09 Build line motions (0, ^, $, g_, g0, g$) +vim-motions @implementation
+(A) 2026-01-09 Implement paragraph motions ({, }) +vim-motions @implementation
+(A) 2026-01-09 Create sentence motions (, ) +vim-motions @implementation
+(A) 2026-01-09 Build vertical motions (gg, G, :line, line%, Ctrl-d, Ctrl-u, Ctrl-f, Ctrl-b) +vim-motions @implementation
+(B) 2026-01-09 Implement character search motions (f, F, t, T, ;, ,) +vim-motions @implementation
+(B) 2026-01-09 Create matching bracket motion (%) +vim-motions @implementation
+(B) 2026-01-09 Build search motions (n, N) +vim-motions @implementation
+(B) 2026-01-09 Implement mark jump motions (', `, g;, g,) +vim-motions @implementation
+(C) 2026-01-09 Create motion count support (5j, 3w, 2{) +vim-motions @implementation
+(C) 2026-01-09 Build screen position motions (H, M, L, zt, zz, zb) +vim-motions @implementation
+(C) 2026-01-09 Implement text object motions (aw, iw, ap, ip, a", i", a', i', a), i), etc) +vim-motions @implementation
+(C) 2026-01-09 Create inclusive/exclusive motion handling +vim-motions @implementation
+(C) 2026-01-09 Write comprehensive motion tests +vim-motions @testing
+
+## Phase 6: Vim Operators (10 tasks)
+(A) 2026-01-09 Implement delete operator (d) with motion support +vim-operators @implementation
+(A) 2026-01-09 Create change operator (c) with motion support +vim-operators @implementation
+(A) 2026-01-09 Build yank operator (y) with motion support +vim-operators @implementation
+(A) 2026-01-09 Implement paste operators (p, P) +vim-operators @implementation
+(B) 2026-01-09 Create case change operators (gu, gU, g~) +vim-operators @implementation
+(B) 2026-01-09 Build indent operators (>, <, =) +vim-operators @implementation
+(B) 2026-01-09 Implement join lines operator (J, gJ) +vim-operators @implementation
+(B) 2026-01-09 Create replace operator (r, R) +vim-operators @implementation
+(C) 2026-01-09 Build operator count and repeat support (d3w, 2dd, .) +vim-operators @implementation
+(C) 2026-01-09 Implement dot repeat command (.) for last change +vim-operators @implementation
+
+## Phase 7: Command Mode (12 tasks)
+(A) 2026-01-09 Create command-line parser and command registry +vim-command @implementation
+(A) 2026-01-09 Implement :write (:w) command for saving files +vim-command @implementation
+(A) 2026-01-09 Implement :quit (:q, :q!, :wq, :x) commands +vim-command @implementation
+(A) 2026-01-09 Create :edit (:e) command for opening files +vim-command @implementation
+(B) 2026-01-09 Build :substitute (:s, :%s) command for search and replace +vim-command @implementation
+(B) 2026-01-09 Implement range support for commands (1,10d, %s, '<,'>s) +vim-command @implementation
+(B) 2026-01-09 Create :set command for runtime configuration +vim-command @implementation
+(B) 2026-01-09 Implement :help command with help text system +vim-command @implementation
+(C) 2026-01-09 Build :buffer (:b, :bn, :bp, :bd) commands +vim-command @implementation
+(C) 2026-01-09 Create :split (:sp, :vsp, :close) commands +vim-command @implementation
+(C) 2026-01-09 Implement command-line history with up/down arrows +vim-command @implementation
+(C) 2026-01-09 Build command-line tab completion +vim-command @implementation
+
+## Phase 8: Registers & Clipboard (6 tasks)
+(A) 2026-01-09 Implement named register system (a-z, 0-9) +vim-registers @implementation
+(A) 2026-01-09 Create default register behavior and register selection ("a, "b) +vim-registers @implementation
+(A) 2026-01-09 Build system clipboard integration ("+ and "* registers) +vim-registers @implementation
+(B) 2026-01-09 Implement yank/delete register population +vim-registers @implementation
+(B) 2026-01-09 Create black hole register (_) and read-only registers (%, #, :, .) +vim-registers @implementation
+(C) 2026-01-09 Build register viewer command (:reg) +vim-registers @implementation
+
+## Phase 9: Marks & Jump List (5 tasks)
+(A) 2026-01-09 Implement local marks (a-z) per buffer +vim-marks @implementation
+(A) 2026-01-09 Create global marks (A-Z) across buffers +vim-marks @implementation
+(B) 2026-01-09 Build automatic marks (', `, <, >, [, ]) +vim-marks @implementation
+(B) 2026-01-09 Implement jump list (Ctrl-o, Ctrl-i) +vim-marks @implementation
+(C) 2026-01-09 Create marks viewer command (:marks) +vim-marks @implementation
+
+## Phase 10: Macros (4 tasks)
+(A) 2026-01-09 Implement macro recording (q register) +vim-macros @implementation
+(A) 2026-01-09 Create macro playback (@ register) +vim-macros @implementation
+(B) 2026-01-09 Build macro storage in named registers +vim-macros @implementation
+(C) 2026-01-09 Implement macro repeat (@@ and count support) +vim-macros @implementation
+
+## Phase 11: Splits & Windows (8 tasks)
+(A) 2026-01-09 Design window manager architecture for split panes +windows @design
+(A) 2026-01-09 Implement horizontal split (:split, Ctrl-w s) +windows @implementation
+(A) 2026-01-09 Implement vertical split (:vsplit, Ctrl-w v) +windows @implementation
+(A) 2026-01-09 Create window navigation (Ctrl-w h/j/k/l, Ctrl-w w) +windows @implementation
+(B) 2026-01-09 Build window resizing (Ctrl-w +/-/</>/, =) +windows @implementation
+(B) 2026-01-09 Implement window closing (Ctrl-w c, Ctrl-w q, :close) +windows @implementation
+(C) 2026-01-09 Create window rotation and layout commands (Ctrl-w r, Ctrl-w H/J/K/L) +windows @implementation
+(C) 2026-01-09 Build window-specific rendering and buffer management +windows @implementation
+
+## Phase 12: Buffer Management (6 tasks)
+(A) 2026-01-09 Create buffer list data structure +buffers @implementation
+(A) 2026-01-09 Implement buffer switching (:buffer, :bnext, :bprev) +buffers @implementation
+(A) 2026-01-09 Build buffer creation and deletion (:enew, :bdelete, :bwipeout) +buffers @implementation
+(B) 2026-01-09 Create buffer list viewer (:ls, :buffers) +buffers @implementation
+(B) 2026-01-09 Implement modified buffer warnings on quit +buffers @implementation
+(C) 2026-01-09 Build alternate file switching (Ctrl-^, :e #) +buffers @implementation
+
+## Phase 13: File Operations (7 tasks)
+(A) 2026-01-09 Implement file reading with encoding detection +files @implementation
+(A) 2026-01-09 Create file writing with encoding preservation +files @implementation
+(A) 2026-01-09 Build backup file creation (.swp, ~) +files @implementation
+(B) 2026-01-09 Implement file watching for external changes +files @implementation
+(B) 2026-01-09 Create file type detection (extension, shebang, modeline) +files @implementation
+(C) 2026-01-09 Build large file handling optimizations (lazy loading) +files @implementation
+(C) 2026-01-09 Implement safe file saving (atomic write with temp file) +files @implementation
+
+## Phase 14: Undo/Redo System (5 tasks)
+(A) 2026-01-09 Design undo tree data structure (support branching undo) +undo @design
+(A) 2026-01-09 Implement undo command (u) +undo @implementation
+(A) 2026-01-09 Implement redo command (Ctrl-r) +undo @implementation
+(B) 2026-01-09 Create undo tree traversal (g-, g+, :earlier, :later) +undo @implementation
+(C) 2026-01-09 Build undo tree visualizer (:undolist) +undo @implementation
+
+## Phase 15: Search & Replace (8 tasks)
+(A) 2026-01-09 Implement forward search (/, n, *) +search @implementation
+(A) 2026-01-09 Create backward search (?, N, #) +search @implementation
+(A) 2026-01-09 Build regex engine integration (Rust: regex crate) +search @implementation
+(A) 2026-01-09 Implement search highlighting +search @implementation
+(B) 2026-01-09 Create incremental search (search as you type) +search @implementation
+(B) 2026-01-09 Build case-sensitive/insensitive search toggle +search @implementation
+(B) 2026-01-09 Implement substitute command with confirmation (:%s///gc) +search @implementation
+(C) 2026-01-09 Create search history navigation +search @implementation
+
+## Phase 16: Syntax Highlighting (10 tasks)
+(A) 2026-01-09 Integrate tree-sitter library +syntax @implementation
+(A) 2026-01-09 Implement syntax tree parsing on buffer load/edit +syntax @implementation
+(A) 2026-01-09 Create syntax highlight query system +syntax @implementation
+(A) 2026-01-09 Build color theme system and default theme +syntax @implementation
+(B) 2026-01-09 Add syntax grammars for common languages (Rust, Python, JS, Go, C, etc) +syntax @implementation
+(B) 2026-01-09 Implement incremental syntax parsing for large files +syntax @implementation
+(B) 2026-01-09 Create semantic highlighting support +syntax @implementation
+(C) 2026-01-09 Build syntax region folding (@fold, za, zc, zo, zM, zR) +syntax @implementation
+(C) 2026-01-09 Implement rainbow brackets/parentheses +syntax @implementation
+(C) 2026-01-09 Create custom language syntax loader +syntax @implementation
+
+## Phase 17: File Explorer (7 tasks)
+(B) 2026-01-09 Design file tree data structure and navigation +explorer @design
+(B) 2026-01-09 Implement file explorer pane (:Ex, :Vex, :Sex) +explorer @implementation
+(B) 2026-01-09 Create file tree rendering with icons (nerdfonts) +explorer @implementation
+(B) 2026-01-09 Build file/directory navigation (Enter, -, h, l) +explorer @implementation
+(B) 2026-01-09 Implement file operations (create, delete, rename, move) +explorer @implementation
+(C) 2026-01-09 Create hidden file toggle and filtering +explorer @implementation
+(C) 2026-01-09 Build file search in explorer +explorer @implementation
+
+## Phase 18: Fuzzy Finder (6 tasks)
+(B) 2026-01-09 Implement fuzzy matching algorithm (fzf-style) +fuzzy @implementation
+(B) 2026-01-09 Create file fuzzy finder (Ctrl-p or :Files) +fuzzy @implementation
+(B) 2026-01-09 Build buffer fuzzy finder (:Buffers) +fuzzy @implementation
+(B) 2026-01-09 Implement grep/text search in files (:Rg, :Grep) +fuzzy @implementation
+(C) 2026-01-09 Create fuzzy finder preview pane +fuzzy @implementation
+(C) 2026-01-09 Build fuzzy finder with git integration (git files, git status) +fuzzy @implementation
+
+## Phase 19: LSP Integration (8 tasks)
+(B) 2026-01-09 Integrate LSP client library +lsp @implementation
+(B) 2026-01-09 Implement LSP server spawning and initialization +lsp @implementation
+(B) 2026-01-09 Create textDocument/didOpen, didChange, didSave notifications +lsp @implementation
+(B) 2026-01-09 Build go-to-definition (gd) support +lsp @implementation
+(B) 2026-01-09 Implement auto-completion popup +lsp @implementation
+(C) 2026-01-09 Create hover documentation (K) +lsp @implementation
+(C) 2026-01-09 Build diagnostics display (errors/warnings in gutter and status) +lsp @implementation
+(C) 2026-01-09 Implement code actions and refactoring support +lsp @implementation
+
+## Phase 20: Plugin System (6 tasks)
+(C) 2026-01-09 Design plugin API and hook system +plugins @design
+(C) 2026-01-09 Implement plugin loader and initialization +plugins @implementation
+(C) 2026-01-09 Create plugin command registration +plugins @implementation
+(C) 2026-01-09 Build plugin configuration system +plugins @implementation
+(C) 2026-01-09 Implement scripting interface (Lua/Rhai embedding) +plugins @implementation
+(C) 2026-01-09 Create example plugins and plugin documentation +plugins @docs
+
+## Phase 21: Configuration (5 tasks)
+(A) 2026-01-09 Implement config file loading (editor.toml, init.lua, or .editorrc) +config @implementation
+(A) 2026-01-09 Create runtime config modification (:set) +config @implementation
+(B) 2026-01-09 Build keymap customization system +config @implementation
+(B) 2026-01-09 Implement theme/color scheme loading +config @implementation
+(C) 2026-01-09 Create default config generation and examples +config @docs
+
+## Phase 22: Performance & Polish (8 tasks)
+(B) 2026-01-09 Profile and optimize rendering pipeline +performance @optimization
+(B) 2026-01-09 Implement viewport culling for large files +performance @optimization
+(B) 2026-01-09 Optimize rope/buffer operations for common patterns +performance @optimization
+(C) 2026-01-09 Add lazy loading for syntax highlighting +performance @optimization
+(C) 2026-01-09 Implement background file indexing for fuzzy finder +performance @optimization
+(C) 2026-01-09 Add telemetry for performance monitoring (opt-in) +performance @optimization
+(C) 2026-01-09 Create benchmarks for core operations +performance @testing
+(C) 2026-01-09 Optimize memory usage and reduce allocations +performance @optimization
+
+## Phase 23: Testing & Documentation (9 tasks)
+(B) 2026-01-09 Write unit tests for buffer operations +testing @implementation
+(B) 2026-01-09 Write unit tests for vim motions and operators +testing @implementation
+(B) 2026-01-09 Write integration tests for command mode +testing @implementation
+(B) 2026-01-09 Create end-to-end tests for common workflows +testing @implementation
+(C) 2026-01-09 Build user manual/tutorial documentation +docs @writing
+(C) 2026-01-09 Create vim compatibility documentation +docs @writing
+(C) 2026-01-09 Write API documentation for plugins +docs @writing
+(C) 2026-01-09 Create architecture and contribution guide +docs @writing
+(C) 2026-01-09 Build example configs and usage videos +docs @writing
+
+# Total Tasks: 150
