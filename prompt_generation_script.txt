@@ -1,0 +1,7 @@
+generate a detailed PRD in the structure of a todo.txt where each line represents a
+seperate tasking. have the entire PRD be oriented around working on the below
+project and ensure its philosophically in line with the intents of the project,
+and clarify requirements as needed before drafting the PRD. the document should not
+be more than 150 lines (150 tasks). ultrathink.
+
+<insert description of project>
