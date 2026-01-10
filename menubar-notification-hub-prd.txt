@@ -1,0 +1,230 @@
+PROJECT: macOS MenuBar Notification Hub - Centralized Multi-Service Notification Aggregator
+
+=== PROJECT SETUP & INFRASTRUCTURE ===
+Initialize Swift macOS menubar app project with SwiftUI
+Configure minimum macOS version target (macOS 12+ for modern APIs)
+Set up dependency management with Swift Package Manager
+Add Keychain wrapper for secure credential storage
+Configure app sandbox entitlements for network access
+Set up logging framework for debugging and error tracking
+Create app icon and menubar icon assets (active/inactive states)
+Configure launch at login capability
+Set up CI/CD pipeline for automated builds
+Create .gitignore for sensitive config files
+
+=== CORE ARCHITECTURE ===
+Design service abstraction protocol for notification sources
+Implement notification data model (id, source, title, body, timestamp, read status, deeplink)
+Create notification store with in-memory cache and TTL (24 hour default)
+Build background polling service with configurable intervals
+Implement thread-safe notification queue for concurrent API calls
+Create dependency injection container for service management
+Design event bus for notification updates and UI refresh
+Implement rate limiting layer to respect API quotas
+Build error handling and retry logic with exponential backoff
+Create health check system to monitor service connectivity
+Design state management system using Combine/ObservableObject
+Implement notification deduplication logic across sources
+
+=== OAUTH INTEGRATION LAYER ===
+Research OAuth 2.0 requirements for Gmail API
+Research OAuth 2.0 requirements for Outlook Graph API
+Research OAuth requirements for Telegram Bot API
+Research WhatsApp Business API authentication options
+Create OAuth flow coordinator to manage multiple providers
+Implement OAuth web view handler for authorization
+Build secure token storage using macOS Keychain
+Create token refresh logic for expired credentials
+Implement OAuth callback URL handler
+Add OAuth state parameter validation for security
+Create OAuth credential manager with per-service isolation
+Build re-authentication flow for revoked tokens
+Add OAuth consent screen education for users
+Implement OAuth scope management (minimal permissions principle)
+
+=== GMAIL INTEGRATION ===
+Register app in Google Cloud Console and obtain OAuth client ID
+Implement Gmail OAuth authorization flow
+Integrate Gmail API client library
+Build Gmail notification fetcher using messages.list endpoint
+Parse Gmail message metadata (subject, from, snippet, timestamp)
+Handle Gmail label filtering (inbox, important, primary)
+Implement Gmail message ID to web URL deep linking
+Add Gmail unread message tracking
+Build Gmail incremental sync with history API
+Handle Gmail API rate limiting (250 quota units per user per second)
+Add Gmail batch request support for efficiency
+Implement Gmail push notification webhooks as future enhancement
+Test Gmail integration with multiple account scenarios
+
+=== OUTLOOK INTEGRATION ===
+Register app in Microsoft Azure AD and obtain OAuth client ID
+Implement Microsoft Graph OAuth authorization flow
+Integrate Microsoft Graph API client
+Build Outlook notification fetcher using /me/messages endpoint
+Parse Outlook message metadata (subject, from, bodyPreview, timestamp)
+Handle Outlook folder filtering (inbox, focused inbox)
+Implement Outlook message ID to web/app URL deep linking
+Add Outlook unread message tracking with isRead property
+Build Outlook delta sync for incremental updates
+Handle Microsoft Graph API throttling limits
+Add Outlook category and importance filtering
+Test Outlook integration with both personal and work accounts
+
+=== TELEGRAM INTEGRATION ===
+Research Telegram Bot API vs MTProto for notification access
+Implement Telegram Bot API authentication with bot token
+Create Telegram bot registration flow for users
+Build Telegram update fetcher using getUpdates or webhooks
+Parse Telegram message data (chat, text, sender, timestamp)
+Handle Telegram private messages, groups, and channels separately
+Implement Telegram deep linking to specific chats
+Add Telegram unread count tracking via updates
+Build Telegram long polling or webhook receiver
+Handle Telegram API rate limits (30 requests per second)
+Add Telegram media message preview support
+Test Telegram integration with various chat types
+
+=== WHATSAPP INTEGRATION ===
+Research WhatsApp Business API requirements and limitations
+Evaluate WhatsApp Cloud API vs on-premise options
+Implement WhatsApp Business authentication flow
+Build WhatsApp message webhook receiver
+Parse WhatsApp message payload (contact, text, timestamp)
+Handle WhatsApp read receipts and message status
+Implement WhatsApp deep linking to conversations (whatsapp:// protocol)
+Add WhatsApp media message handling
+Build WhatsApp template message detection
+Handle WhatsApp API rate limits
+Note: Personal WhatsApp has no official API, document limitation
+Research alternative: Local WhatsApp.app integration via AppleScript or accessibility APIs
+
+=== ADDITIONAL SOURCE INTEGRATIONS ===
+Design plugin architecture for extensible notification sources
+Implement Slack OAuth and RTM/Events API integration
+Implement Discord OAuth and gateway/webhook integration
+Implement Twitter/X OAuth and DM/mention monitoring
+Implement LinkedIn OAuth and messaging API integration
+Add RSS/Atom feed support as configurable source
+Add generic webhook receiver for custom integrations
+Build IMAP/POP3 integration for generic email providers
+Create source configuration UI for enable/disable toggles
+Add per-source polling interval configuration
+Implement source health monitoring and status indicators
+Document API for third-party source plugins
+
+=== NOTIFICATION PROCESSING ENGINE ===
+Build unified notification aggregator combining all sources
+Implement notification normalization to common data model
+Create notification enrichment pipeline (extract URLs, format text)
+Build notification deduplication across sources (same email in Gmail and Outlook)
+Implement 24-hour sliding window for "recent" notifications
+Add notification priority scoring algorithm
+Create rule engine for user-defined filtering
+Build keyword matching system for filter rules
+Implement sender/source-based filtering
+Add regex pattern support for advanced filters
+Create notification ranking algorithm combining recency, priority, and rules
+Build notification grouping by source or conversation thread
+Implement read/unread state synchronization back to sources
+Add notification dismissal and archive actions
+
+=== FILTERING & PRIORITY SYSTEM ===
+Implement chronological sort as default view
+Build smart priority detection using heuristics (keywords like "urgent", sender importance)
+Create ML-ready feature extraction (word frequency, sender history, time patterns)
+Add user-defined rule builder UI
+Implement rule conditions (sender contains, subject matches, source equals, time range)
+Add rule actions (boost priority, suppress, mark auto-read, tag)
+Build rule testing and preview functionality
+Create unread-only filter toggle
+Implement VIP sender list with auto-priority boost
+Add mute/block list for specific senders or keywords
+Build priority level indicators (high, medium, low) in UI
+Create filter preset templates (work hours only, urgent only, specific sources)
+Add filter analytics to show notification volume by source and priority
+
+=== MENUBAR UI COMPONENTS ===
+Design menubar icon with notification badge counter
+Implement menubar icon color change for unread notifications
+Build main dropdown panel with scrollable notification list
+Create notification list item component (icon, title, preview, timestamp, source badge)
+Add empty state UI for zero notifications
+Implement notification item hover actions (mark read, open, dismiss)
+Build notification detail popover for longer content
+Add source filter chips in panel header
+Implement search bar for notification history
+Create settings gear icon in panel footer
+Add refresh button with loading spinner state
+Build "Mark all as read" bulk action button
+Implement smooth animations for notification insertion and removal
+Add notification grouping headers by date (Today, Yesterday)
+Create compact vs expanded view mode toggle
+Build keyboard navigation support (arrows, enter, escape)
+Add macOS dark mode support with adaptive colors
+
+=== SETTINGS & CONFIGURATION ===
+Create settings window with tabbed interface
+Build General tab (launch at login, notification sound, badge counter)
+Implement Sources tab with OAuth login buttons and status indicators
+Add Filters tab with rule builder interface
+Create Notifications tab (polling intervals, cache duration, auto-mark read)
+Build Advanced tab (API quotas, debug mode, reset all data)
+Implement polling interval slider (1 min to 1 hour)
+Add notification sound picker with system sounds
+Build cache TTL configuration (6 hours to 7 days)
+Create OAuth account disconnect and reconnect flows
+Add per-source notification limits (max 50 per source)
+Implement data export feature (JSON export of all cached notifications)
+Build onboarding wizard for first launch
+Create help documentation links in settings
+Add app version and update checker
+
+=== DEEP LINKING & ACTIONS ===
+Implement URL scheme handlers for each source
+Build Gmail web URL generator (mail.google.com/mail/u/0/#inbox/message-id)
+Build Outlook web URL generator (outlook.office.com/mail/inbox/id/message-id)
+Implement Telegram deep link (tg://resolve?domain=username or t.me/chat)
+Handle WhatsApp deep link (whatsapp://send?phone=number)
+Add macOS URL handler registration in Info.plist
+Build fallback handler if default app is not installed
+Implement "Open in browser" option for web-based services
+Add "Copy link" action to clipboard
+Build notification action menu with right-click context
+Implement mark as read API calls for each source
+Add archive/delete actions where supported by source API
+
+=== TESTING & QUALITY ASSURANCE ===
+Write unit tests for notification data model
+Write unit tests for OAuth token management
+Write unit tests for notification deduplication logic
+Write unit tests for filtering and priority algorithms
+Create integration tests for Gmail API calls
+Create integration tests for Outlook API calls
+Create integration tests for Telegram API calls
+Test OAuth flow with expired tokens and refresh
+Test app behavior with network disconnection
+Test concurrent API polling across multiple sources
+Perform memory leak testing with long-running app
+Test menubar UI responsiveness with 1000+ notifications
+Validate cache eviction after 24-hour TTL
+Test rate limiting and backoff behavior
+Perform security audit of Keychain credential storage
+Test app sandbox compliance and entitlements
+
+=== DOCUMENTATION & DEPLOYMENT ===
+Write README with project overview and architecture
+Create OAuth setup guide for each service (obtaining client IDs)
+Document user-facing features and settings
+Write API documentation for plugin architecture
+Create troubleshooting guide for common issues
+Build privacy policy documenting data handling
+Write contribution guidelines for open source
+Create release notes template
+Set up automatic version bumping in CI/CD
+Build DMG installer with drag-to-Applications
+Code sign app with Apple Developer certificate
+Notarize app for Gatekeeper compliance
+Submit app for beta testing with TestFlight or alternative
+Create app website or landing page
+Prepare App Store submission materials if applicable
