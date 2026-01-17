@@ -1,0 +1,90 @@
+# REVISION PLAN GENERATOR - Product Requirements Document (Todo Format)
+# ================================================================================
+# Project: A CLI tool for generating effective, science-backed revision plans.
+# Philosophy: Plug-and-play, utility-focused, local-first, based on learning science.
+# Tech Stack: Python, Typer/Click (CLI), Rich (UI), TinyDB (State), iCal-py (Export).
+# ================================================================================
+
+# --- PHASE 1: CORE ENGINE & PROJECT SETUP ---
+
+# [SETUP] Initialize Python project with Poetry or PDM for dependency management
+# [SETUP] Create project structure (src/, tests/, data/)
+# [SETUP] Set up virtual environment and install core dependencies (typer, rich)
+# [SETUP] Initialize Git repository with a standard .gitignore for Python
+# [SETUP] Create main CLI entry point in `main.py`
+# [SETUP] Configure ruff for linting/formatting and mypy for type checking
+# [SETUP] Write a basic README.md with project vision and setup instructions
+# [SETUP] Create a `core` module for the main business logic
+
+# --- PHASE 2: INPUT & CONFIGURATION ---
+
+# [INPUT] Implement file parser for `.txt` files (one topic per line)
+# [INPUT] Implement logic to handle comments (#) and empty lines in the topic file
+# [INPUT] Create a `Topic` data class with attributes like `name`, `first_seen`, `review_dates`
+# [CONFIG] Use Typer to create a main CLI command (e.g., `revise generate`)
+# [CONFIG] Add a required command-line argument for the path to the topics file
+# [CONFIG] Add a required command-line argument for the total number of revision days
+# [CONFIG] Implement input validation: check if file exists and if days > 0
+# [CONFIG] Add an optional argument for the start date of the revision period (defaults to today)
+
+# --- PHASE 3: SCHEDULING ALGORITHM (SPACED REPETITION) ---
+
+# [ALGO] Design the core `Scheduler` service class
+# [ALGO] Create a default spaced repetition interval schedule (e.g., [1, 3, 7, 14, 30] days)
+# [ALGO] Implement a "topic distribution" algorithm to spread out NEW topics evenly across the timeframe
+# [ALGO] Implement the core scheduling logic: for each new topic, schedule its future review sessions
+# [ALGO] The scheduler must handle "day overflows" (e.g., if a review falls after the total revision days)
+# [ALGO] Create a `RevisionPlan` data structure to hold the schedule (e.g., a dictionary mapping days to lists of tasks)
+# [ALGO] Add a `Task` data class (`topic`, `task_type` where type is "NEW" or "REVIEW")
+# [ALGO] Ensure the algorithm can handle a large number of topics relative to the number of days
+
+# --- PHASE 4: CLI OUTPUT & DISPLAY ---
+
+# [OUTPUT] Use the `rich` library to create a `PlanPrinter` class
+# [OUTPUT] Implement a day-by-day printout to the console
+# [OUTPUT] Use `rich.table.Table` to display the daily plan clearly (Day #, Date, Tasks)
+# [OUTPUT] Differentiate between "NEW" topics and "REVIEW" topics in the display (e.g., with color or labels)
+# [OUTPUT] Add a summary at the end of the plan (e.g., "Total topics: 50, Total tasks: 210")
+# [OUTPUT] Implement a `--output` flag to save the plan to a Markdown file
+# [OUTPUT] Format the Markdown export with headers for each day and checklists for tasks
+# [OUTPUT] Add a `--quiet` flag to suppress the console output when saving to a file
+
+# --- PHASE 5: STATE & INTERACTIVITY ---
+
+# [STATE] Install `tinydb` for simple, local JSON-based database storage
+# [STATE] Create a `StateManager` to save and load revision plans
+# [STATE] When a plan is generated, save it to a local `.revision_plan.json` file
+# [STATE] Create a `revise today` command to show only the tasks for the current day
+# [STATE] Create a `revise upcoming` command to show tasks for the next 7 days
+# [STATE] Implement a `revise mark-done` command with a topic selector (e.g., using `rich.prompt`)
+# [STATE] When a topic is marked "done" for the day, update its state in the JSON file
+# [STATE] In the `today` view, visually distinguish between pending and completed tasks
+# [STATE] Implement a `revise status` command to show overall progress (e.g., X/Y tasks completed)
+
+# --- PHASE 6: ADVANCED FEATURES & USABILITY ---
+
+# [ALGO] Allow users to customize the spaced repetition intervals via a config file or flag
+# [ALGO] Implement topic "weighting": allow users to specify priority topics (e.g., `topic_name [priority=high]`)
+# [ALGO] The scheduler should prioritize showing high-priority topics earlier in the plan
+# [CONFIG] Add a config file (e.g., `~/.config/revise/config.toml`) for persistent settings
+# [CONFIG] Implement a `--exclude-weekends` flag to not schedule any new tasks on Saturdays/Sundays
+# [EXPORT] Install `ical-py` to add iCalendar export functionality
+# [EXPORT] Implement a `--export-ical` flag to generate a `.ics` file
+# [EXPORT] Each task in the iCal event should have a clear title (e.g., "Revise: Photosynthesis")
+# [TUI] (Stretch Goal) Plan a Textual-based interactive interface for managing the plan
+# [TUI] The TUI should have a multi-pane layout: calendar view, daily task list, and progress view
+# [TUI] Implement Vim-style keybindings for navigation in the TUI
+
+# --- PHASE 7: TESTING, DOCUMENTATION & POLISH ---
+
+# [TESTING] Write unit tests for the `.txt` file parser
+# [TESTING] Write unit tests for the core scheduling algorithm with various inputs
+# [TESTING] Test edge cases: 0 topics, 1 topic, more topics than days, etc.
+# [TESTING] Write integration tests for the CLI commands (`generate`, `today`, `mark-done`)
+# [DOCS] Expand the README with a "Usage" section and examples for each command
+# [DOCS] Document the spaced repetition logic and why it's used
+# [DOCS] Create a `CONTRIBUTING.md` file
+# [POLISH] Create a simple and clear color scheme for all `rich` outputs
+# [POLISH] Add robust error handling with user-friendly messages (e.g., "File not found at path...")
+# [POLISH] Package the application for distribution via PyPI
+# [POLISH] Add shell completion support for Typer commands
