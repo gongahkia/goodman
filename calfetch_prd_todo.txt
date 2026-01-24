@@ -173,29 +173,6 @@
 [DIST] Add install.sh one-liner script for quick setup
 
 # -----------------------------------------------------------------------------
-# DOCUMENTATION
-# -----------------------------------------------------------------------------
-[DOCS] Write README with feature overview, screenshots, and quickstart
-[DOCS] Create CONFIGURATION.md with all options documented
-[DOCS] Write BACKENDS.md explaining each provider setup
-[DOCS] Create THEMES.md with theme authoring guide
-[DOCS] Add CONTRIBUTING.md with development setup instructions
-[DOCS] Write man page for system integration
-[DOCS] Create example configs for common use cases
-[DOCS] Add troubleshooting FAQ for common issues
-
-# -----------------------------------------------------------------------------
-# TESTING & QUALITY
-# -----------------------------------------------------------------------------
-[TEST] Write unit tests for all data model transformations
-[TEST] Create mock backends for integration testing without API calls
-[TEST] Add golden file tests for display output consistency
-[TEST] Implement fuzzing for config parser edge cases
-[TEST] Set up CI pipeline with linting (golangci-lint) and tests
-[TEST] Add benchmark tests for startup time (<100ms target)
-[TEST] Create end-to-end tests for CLI commands
-
-# -----------------------------------------------------------------------------
 # FUTURE CONSIDERATIONS (v2+)
 # -----------------------------------------------------------------------------
 [FUTURE] Add Pomodoro timer integration

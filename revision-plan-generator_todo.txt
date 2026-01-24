@@ -75,15 +75,8 @@
 # [TUI] The TUI should have a multi-pane layout: calendar view, daily task list, and progress view
 # [TUI] Implement Vim-style keybindings for navigation in the TUI
 
-# --- PHASE 7: TESTING, DOCUMENTATION & POLISH ---
+# --- PHASE 7: POLISH ---
 
-# [TESTING] Write unit tests for the `.txt` file parser
-# [TESTING] Write unit tests for the core scheduling algorithm with various inputs
-# [TESTING] Test edge cases: 0 topics, 1 topic, more topics than days, etc.
-# [TESTING] Write integration tests for the CLI commands (`generate`, `today`, `mark-done`)
-# [DOCS] Expand the README with a "Usage" section and examples for each command
-# [DOCS] Document the spaced repetition logic and why it's used
-# [DOCS] Create a `CONTRIBUTING.md` file
 # [POLISH] Create a simple and clear color scheme for all `rich` outputs
 # [POLISH] Add robust error handling with user-friendly messages (e.g., "File not found at path...")
 # [POLISH] Package the application for distribution via PyPI

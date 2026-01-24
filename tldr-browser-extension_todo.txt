@@ -60,11 +60,3 @@
 (C) Scope a potential "v2" feature: allowing users to optionally create accounts to sync reputation across devices.
 (C) Investigate adding support for summarizing video content (e.g., YouTube) via community submissions.
 (C) Consider a feature for users to see their own contribution history (tied to their anonymous ID).
-
--- EPIC: Deployment & Launch --
-(A) Write clear, concise user-facing documentation on how the extension works.
-(B) Set up a simple CI/CD pipeline to automate the extension build process.
-(B) Prepare all required assets and descriptions for the Chrome Web Store.
-(A) Perform thorough testing on a variety of popular websites.
-(B) Submit the extension to the Chrome Web Store for review.
-(C) Create a simple landing page to explain the product and link to the store page.

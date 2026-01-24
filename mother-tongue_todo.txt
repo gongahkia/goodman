@@ -124,13 +124,6 @@ A browser extension that visually transforms AI chat interfaces (ChatGPT, Claude
 (C) Create extension privacy policy document +deployment @legal
 (C) Set up update distribution pipeline +deployment @devops
 
-=== DOCUMENTATION ===
-(B) Write comprehensive README with installation instructions +docs @writing
-(B) Create user guide with theme descriptions and screenshots +docs @writing
-(C) Document code with JSDoc comments for maintainability +docs @dev
-(C) Create contribution guidelines for open source contributors +docs @writing
-(C) Write troubleshooting guide for common issues +docs @writing
-
 === POST-LAUNCH ENHANCEMENTS ===
 (C) Collect user feedback on theme preferences and missing features +feedback @community priority:low
 (C) Design additional theme variations based on user requests +themes @design priority:low
@@ -143,15 +136,3 @@ A browser extension that visually transforms AI chat interfaces (ChatGPT, Claude
 (C) Monitor and fix platform UI changes that break selectors +maintenance @dev priority:ongoing
 (C) Update extension for manifest v4 when available +maintenance @dev priority:future
 (C) Refactor CSS for better modularity and reusability +maintenance @dev priority:low
-(C) Implement automated testing suite for platform integrations +testing @dev priority:low
-(C) Set up CI/CD pipeline for automated builds and testing +devops @admin priority:low
-
-NOTES:
-- Priority levels: (A)=Critical, (B)=Important, (C)=Nice-to-have
-- Projects: +setup, +architecture, +core, +themes, +chatgpt, +claude, +gemini, +perplexity, +settings, +assets, +performance, +testing, +ux, +deployment, +docs, +feedback, +enhancement, +maintenance
-- Contexts: @research, @dev, @design, @qa, @admin, @marketing, @legal, @devops, @writing, @community
-- Focus on visual transformation only; no AI response text modification
-- All themes must be toggleable and customizable by user
-- Extension must not interfere with platform functionality
-- Maintain performance: <50ms theme application time
-- Target: Manifest V3 for future-proofing

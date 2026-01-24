@@ -155,23 +155,6 @@ Create launch agent for auto-start on login (optional)
 Implement graceful shutdown and cleanup
 Add crash reporting and error logging system
 
-## TESTING & QUALITY ASSURANCE
-Write unit tests for LogFileParser with various log formats
-Create tests for EventDetector classes (AI, task, workflow)
-Implement integration tests for FileWatcher service
-Write UI tests for menubar interaction using XCTest
-Create snapshot tests for SwiftUI views
-Implement tests for notification grouping and filtering
-Write tests for database operations and migrations
-Create performance tests for log parsing with large files
-Implement tests for settings persistence and validation
-Write tests for search and filter functionality
-Create accessibility tests for VoiceOver support
-Implement tests for theme switching and UI customization
-Write tests for edge cases (empty logs, corrupted data, missing files)
-Create manual testing checklist for UX flows
-Implement beta testing with sample Ghostty users
-
 ## USER EXPERIENCE ENHANCEMENTS
 Implement onboarding flow for first-time users
 Create tutorial tooltips for main features
@@ -188,25 +171,6 @@ Add integration with macOS Notification Center (optional)
 Implement deep linking from notifications to terminal
 Create hotkey for showing/hiding menubar dropdown
 Add support for multiple Ghostty instances/profiles
-
-## DOCUMENTATION & DEPLOYMENT
-Write README with project overview and setup instructions
-Create user guide with screenshots and feature descriptions
-Write developer documentation for architecture and code structure
-Create API documentation for public interfaces
-Write contributing guidelines for open-source (if applicable)
-Create changelog document for version tracking
-Implement in-app help system with searchable docs
-Write privacy policy if collecting any data
-Create build and release scripts for automation
-Set up CI/CD pipeline for automated testing and builds
-Configure code signing for macOS distribution
-Create DMG installer with drag-to-Applications
-Write App Store description and metadata (if publishing)
-Create marketing website or landing page
-Implement automatic update system using Sparkle framework
-Write troubleshooting guide for common issues
-Create FAQ document based on beta feedback
 
 ## POLISH & OPTIMIZATION
 Implement smooth animations for all UI transitions

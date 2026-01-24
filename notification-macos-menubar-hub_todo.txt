@@ -177,7 +177,6 @@ Create OAuth account disconnect and reconnect flows
 Add per-source notification limits (max 50 per source)
 Implement data export feature (JSON export of all cached notifications)
 Build onboarding wizard for first launch
-Create help documentation links in settings
 Add app version and update checker
 
 === DEEP LINKING & ACTIONS ===
@@ -193,38 +192,3 @@ Add "Copy link" action to clipboard
 Build notification action menu with right-click context
 Implement mark as read API calls for each source
 Add archive/delete actions where supported by source API
-
-=== TESTING & QUALITY ASSURANCE ===
-Write unit tests for notification data model
-Write unit tests for OAuth token management
-Write unit tests for notification deduplication logic
-Write unit tests for filtering and priority algorithms
-Create integration tests for Gmail API calls
-Create integration tests for Outlook API calls
-Create integration tests for Telegram API calls
-Test OAuth flow with expired tokens and refresh
-Test app behavior with network disconnection
-Test concurrent API polling across multiple sources
-Perform memory leak testing with long-running app
-Test menubar UI responsiveness with 1000+ notifications
-Validate cache eviction after 24-hour TTL
-Test rate limiting and backoff behavior
-Perform security audit of Keychain credential storage
-Test app sandbox compliance and entitlements
-
-=== DOCUMENTATION & DEPLOYMENT ===
-Write README with project overview and architecture
-Create OAuth setup guide for each service (obtaining client IDs)
-Document user-facing features and settings
-Write API documentation for plugin architecture
-Create troubleshooting guide for common issues
-Build privacy policy documenting data handling
-Write contribution guidelines for open source
-Create release notes template
-Set up automatic version bumping in CI/CD
-Build DMG installer with drag-to-Applications
-Code sign app with Apple Developer certificate
-Notarize app for Gatekeeper compliance
-Submit app for beta testing with TestFlight or alternative
-Create app website or landing page
-Prepare App Store submission materials if applicable

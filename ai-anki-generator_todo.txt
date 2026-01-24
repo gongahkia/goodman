@@ -80,15 +80,8 @@
 # [ANKI] Allow user to configure the Anki note models (card templates) via the UI
 # [ANKI] Support merging new cards into an existing `.apkg` file
 
-# --- PHASE 7: TESTING, DOCUMENTATION & POLISH ---
+# --- PHASE 7: POLISH ---
 
-# [TESTING] Write unit tests for the document processing and chunking logic
-# [TESTING] Write unit tests for the Anki deck exporter
-# [TESTING] Create mock tests for the Ollama service to simulate API responses
-# [TESTING] Write integration tests for the end-to-end flow (document -> deck)
-# [DOCS] Expand README with detailed usage instructions and screenshots of the TUI
-# [DOCS] Create a `CONTRIBUTING.md` for potential contributors
-# [DOCS] Document the prompt engineering strategies used
 # [POLISH] Create a simple and attractive color theme for the TUI
 # [POLISH] Add loading indicators and spinners for async operations
 # [POLISH] Implement a robust error handling and display system in the TUI

@@ -80,8 +80,3 @@
 (H) 2026-01-18 Create promotional graphics and icons required by the web stores
 (H) 2026-01-18 Clean up the code and ensure it meets the standards of the target web stores
 (H) 2026-01-18 Package the extension into a .zip file for submission
-(H) 2026-01-18 Submit the extension to the Chrome Web Store
-(H) 2026-01-18 Submit the extension to the Firefox Browser Add-ons store
-(H) 2026-01-18 Set up a bug reporting system (e.g., GitHub Issues)
-(H) 2026-01-18 Plan for future updates based on user feedback (e.g., new game modes, more customization)
-(H) 2026-01-18 Document the codebase for future maintenance and open-source contributors
