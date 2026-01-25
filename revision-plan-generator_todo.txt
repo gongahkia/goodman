@@ -73,7 +73,6 @@
 # [EXPORT] Each task in the iCal event should have a clear title (e.g., "Revise: Photosynthesis")
 # [TUI] (Stretch Goal) Plan a Textual-based interactive interface for managing the plan
 # [TUI] The TUI should have a multi-pane layout: calendar view, daily task list, and progress view
-# [TUI] Implement Vim-style keybindings for navigation in the TUI
 
 # --- PHASE 7: POLISH ---
 
