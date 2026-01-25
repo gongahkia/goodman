@@ -1,27 +1,30 @@
 STARTUP SIMULATOR - Product Requirements Document (Todo Format)
-Tech Stack: React+TypeScript, Node.js/FastAPI, PostgreSQL, Redis, Three.js/D3.js, Claude/GPT-4 APIs, WebSockets
+Tech Stack: Python CLI (Typer/Rich), TinyDB/JSON, Ollama/Huggingface/LLM APIs, D3.js (future web UI)
+Philosophy: Backend-first, local-first, CLI-driven with ASCII visualization
 ================================================================================
 
 --- PHASE 1: MVP FOUNDATION ---
 
 # Project Setup & Infrastructure
-Setup monorepo structure with frontend and backend workspaces
-Initialize React+TypeScript app with Vite for frontend
-Initialize Node.js/Express backend with TypeScript
-Setup PostgreSQL database with Prisma ORM
-Configure Redis for caching and session management
-Setup Docker Compose for local development environment
-Create CI/CD pipeline with GitHub Actions
-Configure environment variables and secrets management
+Initialize Python project with Poetry/PDM for dependency management
+Create project structure (src/, data/, simulations/, configs/)
+Install core dependencies (typer, rich, tinydb, httpx)
+Setup virtual environment and configure ruff/mypy for linting and types
+Initialize Git repository with Python .gitignore
+Create main CLI entry point using Typer
+Configure environment variables for API keys and model paths
+Create local data directory structure for JSON-based storage
 
-# Core Data Models
+# Core Data Models (TinyDB/JSON Storage)
 Design simulation entity schema (id, name, description, industry, stage, parameters)
 Design agent entity schema (type, role, personality, knowledge_base, behavior_rules)
 Design stakeholder types taxonomy (customer, competitor, investor, regulator, employee, partner, critic)
 Design simulation_run schema (simulation_id, start_time, duration, status, results)
 Design interaction_log schema (agent_id, timestamp, action, target, outcome)
 Design metric_snapshot schema (simulation_run_id, timestamp, metric_type, value)
-Implement database migrations and seed data
+Implement TinyDB database with separate JSON files per simulation
+Create data models as Python dataclasses with JSON serialization
+Build storage manager abstraction layer for future database swapping
 
 # Simulation Engine Core
 Build simulation orchestrator that manages agent lifecycle
@@ -30,11 +33,18 @@ Create agent spawning logic based on simulation parameters
 Build agent decision-making loop (perceive → reason → act → learn)
 Implement inter-agent communication protocol
 Create event bus for simulation events (agent_created, interaction_occurred, metric_changed)
-Build simulation state manager with snapshot capabilities
-Implement pause/resume/stop simulation controls
+Build simulation state manager with JSON snapshot capabilities
+Implement pause/resume/stop simulation controls via keyboard and signals
+Create simulation checkpointing for crash recovery
+Implement headless mode for background/scripted execution
 
 # AI Agent System (MVP)
-Integrate Claude/GPT-4 API for agent intelligence
+Create LLM provider abstraction layer supporting multiple backends
+Implement Ollama integration for local model inference (llama, mistral, etc)
+Implement Huggingface transformers integration for local models
+Implement OpenAI API integration (GPT-4, GPT-3.5)
+Implement Anthropic API integration (Claude)
+Add provider selection via config file or CLI flag (--model ollama:llama3)
 Design agent prompt templates for different stakeholder types
 Implement customer agent that evaluates product-market fit
 Implement competitor agent that responds to market moves
@@ -42,16 +52,20 @@ Implement investor agent that assesses viability and traction
 Implement critic agent that provides constructive feedback
 Build agent memory system (short-term and long-term context)
 Create agent personality variation system using prompt engineering
-Implement agent response caching to reduce API costs
+Implement agent response caching to reduce API costs and local compute
 
-# Basic Frontend UI
-Create simulation setup form (name, description, industry, stage, duration)
-Build simulation dashboard showing live agent count and key metrics
-Implement real-time event feed showing agent actions
-Create agent inspector panel to view individual agent details
-Build basic simulation controls (start, pause, stop, restart)
-Design responsive layout for desktop and tablet
-Implement WebSocket connection for real-time updates
+# CLI Frontend (Rich/Typer)
+Create `simulate new` command with interactive prompts (name, description, industry, stage, duration)
+Create `simulate run <id>` command to start simulation with live output
+Build ASCII dashboard using Rich panels showing agent count and key metrics
+Implement real-time event feed in terminal showing agent actions with colors
+Create `simulate inspect <agent_id>` command to view individual agent details
+Build simulation controls via keyboard input (p=pause, r=resume, q=quit)
+Create ASCII art agent avatars for different stakeholder types
+Build ASCII progress bars and sparklines for metrics visualization
+Implement Rich Live display for real-time dashboard updates
+Create `simulate list` command to show all simulations
+Create `simulate status <id>` command to show simulation state
 
 # Basic Data Generation
 Generate procedural customer feedback based on product description
@@ -75,17 +89,17 @@ Create agent archetypes library (early_adopter, skeptic, influencer, etc)
 Add multi-turn conversation support between agents
 Implement agent coalition formation (groups with shared interests)
 
-# Procedural Animation System
-Integrate Three.js for 3D visualization of simulation space
-Create animated agent avatars with distinct visual identities
-Build force-directed graph layout for agent relationships
-Implement particle effects for interactions (transactions, communications)
-Create data visualization charts with animated transitions (D3.js)
-Build market dynamics visualization (supply/demand curves)
-Implement timeline scrubber with animation replay
-Create heatmap visualization for market penetration by geography
-Build animated stakeholder sentiment gauge
-Add transition animations for simulation state changes
+# ASCII Visualization System
+Create ASCII agent avatars with distinct characters per stakeholder type
+Build ASCII relationship graph showing agent connections
+Implement text-based interaction indicators (arrows, symbols)
+Create Rich tables and charts for metrics visualization
+Build ASCII market dynamics display (supply/demand as bar charts)
+Implement timeline view with scroll-back through events
+Create ASCII heatmap using block characters for market penetration
+Build sentiment gauge using ASCII progress bars and emoji indicators
+Add color-coded status changes for simulation events
+Create ASCII art startup logo generator based on simulation name
 
 # Rich Data & Analytics
 Implement scenario branching (what-if simulations)
@@ -109,27 +123,26 @@ Add customer segments (early_adopter, mainstream, laggard)
 Implement geographic market variations (cultural, regulatory, economic)
 Add industry-specific agents (healthcare: FDA, fintech: SEC, etc)
 
-# Improved UI/UX
-Build interactive simulation canvas with drag-and-drop agents
-Create simulation template library (SaaS, marketplace, hardware, etc)
-Implement dark mode and theme customization
-Build collaborative features (share simulations, comments)
-Create simulation history with version control
-Add onboarding tutorial with sample simulations
-Build simulation comparison view (side-by-side)
-Implement advanced filters and search for agents/events
-Create customizable dashboard with widget system
-Add accessibility features (WCAG 2.1 AA compliance)
+# Improved CLI UX
+Create simulation template library as TOML/YAML presets (SaaS, marketplace, hardware, etc)
+Implement terminal color themes via config (dark, light, solarized)
+Create simulation export/import for sharing (JSON bundles)
+Create simulation history with `simulate history` command
+Add interactive tutorial via `simulate tutorial` command with sample data
+Build simulation comparison via `simulate compare <id1> <id2>` command
+Implement advanced filters for `simulate logs` command (--agent, --type, --time)
+Create configurable dashboard layout via config file
+Add shell completion support for all commands (bash, zsh, fish)
 
 # Performance & Scale
 Implement agent pooling and recycling for large simulations
-Add database query optimization and indexing
-Build caching layer for frequently accessed data
-Implement pagination for large result sets
-Add background job processing for long-running simulations
-Create simulation queue system for concurrent runs
-Optimize WebSocket message batching
-Implement lazy loading for UI components
+Optimize TinyDB queries with indexing where supported
+Build in-memory caching layer for frequently accessed data
+Implement pagination for large log result sets
+Add background thread processing for long-running simulations
+Create simulation queue system for sequential/concurrent runs
+Optimize JSON file I/O with batched writes
+Implement lazy loading for simulation history
 
 --- PHASE 3: FULL FEATURE SET ---
 
@@ -164,11 +177,19 @@ Implement reinforcement learning for agent behavior optimization
 Build meta-analysis across user community simulations
 
 # Export & Integration
-Create comprehensive PDF reports with executive summary
-Build PowerPoint export with key charts and insights
-Implement API for external tool integration
-Create webhooks for simulation events
-Build Slack/Discord bot for simulation notifications
-Add calendar integration for scheduled simulations
-Create embeddable widgets for websites/notion
-Implement data export to analytics platforms (Mixpanel, Amplitude)
+Create comprehensive PDF reports with executive summary via `simulate export <id> --pdf`
+Build Markdown export with key insights via `simulate export <id> --md`
+Create JSON export for data portability via `simulate export <id> --json`
+Create CSV export for spreadsheet analysis via `simulate export <id> --csv`
+Build Slack/Discord webhook notifications for simulation events
+Add cron-friendly mode for scheduled simulations (--headless flag)
+Implement pipe-friendly output for shell scripting integration
+
+# Stretch Goals: Web UI & PostgreSQL
+(STRETCH) Implement PostgreSQL storage backend as alternative to TinyDB
+(STRETCH) Create database migration scripts from TinyDB to PostgreSQL
+(STRETCH) Build FastAPI REST backend exposing simulation engine
+(STRETCH) Create React+TypeScript web frontend with D3.js 2D visualizations
+(STRETCH) Implement WebSocket connection for real-time web updates
+(STRETCH) Create embeddable widgets for websites/notion
+(STRETCH) Implement API for external tool integration
