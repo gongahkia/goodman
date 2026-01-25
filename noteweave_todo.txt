@@ -1,6 +1,6 @@
 NOTEWEAVE - PRD & TODO
-Ephemeral visual note-taking web app optimized for studying
-No database | Local-first | Rich editing | Native diagrams & mindmaps
+Markdown-first visual note-taking web app optimized for studying
+No database | Local-first | Live-preview markdown | Native mindmaps & diagrams
 
 === CORE INFRASTRUCTURE ===
 (A) Setup modern web project with Vite + React/Vanilla JS + TypeScript
@@ -11,76 +11,70 @@ No database | Local-first | Rich editing | Native diagrams & mindmaps
 (A) Build note list/grid view with search and filter by tags
 (A) Implement create/delete/duplicate note operations
 (A) Add keyboard shortcuts system (Ctrl+N new note, Ctrl+K search, etc)
-(A) Design responsive layout: sidebar + main editor + optional right panel
+(A) Design ultra-minimalist layout: centered typing area, nothing else on screen by default
 (A) Set up routing for multi-note navigation without page reload
 (B) Add PWA manifest for installable web app experience
 (B) Implement service worker for offline functionality
 (C) Add analytics events (privacy-focused, no tracking) for feature usage
 
-=== RICH TEXT EDITOR ===
-(A) Integrate Quill.js or TipTap for WYSIWYG rich text editing
-(A) Support bold, italic, underline, strikethrough formatting
-(A) Add heading levels H1-H6 with proper semantic markup
-(A) Implement bulleted and numbered lists with nesting
-(A) Add blockquotes and code blocks with syntax highlighting
-(A) Support text alignment: left, center, right, justify
-(A) Implement link insertion and editing with preview
-(A) Add image paste from clipboard and drag-drop (stored as base64)
-(A) Support tables with add/remove rows and columns
-(B) Add text color and background color pickers
-(B) Implement font family selector (serif, sans-serif, monospace)
-(B) Add font size controls
-(B) Support horizontal rules and dividers
-(B) Implement undo/redo with reasonable history depth
-(B) Add format painter/copy formatting tool
-(C) Support emoji picker integration
-(C) Add special characters insertion menu
-
-=== MARKDOWN SUPPORT ===
-(A) Integrate CodeMirror or Monaco for markdown editing mode
-(A) Implement live markdown preview in split-pane view
-(A) Support GitHub Flavored Markdown syntax
-(A) Add syntax highlighting for code blocks in preview
-(A) Implement auto-completion for markdown syntax
-(A) Support task lists with checkboxes [ ] and [x]
-(B) Add markdown table formatting helper
-(B) Implement markdown shortcuts (Ctrl+B for bold, etc)
-(B) Support front matter for metadata
+=== PRIORITY 1: MARKDOWN EDITOR (Obsidian-style live preview) ===
+(A) Integrate CodeMirror 6 as the core editing engine
+(A) Implement Obsidian-style live preview: write markdown, render inline as rich text
+(A) Rendered output replaces raw markdown in-place while editing (no split pane by default)
+(A) Cursor entering a formatted block reveals underlying markdown syntax for editing
+(A) Support GitHub Flavored Markdown as the base syntax spec
+(A) Support bold, italic, underline, strikethrough with inline live preview
+(A) Add heading levels H1-H6 rendered inline with proper sizing and weight
+(A) Implement bulleted and numbered lists with nesting, rendered inline
+(A) Add blockquotes rendered with styled left border and muted text
+(A) Implement code blocks with syntax highlighting (highlight.js or Shiki)
+(A) Support inline code with distinct monospace styling
+(A) Support task lists with interactive checkboxes [ ] and [x]
+(A) Implement tables with Doom Emacs-style interaction:
+    - Tab to move between cells
+    - Auto-align columns on input
+    - Auto-expand table width as content grows
+    - Enter to create new rows
+    - Shortcut to add/remove columns
+    - Pipe-based markdown syntax rendered as clean table grid
+(A) Support link insertion with inline preview and clickable rendered links
+(A) Add image paste from clipboard, drag-drop, and markdown syntax (stored as base64)
+(A) Images render inline within the document at appropriate size
+(A) Support horizontal rules rendered as styled dividers
+(A) Implement auto-completion for markdown syntax (e.g. auto-close brackets, lists)
+(A) Support front matter (YAML) for note metadata, collapsed by default
+(B) Add syntax highlighting for fenced code blocks in 30+ languages
+(B) Implement smart list continuation (Enter continues list, Enter on empty item exits)
+(B) Support footnotes with rendered popup/inline preview
+(B) Add math/LaTeX rendering with KaTeX for inline ($...$) and block ($$...$$)
+(B) Implement auto-pairing for markdown syntax (**, `, _, etc)
+(B) Support text highlight/mark syntax (==highlight==)
+(B) Add callout/admonition blocks (note, warning, tip, etc) with icons
 (C) Add markdown templates for common study formats
+(C) Support emoji shortcodes with autocomplete (:smile: etc)
+(C) Add Vim keybinding mode as an option
 
-=== EXCALIDRAW INTEGRATION (Priority 1) ===
-(A) Embed Excalidraw library as primary drawing mode
-(A) Create seamless toggle between text and drawing mode
-(A) Store Excalidraw data in note content with proper serialization
-(A) Support basic shapes: rectangle, circle, arrow, line, text
-(A) Implement freehand drawing with pen tool
-(A) Add selection, move, resize, and rotate tools
-(A) Support multiple colors and stroke widths
-(A) Implement layers/z-index control (bring to front, send to back)
-(A) Add eraser tool for removing elements
-(A) Support grouping and ungrouping elements
-(B) Implement snap-to-grid and alignment guides
-(B) Add shape libraries for common study diagrams (biology, chemistry, etc)
-(B) Support image insertion into drawings
-(B) Add arrow connectors that stick to shapes
-(B) Implement collaborative-style cursor (even for single user, for UX)
-(C) Add export drawing as PNG/SVG
-(C) Support drawing templates (flowchart, mind map, org chart)
+=== PRIORITY 2A: COMMAND PALETTE ===
+(A) Build command palette overlay triggered by Ctrl+Shift+P / Cmd+Shift+P
+(A) Palette appears centered on screen with fuzzy search input
+(A) All application settings accessible exclusively through the command palette
+(A) Implement fuzzy matching for command search with ranked results
+(A) Add commands: theme switching, font settings, editor preferences
+(A) Add commands: new note, open note, delete note, duplicate note
+(A) Add commands: export current note, export all notes
+(A) Add commands: toggle focus mode, toggle sidebar, toggle line numbers
+(A) Add commands: insert table, insert code block, insert horizontal rule
+(A) Add commands: toggle vim mode, toggle spellcheck
+(A) Show keyboard shortcut hints alongside each command
+(A) Support recent commands list for quick re-access
+(B) Add commands: note linking, tag management, search and replace
+(B) Implement command categories/grouping for organized browsing
+(B) Support parameterized commands (e.g. "Set font size" then type a number)
+(B) Add commands: flashcard mode, pomodoro timer, study stats
+(C) Support user-defined custom commands and macros
+(C) Add command history with frequency-based sorting
 
-=== MERMAID DIAGRAMS ===
-(A) Integrate Mermaid.js for code-to-diagram rendering
-(A) Support flowcharts with standard notation
-(A) Support sequence diagrams for process flows
-(A) Add class diagrams for OOP concepts
-(A) Implement state diagrams for FSM visualization
-(B) Support ER diagrams for database design
-(B) Add Gantt charts for project planning
-(B) Implement pie charts and bar charts for data viz
-(B) Support git graphs for version control concepts
-(C) Add live preview while typing mermaid code
-(C) Implement syntax validation and error highlighting
-
-=== MINDMAPPING FEATURES ===
+=== PRIORITY 2B: MINDMAPPING FEATURES ===
 (A) Build native mindmap component with node-edge graph
 (A) Support central topic node with branching child nodes
 (A) Implement drag-and-drop node repositioning
@@ -88,6 +82,9 @@ No database | Local-first | Rich editing | Native diagrams & mindmaps
 (A) Support collapsing and expanding branches
 (A) Add node colors and icons for categorization
 (A) Implement automatic layout algorithm (radial or tree)
+(A) Seamless toggle between markdown editor and mindmap mode per note
+(A) Store mindmap data alongside note content with proper serialization
+(A) Convert markdown headings and lists into mindmap nodes automatically
 (B) Support different node shapes (rectangle, circle, rounded)
 (B) Add edge styling (straight, curved, orthogonal)
 (B) Implement node relationships beyond parent-child
@@ -98,13 +95,44 @@ No database | Local-first | Rich editing | Native diagrams & mindmaps
 (C) Support importing from other mindmap tools
 (C) Add AI-assisted mindmap generation from text notes
 
+=== PRIORITY 3: EXCALIDRAW INTEGRATION ===
+(B) Embed Excalidraw library as a drawing mode within notes
+(B) Create toggle between text editing and drawing mode
+(B) Store Excalidraw data in note content with proper serialization
+(B) Support basic shapes: rectangle, circle, arrow, line, text
+(B) Implement freehand drawing with pen tool
+(B) Add selection, move, resize, and rotate tools
+(B) Support multiple colors and stroke widths
+(B) Implement layers/z-index control (bring to front, send to back)
+(B) Add eraser tool for removing elements
+(B) Support grouping and ungrouping elements
+(C) Implement snap-to-grid and alignment guides
+(C) Add shape libraries for common study diagrams (biology, chemistry, etc)
+(C) Support image insertion into drawings
+(C) Add arrow connectors that stick to shapes
+(C) Add export drawing as PNG/SVG
+(C) Support drawing templates (flowchart, org chart)
+
+=== PRIORITY 4: MERMAID DIAGRAMS ===
+(B) Integrate Mermaid.js for code-to-diagram rendering within fenced code blocks
+(B) Support flowcharts with standard notation
+(B) Support sequence diagrams for process flows
+(B) Add class diagrams for OOP concepts
+(B) Implement state diagrams for FSM visualization
+(C) Support ER diagrams for database design
+(C) Add Gantt charts for project planning
+(C) Implement pie charts and bar charts for data viz
+(C) Support git graphs for version control concepts
+(C) Add live preview while typing mermaid code
+(C) Implement syntax validation and error highlighting
+
 === THEME SYSTEM ===
 (A) Design theme structure: colors, fonts, spacing, editor styles
 (A) Implement light theme as default
 (A) Implement dark theme with OLED-friendly option
 (A) Add sepia/reading theme for reduced eye strain
 (A) Create dracula/monokai theme for developers
-(B) Support custom theme creation with color picker
+(B) Support custom theme creation via command palette
 (B) Add theme preview before applying
 (B) Store theme preference in localStorage
 (B) Implement theme sync with system dark mode
@@ -114,7 +142,7 @@ No database | Local-first | Rich editing | Native diagrams & mindmaps
 
 === STORAGE & PERSISTENCE ===
 (A) Implement auto-save every 2-3 seconds while editing
-(A) Add visual indicator for save status (saved/saving/error)
+(A) Add visual indicator for save status (saved/saving/error) — minimal, unobtrusive
 (A) Handle localStorage quota exceeded errors gracefully
 (A) Implement note compression for larger storage capacity
 (A) Add warning when storage is 80%+ full
@@ -146,28 +174,22 @@ No database | Local-first | Rich editing | Native diagrams & mindmaps
 (C) Add print-friendly CSS for physical notes
 
 === UI/UX POLISH ===
-(A) Design clean, minimal interface with focus on content
-(A) Implement smooth transitions and animations
+(A) Ultra-minimalist interface: centered typing area dominates the screen
+(A) No visible toolbar, menubar, or chrome by default — just the document
+(A) Sidebar hidden by default, toggled via command palette or keyboard shortcut
+(A) Implement smooth transitions and animations (subtle, non-distracting)
 (A) Add loading states and skeleton screens
-(A) Support drag-and-drop note reordering
+(A) Support drag-and-drop note reordering (when sidebar is visible)
 (A) Implement context menus for quick actions
 (B) Add tooltips and onboarding for first-time users
 (B) Support keyboard navigation for accessibility
-(B) Implement focus mode to hide sidebar and distractions
+(B) Implement focus mode that dims everything except current paragraph
 (C) Add customizable workspace layouts
 (C) Support split-pane editing for referencing multiple notes
 
-=== FUTURE: GOOGLE DOCS EXTENSION ===
-(C) Research Chrome Extension APIs for Google Docs integration
-(C) Design extension architecture to inject noteweave features
-(C) Build popup UI for quick note capture from Docs
-(C) Implement sync between extension and standalone app
-(C) Add import from Google Docs to noteweave format
-(C) Support export from noteweave back to Google Docs
-
 === TECHNICAL DEBT & OPTIMIZATION ===
 (B) Add comprehensive error boundaries and fallbacks
-(B) Implement lazy loading for heavy components
+(B) Implement lazy loading for heavy components (Excalidraw, Mermaid)
 (B) Optimize re-renders with React.memo and useMemo
 (B) Add unit tests for core functionality
 (B) Implement E2E tests for critical user flows
@@ -176,4 +198,4 @@ No database | Local-first | Rich editing | Native diagrams & mindmaps
 (C) Implement code splitting for faster initial load
 
 Priority Legend: (A) = Must have | (B) = Should have | (C) = Nice to have
-Total: 147 tasks organized by feature area and priority
+Feature Priority Order: 1. Markdown Editor → 2A. Command Palette → 2B. Mindmaps → 3. Excalidraw → 4. Mermaid

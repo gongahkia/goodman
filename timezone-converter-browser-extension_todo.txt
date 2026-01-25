@@ -68,7 +68,6 @@ Implement "Format Preferences" (12h vs 24h, Date order)
 Add toggle for "Show Seconds"
 Add toggle for "Show Relative Time" (e.g., "in 5 minutes")
 Implement a "Blacklist Domain" feature to disable extension on specific sites
-Add a "Test Sandbox" in Options page for users to test format parsing
 Implement Dark Mode support for the Tooltip (auto-detect system preference)
 
 EDGE CASES & ROBUSTNESS
