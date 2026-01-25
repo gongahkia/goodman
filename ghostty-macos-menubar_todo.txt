@@ -41,7 +41,6 @@ Create DevWorkflowParser for build/test/deployment notification detection
 Implement AutomationOutputParser for custom script output detection
 Create LogBuffer to handle incremental file reading and partial line handling
 Implement error handling for malformed or corrupted log entries
-Create unit tests for log parsing with sample Ghostty log data
 Optimize log parsing performance for large files (streaming, chunking)
 Implement log rotation detection and handling
 Create fallback mechanism if Ghostty log location changes
@@ -123,21 +122,20 @@ Create settings persistence using UserDefaults or JSON file
 Add reset to defaults functionality for all settings
 
 ## DATA PERSISTENCE & STORAGE
-Implement SQLite database for log storage using GRDB or similar
-Create database schema for logs, notifications, and settings
-Implement CoreData alternative evaluation (choose best for use case)
-Create database migration system for schema updates
-Implement log indexing for fast full-text search
-Create automatic database vacuum and optimization on startup
-Implement circular buffer for log retention (auto-delete old entries)
-Create data export service for backing up logs
+Implement JSON file-based storage for logs (~/.config/ghostty-menubar/logs.json)
+Create Codable data models for serializing logs, notifications, and settings to JSON
+Design JSON schema with versioning field for future migration support
+Implement atomic file writes using temporary file + rename pattern to prevent corruption
+Create in-memory cache with periodic flush to disk (configurable interval)
+Implement log retention by filtering entries on load (auto-remove entries older than threshold)
+Create data export service for backing up logs (JSON already human-readable)
 Implement settings persistence using Codable and UserDefaults
-Add iCloud sync option for settings (optional feature)
-Create database size monitoring and warning system
-Implement transaction handling for bulk log inserts
-Add database encryption for sensitive log data
-Create data integrity checks on startup
-Implement crash recovery for corrupted database
+Add iCloud sync option for settings via ubiquitous key-value store (optional feature)
+Create file size monitoring with warning when logs.json exceeds threshold
+Implement batch append mode for efficient log additions without full file rewrite
+Add optional encryption using CryptoKit for sensitive log data
+Create JSON validation and integrity checks on startup
+Implement recovery from corrupted JSON (backup rotation, fallback to empty state)
 
 ## BACKGROUND SERVICES & PERFORMANCE
 Create BackgroundTaskScheduler for periodic log parsing
