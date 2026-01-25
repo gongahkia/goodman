@@ -1,4 +1,4 @@
-STARTUP SIMULATOR - Product Requirements Document (Todo Format)
+YOUR COMBINATOR (YC): Product Requirements Document (Todo Format)
 Tech Stack: Python CLI (Typer/Rich), TinyDB/JSON, Ollama/Huggingface/LLM APIs, D3.js (future web UI)
 Philosophy: Backend-first, local-first, CLI-driven with ASCII visualization
 ================================================================================
