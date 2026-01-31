@@ -14,6 +14,7 @@
     <phase id="3" name="generate">
       After user answers, output todo.txt with:
       <rule>One atomic task per line (no compound sentences)</rule>
+      <rule>Each task is detailed enough for any ai agent to follow and implement it without requiring a lot of context.</rule>
       <rule>Use (A) priority for MVP/critical path</rule>
       <rule>Use +tags for modules (+auth, +db, +api, +frontend)</rule>
       <rule>Max 150 tasks</rule>
