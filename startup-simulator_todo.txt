@@ -9,7 +9,6 @@ Philosophy: Backend-first, local-first, CLI-driven with ASCII visualization
 Initialize Python project with Poetry/PDM for dependency management
 Create project structure (src/, data/, simulations/, configs/)
 Install core dependencies (typer, rich, tinydb, httpx)
-Setup virtual environment and configure ruff/mypy for linting and types
 Initialize Git repository with Python .gitignore
 Create main CLI entry point using Typer
 Configure environment variables for API keys and model paths
@@ -191,5 +190,4 @@ Implement pipe-friendly output for shell scripting integration
 (STRETCH) Build FastAPI REST backend exposing simulation engine
 (STRETCH) Create React+TypeScript web frontend with D3.js 2D visualizations
 (STRETCH) Implement WebSocket connection for real-time web updates
-(STRETCH) Create embeddable widgets for websites/notion
 (STRETCH) Implement API for external tool integration
