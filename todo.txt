@@ -37,7 +37,7 @@ TIMEZONE LOGIC & CONVERSION
 
 
 
-Support user-configured target timezone (default: system timezone)
+
 Handle "Date Rollover" detection (indicate if converted time is Next Day or Previous Day)
 Create map of common deprecated timezone names to modern IANA equivalents
 
