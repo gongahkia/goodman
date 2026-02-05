@@ -26,7 +26,7 @@ CORE PARSING ENGINE (The "Omnivorous" Parser)
 
 
 
-Implement heuristic for ambiguous date formats (DD/MM vs MM/DD) based on browser locale
+
 Create a "Format Normalizer" to clean selected text (remove trailing punctuation, excess whitespace)
 Implement support for timezone abbreviations (EST, PST, CET) mapping to IANA zones
 Implement support for relative time parsing ("in 2 hours", "30 mins ago")
