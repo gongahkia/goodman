@@ -27,5 +27,8 @@
                 "assets/content.js"
             ]
         }
+    ],
+    "permissions": [
+        "storage"
     ]
 }

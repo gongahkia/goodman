@@ -16,7 +16,7 @@ PROJECT SETUP & INFRASTRUCTURE
 
 
 
-Create manifest.json (Manifest V3) with minimal permissions
+
 Configure "storage" permission for saving user preferences
 Configure "scripting" permission for injecting content script into all pages
 Setup GitHub Actions for build and lint checks on PR
