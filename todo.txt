@@ -15,7 +15,7 @@ PROJECT SETUP & INFRASTRUCTURE
 
 
 
-Setup Vitest for unit testing parsing logic (crucial for "all formats" requirement)
+
 Create manifest.json (Manifest V3) with minimal permissions
 Configure "storage" permission for saving user preferences
 Configure "scripting" permission for injecting content script into all pages

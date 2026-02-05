@@ -1,0 +1,31 @@
+{
+    "manifest_version": 3,
+    "name": "Timezone Converter",
+    "version": "1.0.0",
+    "description": "Instant, offline, cursor-highlight timezone conversion.",
+    "action": {
+        "default_popup": "index.html",
+        "default_icon": {
+            "16": "vite.svg",
+            "32": "vite.svg",
+            "48": "vite.svg",
+            "128": "vite.svg"
+        }
+    },
+    "icons": {
+        "16": "vite.svg",
+        "32": "vite.svg",
+        "48": "vite.svg",
+        "128": "vite.svg"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "<all_urls>"
+            ],
+            "js": [
+                "assets/content.js"
+            ]
+        }
+    ]
+}
