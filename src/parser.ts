@@ -5,6 +5,7 @@ export interface ParseResult {
     text: string;
     start: number;
     end: number;
+    timezoneOffset?: number; // Offset in minutes (e.g. -300 for EST, depending on chrono convention)
 }
 
 // Regex for strict military time (e.g., 1400, 2359)
@@ -120,12 +121,14 @@ export function parseDate(text: string, refDate?: Date): ParseResult | null {
     // Return the first valid result
     const result = results[0];
     const date = result.start.date();
+    const timezoneOffset = result.start.get('timezoneOffset');
 
     return {
         date,
         text: result.text,
         start: result.index,
         end: result.index + result.text.length,
+        timezoneOffset: timezoneOffset !== undefined ? timezoneOffset : undefined,
     };
 }
 

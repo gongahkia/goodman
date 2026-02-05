@@ -38,21 +38,20 @@ TIMEZONE LOGIC & CONVERSION
 
 
 
-Handle "Date Rollover" detection (indicate if converted time is Next Day or Previous Day)
-Create map of common deprecated timezone names to modern IANA equivalents
+
+
 
 CONTENT SCRIPT & INTERACTION (Highlight Popup)
-Create `selection` event listener with debouncing (200ms) to detect text highlighting
-Implement logic to discard selections that are too long (>100 chars) or empty
-Implement logic to ignore selections inside editable fields (inputs, textareas) to prevent obstruction
-Only show popup if parsed result is a valid datetime/timezone (silent fail otherwise)
-Create a robust coordinate calculator to position popup near the cursor
-Implement "Smart Positioning" (flip popup above/below/left/right to stay in viewport)
-Create the popup container using Shadow DOM to isolate styles from the host page
-Implement "Click Outside" or new selection to dismiss popup
-Handle `z-index` wars: Ensure popup attempts to sit above maximum page z-index
-Implement "Quick Copy" behavior: Click the result to copy to clipboard
-Add visual feedback (checkmark) upon copying
+
+
+
+
+
+
+
+
+
+
 
 USER INTERFACE (Popup & Settings Dialog)
 Popup (appears on highlight):
