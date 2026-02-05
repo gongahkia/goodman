@@ -55,10 +55,7 @@ CONTENT SCRIPT & INTERACTION (Highlight Popup)
 
 USER INTERFACE (Popup & Settings Dialog)
 Popup (appears on highlight):
-Design a minimal, high-contrast popup UI (CSS Grid/Flexbox)
-Display converted time in user's local timezone
-Show the Timezone abbreviation and Offset (e.g., "JST (UTC+9)")
-Implement Dark Mode support (auto-detect system preference)
+
 
 Settings Dialog (optional, accessed via extension icon):
 Create Settings Dialog using Preact
