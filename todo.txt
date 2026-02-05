@@ -34,10 +34,9 @@ CORE PARSING ENGINE (The "Omnivorous" Parser)
 
 
 TIMEZONE LOGIC & CONVERSION
-Install `luxon` for robust IANA timezone handling and math
-Create a helper to detect User's System Timezone reliably
-Implement logic to resolve "Ambiguous Time" (e.g., during DST fall-back)
-Implement conversion logic: Input Date -> UTC -> Target Zone
+
+
+
 Support user-configured target timezone (default: system timezone)
 Handle "Date Rollover" detection (indicate if converted time is Next Day or Previous Day)
 Create map of common deprecated timezone names to modern IANA equivalents
