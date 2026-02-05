@@ -54,4 +54,34 @@ describe('Parser', () => {
         const result = parseDate(text);
         expect(result).toBeNull();
     });
+
+
+    // Locale tests
+    it('should parse 01/02/2023 as 2 Jan in en-US (default match)', () => {
+        // Mock navigator for US
+        Object.defineProperty(globalThis, 'navigator', {
+            value: { language: 'en-US' },
+            writable: true,
+            configurable: true,
+        });
+
+        const result = parseDate('01/02/2023');
+        expect(result).not.toBeNull();
+        expect(result?.date.getMonth()).toBe(0); // Jan
+        expect(result?.date.getDate()).toBe(2);
+    });
+
+    it('should parse 01/02/2023 as 1 Feb in en-GB', () => {
+        // Mock navigator for GB
+        Object.defineProperty(globalThis, 'navigator', {
+            value: { language: 'en-GB' },
+            writable: true,
+            configurable: true,
+        });
+
+        const result = parseDate('01/02/2023');
+        expect(result).not.toBeNull();
+        expect(result?.date.getMonth()).toBe(1); // Feb
+        expect(result?.date.getDate()).toBe(1);
+    });
 });

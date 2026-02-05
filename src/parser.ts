@@ -78,7 +78,8 @@ export function parseDate(text: string): ParseResult | null {
         };
     }
 
-    const results = chrono.parse(text);
+    const parser = getLocaleParser();
+    const results = parser.parse(text);
 
     if (results.length === 0) {
         return null;
@@ -94,4 +95,33 @@ export function parseDate(text: string): ParseResult | null {
         start: result.index,
         end: result.index + result.text.length,
     };
+}
+
+// Helper to select the correct Chrono parser based on browser locale
+function getLocaleParser(): { parse: (text: string) => any[] } {
+    const locale = typeof navigator !== 'undefined' ? navigator.language : 'en-US';
+
+    // English variations
+    if (locale.startsWith('en')) {
+        // Build list of DD/MM preferring English locales
+        const gbLocales = ['en-GB', 'en-AU', 'en-NZ', 'en-IE', 'en-IN', 'en-SG', 'en-ZA'];
+        if (gbLocales.some(l => locale.startsWith(l))) {
+            return chrono.en.GB;
+        }
+        // Default to Standard English (US-bias)
+        return chrono.en;
+    }
+
+    // Other supported languages (Explicit mapping to be safe)
+    if (locale.startsWith('ja')) return chrono.ja;
+    if (locale.startsWith('de')) return chrono.de;
+    if (locale.startsWith('fr')) return chrono.fr;
+    if (locale.startsWith('pt')) return chrono.pt;
+    if (locale.startsWith('es')) return chrono.es;
+    if (locale.startsWith('nl')) return chrono.nl;
+    if (locale.startsWith('ru')) return chrono.ru;
+
+    // Fallback to strict/standard parser (often English) if unknown
+    // chrono default export behaves like a parser
+    return chrono;
 }
