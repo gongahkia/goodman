@@ -1,43 +1,90 @@
-import { useState } from 'preact/hooks'
-import preactLogo from './assets/preact.svg'
-import viteLogo from '/vite.svg'
-import './app.css'
+import { useEffect, useState } from 'preact/hooks';
+import { getSettings, saveSettings, UserSettings } from './storage';
+import './app.css';
 
 export function App() {
-  const [count, setCount] = useState(0)
+  const [settings, setSettings] = useState<UserSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [status, setStatus] = useState('');
+
+  useEffect(() => {
+    getSettings().then(s => {
+      setSettings(s);
+      setLoading(false);
+    });
+  }, []);
+
+  const handleChange = (field: keyof UserSettings, value: any) => {
+    if (!settings) return;
+    setSettings({ ...settings, [field]: value });
+  };
+
+  const handleDomainsChange = (e: any) => {
+    const text = e.target.value;
+    // Split by newline and filter empty
+    const domains = text.split('\n').map((d: string) => d.trim()).filter((d: string) => d.length > 0);
+    handleChange('ignoredDomains', domains);
+  };
+
+  const handleSave = async () => {
+    if (!settings) return;
+    await saveSettings(settings);
+    setStatus('Saved!');
+    setTimeout(() => setStatus(''), 2000);
+  };
+
+  if (loading || !settings) {
+    return <div class="container">Loading...</div>;
+  }
+
+  // specific hack for getting supported timezones
+  const supportedTimezones = Intl.supportedValuesOf ? Intl.supportedValuesOf('timeZone') : ['UTC', 'America/New_York', 'Europe/London'];
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} class="logo" alt="Vite logo" />
-        </a>
-        <a href="https://preactjs.com" target="_blank">
-          <img src={preactLogo} class="logo preact" alt="Preact logo" />
-        </a>
-      </div>
-      <h1>Vite + Preact</h1>
-      <div class="card">
-        <button onClick={() => { setCount((count) => count + 1) }}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/app.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p>
-        Check out{' '}
-        <a
-          href="https://preactjs.com/guide/v10/getting-started#create-a-vite-powered-preact-app"
-          target="_blank"
+    <div class="container">
+      <header>
+        <h1>Timezone Extension</h1>
+        <p>Simple, privacy-first converter.</p>
+      </header>
+
+      <section class="setting-group">
+        <label>Target Timezone</label>
+        <select
+          value={settings.targetTimezone}
+          onChange={(e: any) => handleChange('targetTimezone', e.target.value)}
         >
-          create-preact
-        </a>
-        , the official Preact + Vite starter
-      </p>
-      <p class="read-the-docs">
-        Click on the Vite and Preact logos to learn more
-      </p>
-    </>
-  )
+          <option value="auto">Auto (System Default)</option>
+          {supportedTimezones.map(tz => (
+            <option value={tz}>{tz}</option>
+          ))}
+        </select>
+      </section>
+
+      <section class="setting-group">
+        <label class="checkbox-label">
+          <input
+            type="checkbox"
+            checked={settings.format24h}
+            onChange={(e: any) => handleChange('format24h', e.target.checked)}
+          />
+          Use 24-hour format
+        </label>
+      </section>
+
+      <section class="setting-group">
+        <label>Ignored Domains (one per line)</label>
+        <textarea
+          rows={5}
+          value={settings.ignoredDomains.join('\n')}
+          onInput={handleDomainsChange}
+          placeholder="example.com&#10;google.com"
+        />
+      </section>
+
+      <div class="actions">
+        <button class="primary" onClick={handleSave}>Save Settings</button>
+        {status && <span class="status">{status}</span>}
+      </div>
+    </div>
+  );
 }
