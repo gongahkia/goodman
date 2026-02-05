@@ -58,10 +58,7 @@ Popup (appears on highlight):
 
 
 Settings Dialog (optional, accessed via extension icon):
-Create Settings Dialog using Preact
-Implement "Target Timezone" selector (default: system timezone, or user-specified)
-Implement "Format Preferences" (12h vs 24h)
-Implement "Blacklist Domain" feature to disable extension on specific sites
+
 
 EDGE CASES & ROBUSTNESS
 Handle cross-origin iframe limitations (ignore gracefully)
