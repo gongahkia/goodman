@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getSystemTimezone, convertToTimezone } from './timezone';
-import { DateTime } from 'luxon';
+
 
 describe('Timezone Logic', () => {
     it('should get system timezone', () => {
