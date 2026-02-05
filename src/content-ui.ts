@@ -8,7 +8,7 @@ export function initPopup() {
 
     // Create Host
     hostElement = document.createElement('div');
-    hostElement.id = 'timezone-extension-host';
+    hostElement.id = 'onul-host';
     hostElement.style.position = 'absolute';
     hostElement.style.top = '0';
     hostElement.style.left = '0';

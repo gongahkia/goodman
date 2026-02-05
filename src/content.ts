@@ -5,7 +5,7 @@ import { convertToTimezone, getSystemTimezone, getDateDiffLabel } from './timezo
 import { getSettings } from './storage';
 import type { UserSettings } from './storage';
 
-console.log('Timezone Extension Content Script Loaded');
+console.log('ONUL Extension Content Script Loaded');
 
 let selectionTimeout: number | undefined;
 const DEBOUNCE_DELAY_MS = 200;
@@ -20,7 +20,7 @@ let isIgnoredDomain = false;
     // Check Blacklist
     const hostname = window.location.hostname;
     if (currentSettings.ignoredDomains && currentSettings.ignoredDomains.some(d => hostname.includes(d))) {
-        console.log('Timezone Extension: Domain ignored by settings.');
+        console.log('ONUL Extension: Domain ignored by settings.');
         isIgnoredDomain = true;
     }
 
@@ -59,7 +59,7 @@ function onSelectionChange() {
 function onMouseDown(e: MouseEvent) {
     const target = e.target as HTMLElement;
     // Don't dismiss if clicking on the popup itself (host)
-    if (target.id === 'timezone-extension-host') return;
+    if (target.id === 'onul-host') return;
 
     hidePopup();
 }
