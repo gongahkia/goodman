@@ -84,4 +84,14 @@ describe('Parser', () => {
         expect(result?.date.getMonth()).toBe(1); // Feb
         expect(result?.date.getDate()).toBe(1);
     });
+
+    it('should normalize text (remove trailing dot, collapse spaces)', () => {
+        const text = 'Tomorrow \n  at \t 5pm.';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.text).toContain('Tomorrow at 5pm'); // Normalized form? 
+        // Note: result.text comes from parse result. If we pass normalized text to chrono, 
+        // chrono returns the matched text from the input (which is cleanText).
+        // So yes, it should be clean.
+    });
 });

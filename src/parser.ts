@@ -53,33 +53,53 @@ function parseEpoch(text: string): Date | null {
     return null;
 }
 
+
+function normalizeText(text: string): string {
+    // 1. Collapse multiple spaces and replace newlines with space
+    let clean = text.replace(/\s+/g, ' ');
+
+    // 2. Remove common trailing punctuation (.,;!?) but handle cases like "a.m."
+    // Heuristic: if it ends with "m.", keep it. Otherwise remove.
+    clean = clean.replace(/[.,;!?]+$/, (match) => {
+        // preserve single trailing dot if it follows 'm' (a.m. / p.m.)
+        if (match === '.' && clean.toLowerCase().endsWith('m.')) {
+            return '.';
+        }
+        return '';
+    });
+
+    return clean.trim();
+}
+
 export function parseDate(text: string): ParseResult | null {
+    const cleanText = normalizeText(text);
+
     // Try custom regex first for strict matches
 
     // 1. Military time
-    const militaryDate = parseMilitary(text);
+    const militaryDate = parseMilitary(cleanText);
     if (militaryDate) {
         return {
             date: militaryDate,
-            text: text,
+            text: cleanText,
             start: 0,
-            end: text.length,
+            end: cleanText.length,
         };
     }
 
     // 2. Epoch timestamp
-    const epochDate = parseEpoch(text);
+    const epochDate = parseEpoch(cleanText);
     if (epochDate) {
         return {
             date: epochDate,
-            text: text,
+            text: cleanText,
             start: 0,
-            end: text.length,
+            end: cleanText.length,
         };
     }
 
     const parser = getLocaleParser();
-    const results = parser.parse(text);
+    const results = parser.parse(cleanText);
 
     if (results.length === 0) {
         return null;
