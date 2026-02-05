@@ -18,9 +18,9 @@ PROJECT SETUP & INFRASTRUCTURE
 
 
 
-Configure "scripting" permission for injecting content script into all pages
-Setup GitHub Actions for build and lint checks on PR
-Create release script to zip extension for Chrome Web Store and Firefox Add-ons
+
+
+
 
 CORE PARSING ENGINE (The "Omnivorous" Parser)
 Install and configure `chrono-node` for natural language parsing (e.g., "tomorrow at 5pm")

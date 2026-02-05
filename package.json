@@ -12,6 +12,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "chrono-node": "^2.9.0",
     "preact": "^10.27.2"
   },
   "devDependencies": {
