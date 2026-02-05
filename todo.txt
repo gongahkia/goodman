@@ -61,14 +61,7 @@ Settings Dialog (optional, accessed via extension icon):
 
 
 EDGE CASES & ROBUSTNESS
-Handle cross-origin iframe limitations (ignore gracefully)
-Handle PDF viewer contexts (fail silently)
-Silent failure: If text is not a valid datetime, simply don't show popup (no error UI)
-Test with non-English browser locales
-Test with "Zoomed in" page states (ensure popup coordinates are correct)
-Test with dynamic content (AJAX loaded text)
-Ensure extension does not break Copy/Paste functionality
-Memory Leak check: Ensure event listeners are cleaned up if extension context invalidates
+
 
 DISTRIBUTION & POLISH
 Create high-res icons (16, 32, 48, 128px)
