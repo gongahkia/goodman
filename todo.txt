@@ -13,7 +13,7 @@ User Journey:
 
 PROJECT SETUP & INFRASTRUCTURE
 
-Setup TypeScript project with Vite for bundling (Entry points: content script, settings dialog)
+
 Configure ESLint and Prettier with strict type checking rules
 Setup Vitest for unit testing parsing logic (crucial for "all formats" requirement)
 Create manifest.json (Manifest V3) with minimal permissions
