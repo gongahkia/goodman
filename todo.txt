@@ -17,7 +17,7 @@ PROJECT SETUP & INFRASTRUCTURE
 
 
 
-Configure "storage" permission for saving user preferences
+
 Configure "scripting" permission for injecting content script into all pages
 Setup GitHub Actions for build and lint checks on PR
 Create release script to zip extension for Chrome Web Store and Firefox Add-ons
