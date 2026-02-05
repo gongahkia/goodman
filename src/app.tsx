@@ -44,7 +44,7 @@ export function App() {
   return (
     <div class="container">
       <header>
-        <h1>Timezone Extension</h1>
+        <h1>ONUL</h1>
         <p>Simple, privacy-first converter.</p>
       </header>
 

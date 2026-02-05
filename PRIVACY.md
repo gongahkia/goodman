@@ -1,9 +1,9 @@
-# Privacy Policy for Timezone Converter Extension
+# Privacy Policy for ONUL
 
 **Last Updated:** February 6, 2026
 
 ## 1. Overview
-Timezone Converter is a privacy-first browser extension designed to convert timezones instantly upon text selection. We are committed to protecting your privacy and ensuring that your data remains yours.
+ONUL is a privacy-first browser extension designed to convert timezones instantly upon text selection. We are committed to protecting your privacy and ensuring that your data remains yours.
 
 ## 2. Data Collection and Usage
 **We do not collect, store, or transmit any of your personal data.**

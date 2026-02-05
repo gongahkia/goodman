@@ -1,6 +1,6 @@
 {
     "manifest_version": 3,
-    "name": "Timezone Converter",
+    "name": "ONUL",
     "version": "1.0.0",
     "description": "Instant, offline, cursor-highlight timezone conversion.",
     "action": {
