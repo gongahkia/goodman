@@ -32,4 +32,26 @@ describe('Parser', () => {
         expect(result?.date.getHours()).toBe(9);
         expect(result?.date.getMinutes()).toBe(30);
     });
+    it('should parse 10-digit epoch (seconds)', () => {
+        // Fri Feb 13 2009 23:31:30 UTC
+        const text = '1234567890';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.toISOString()).toBe('2009-02-13T23:31:30.000Z');
+    });
+
+    it('should parse 13-digit epoch (milliseconds)', () => {
+        // Sun Jan 01 2023 00:00:00 UTC
+        const text = '1672531200000';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.toISOString()).toBe('2023-01-01T00:00:00.000Z');
+    });
+
+    it('should ignore epoch-like strings that are out of year range', () => {
+        // 9876543210 -> Year 2282. Allowed range 1970-2100.
+        const text = '9876543210';
+        const result = parseDate(text);
+        expect(result).toBeNull();
+    });
 });
