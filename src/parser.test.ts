@@ -89,9 +89,32 @@ describe('Parser', () => {
         const text = 'Tomorrow \n  at \t 5pm.';
         const result = parseDate(text);
         expect(result).not.toBeNull();
-        expect(result?.text).toContain('Tomorrow at 5pm'); // Normalized form? 
-        // Note: result.text comes from parse result. If we pass normalized text to chrono, 
-        // chrono returns the matched text from the input (which is cleanText).
-        // So yes, it should be clean.
+        expect(result?.text).toContain('Tomorrow at 5pm');
+    });
+
+    it('should handle timezone abbreviations (EST)', () => {
+        // 5pm EST should be 22:00 UTC
+        const text = '5pm EST';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        // Check if the date corresponds to 22:00 UTC (assuming 5pm = 17:00)
+        // Note: Date object is just a timestamp. 
+        expect(result?.date.getUTCHours()).toBe(22);
+    });
+
+    it('should handle timezone abbreviations (CET)', () => {
+        // 5pm CET (UTC+1) should be 16:00 UTC
+        const text = '5pm CET';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.getUTCHours()).toBe(16);
+    });
+
+    it('should handle timezone abbreviations (JST)', () => {
+        // 5pm JST (UTC+9) should be 08:00 UTC
+        const text = '5pm JST';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.getUTCHours()).toBe(8);
     });
 });
