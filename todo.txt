@@ -23,7 +23,7 @@ PROJECT SETUP & INFRASTRUCTURE
 
 
 CORE PARSING ENGINE (The "Omnivorous" Parser)
-Install and configure `chrono-node` for natural language parsing (e.g., "tomorrow at 5pm")
+
 Implement custom strict-regex pre-parser for military time formats (often missed by NLP libs)
 Implement regex parser for epoch timestamps (seconds and milliseconds)
 Implement heuristic for ambiguous date formats (DD/MM vs MM/DD) based on browser locale
