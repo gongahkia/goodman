@@ -117,4 +117,28 @@ describe('Parser', () => {
         expect(result).not.toBeNull();
         expect(result?.date.getUTCHours()).toBe(8);
     });
+
+    it('should handle relative time ("in 2 hours")', () => {
+        // Mock a reference date: 2023-01-01 12:00:00 Local time? 
+        // parseDate accepts refDate.
+        const refDate = new Date('2023-01-01T12:00:00Z'); // UTC ref
+        const text = 'in 2 hours';
+        // Note: chrono uses local timezone of the environment unless specified in ref?
+        // Actually refDate sets the "now". 
+        // If "in 2 hours", result should be refDate + 2 hours.
+        const result = parseDate(text, refDate);
+
+        expect(result).not.toBeNull();
+        // 12:00 + 2h = 14:00
+        expect(result?.date.getTime()).toBe(refDate.getTime() + 2 * 60 * 60 * 1000);
+    });
+
+    it('should handle relative time ("30 mins ago")', () => {
+        const refDate = new Date('2023-01-01T12:00:00Z');
+        const text = '30 mins ago';
+        const result = parseDate(text, refDate);
+        expect(result).not.toBeNull();
+        // 12:00 - 30m = 11:30
+        expect(result?.date.getTime()).toBe(refDate.getTime() - 30 * 60 * 1000);
+    });
 });
