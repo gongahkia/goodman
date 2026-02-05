@@ -141,4 +141,29 @@ describe('Parser', () => {
         // 12:00 - 30m = 11:30
         expect(result?.date.getTime()).toBe(refDate.getTime() - 30 * 60 * 1000);
     });
+
+    it('should parse ISO 8601 strings', () => {
+        const text = '2023-05-20T10:30:00Z';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.toISOString()).toBe('2023-05-20T10:30:00.000Z');
+    });
+
+    it('should parse "12 January 2023"', () => {
+        const text = '12 January 2023';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.getFullYear()).toBe(2023);
+        expect(result?.date.getMonth()).toBe(0); // Jan
+        expect(result?.date.getDate()).toBe(12);
+    });
+
+    it('should parse "Jan 12, 2023"', () => {
+        const text = 'Jan 12, 2023';
+        const result = parseDate(text);
+        expect(result).not.toBeNull();
+        expect(result?.date.getFullYear()).toBe(2023);
+        expect(result?.date.getMonth()).toBe(0); // Jan
+        expect(result?.date.getDate()).toBe(12);
+    });
 });
