@@ -6,17 +6,17 @@
     "action": {
         "default_popup": "index.html",
         "default_icon": {
-            "16": "vite.svg",
-            "32": "vite.svg",
-            "48": "vite.svg",
-            "128": "vite.svg"
+            "16": "icon.png",
+            "32": "icon.png",
+            "48": "icon.png",
+            "128": "icon.png"
         }
     },
     "icons": {
-        "16": "vite.svg",
-        "32": "vite.svg",
-        "48": "vite.svg",
-        "128": "vite.svg"
+        "16": "icon.png",
+        "32": "icon.png",
+        "48": "icon.png",
+        "128": "icon.png"
     },
     "content_scripts": [
         {

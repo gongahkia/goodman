@@ -16,7 +16,7 @@ export async function getSettings(): Promise<UserSettings> {
         // Actually Chrome MV3 API returns Promise? 
         // Types might say callback. But newer chrome types support promises.
         // Safe to use await/promise wrapper.
-        const result = await chrome.storage.local.get(['targetTimezone', 'format24h', 'ignoredDomains']);
+        const result = await chrome.storage.local.get(['targetTimezone', 'format24h', 'ignoredDomains']) as any;
         return {
             targetTimezone: result.targetTimezone || DEFAULT_SETTINGS.targetTimezone,
             format24h: result.format24h ?? DEFAULT_SETTINGS.format24h,

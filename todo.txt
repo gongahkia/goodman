@@ -64,7 +64,3 @@ EDGE CASES & ROBUSTNESS
 
 
 DISTRIBUTION & POLISH
-Create high-res icons (16, 32, 48, 128px)
-Write privacy policy (confirming local-only processing)
-Verify manifest.json matches store requirements for Chrome and Firefox
-Package `.zip` artifacts for release

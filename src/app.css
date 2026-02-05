@@ -1,25 +1,108 @@
-#app {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+:root {
+  --bg-color: #0f0f0f;
+  --text-color: #f0f0f0;
+  --accent-color: #646cff;
+  --border-color: #333;
+  --input-bg: #1a1a1a;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.preact:hover {
-  filter: drop-shadow(0 0 2em #673ab8aa);
+body {
+  margin: 0;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  font-family: Inter, system-ui, sans-serif;
+  width: 320px;
+  min-height: 400px;
 }
 
-.card {
-  padding: 2em;
+.container {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.read-the-docs {
-  color: #888;
+header h1 {
+  font-size: 1.2rem;
+  margin: 0 0 4px 0;
+}
+
+header p {
+  margin: 0;
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+select, textarea, input[type="text"] {
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  color: white;
+  padding: 8px;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+select:focus, textarea:focus {
+  outline: 2px solid var(--accent-color);
+  border-color: transparent;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+input[type="checkbox"] {
+  accent-color: var(--accent-color);
+  width: 16px;
+  height: 16px;
+}
+
+.actions {
+  margin-top: auto;
+  display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+button.primary {
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+button.primary:hover {
+  opacity: 0.9;
+}
+
+.status {
+    color: #4ade80;
+    font-size: 0.85rem;
+    animation: fadeOut 2s forwards;
+}
+
+@keyframes fadeOut {
+    0% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { opacity: 0; }
 }

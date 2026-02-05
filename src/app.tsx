@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'preact/hooks';
-import { getSettings, saveSettings, UserSettings } from './storage';
+import { getSettings, saveSettings } from './storage';
+import type { UserSettings } from './storage';
 import './app.css';
 
 export function App() {
