@@ -25,7 +25,7 @@ PROJECT SETUP & INFRASTRUCTURE
 CORE PARSING ENGINE (The "Omnivorous" Parser)
 
 
-Implement regex parser for epoch timestamps (seconds and milliseconds)
+
 Implement heuristic for ambiguous date formats (DD/MM vs MM/DD) based on browser locale
 Create a "Format Normalizer" to clean selected text (remove trailing punctuation, excess whitespace)
 Implement support for timezone abbreviations (EST, PST, CET) mapping to IANA zones
