@@ -28,7 +28,7 @@ CORE PARSING ENGINE (The "Omnivorous" Parser)
 
 
 
-Implement support for timezone abbreviations (EST, PST, CET) mapping to IANA zones
+
 Implement support for relative time parsing ("in 2 hours", "30 mins ago")
 Create comprehensive test suite covering common datetime formats
 Optimize parser performance to prevent UI jank
