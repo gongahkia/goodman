@@ -13,10 +13,12 @@
   },
   "dependencies": {
     "chrono-node": "^2.9.0",
+    "luxon": "^3.7.2",
     "preact": "^10.27.2"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.2",
+    "@types/luxon": "^3.7.1",
     "@types/node": "^24.10.1",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",

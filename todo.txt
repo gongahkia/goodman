@@ -31,7 +31,7 @@ CORE PARSING ENGINE (The "Omnivorous" Parser)
 
 
 
-Optimize parser performance to prevent UI jank
+
 
 TIMEZONE LOGIC & CONVERSION
 Install `luxon` for robust IANA timezone handling and math
