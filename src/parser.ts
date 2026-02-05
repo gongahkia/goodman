@@ -72,6 +72,10 @@ function normalizeText(text: string): string {
 }
 
 export function parseDate(text: string, refDate?: Date): ParseResult | null {
+    if (text.length > 300) {
+        return null;
+    }
+
     const cleanText = normalizeText(text);
 
     // Try custom regex first for strict matches

@@ -166,4 +166,10 @@ describe('Parser', () => {
         expect(result?.date.getMonth()).toBe(0); // Jan
         expect(result?.date.getDate()).toBe(12);
     });
+
+    it('should return null for very long strings (performance optimization)', () => {
+        const text = 'a'.repeat(301);
+        const result = parseDate(text);
+        expect(result).toBeNull();
+    });
 });
