@@ -1,0 +1,85 @@
+TIMEZONE CONVERTER EXTENSION - Product Requirements Document (Todo Format)
+================================================================================
+Project: Browser extension for instant, offline, cursor-highlight timezone conversion.
+Philosophy: Privacy-first (no AI/cloud), Omnivorous Parsing (handle any format), Frictionless (highlight -> result).
+Tech Stack: TypeScript, Vite, Preact (Settings Dialog), Chrono-node (Parsing), Luxon (Time Logic), Shadow DOM.
+Constraint: NO AI. Pure algorithmic/regex parsing.
+
+User Journey:
+1. Extension runs passively in background (always on)
+2. User highlights any text -> if timezone/datetime detected -> popup appears near cursor showing converted time
+3. User can optionally open settings dialog to customize preferences
+================================================================================
+
+PROJECT SETUP & INFRASTRUCTURE
+Initialize Git repository with standard .gitignore for Node/WebExtension
+Setup TypeScript project with Vite for bundling (Entry points: content script, settings dialog)
+Configure ESLint and Prettier with strict type checking rules
+Setup Vitest for unit testing parsing logic (crucial for "all formats" requirement)
+Create manifest.json (Manifest V3) with minimal permissions
+Configure "storage" permission for saving user preferences
+Configure "scripting" permission for injecting content script into all pages
+Setup GitHub Actions for build and lint checks on PR
+Create release script to zip extension for Chrome Web Store and Firefox Add-ons
+
+CORE PARSING ENGINE (The "Omnivorous" Parser)
+Install and configure `chrono-node` for natural language parsing (e.g., "tomorrow at 5pm")
+Implement custom strict-regex pre-parser for military time formats (often missed by NLP libs)
+Implement regex parser for epoch timestamps (seconds and milliseconds)
+Implement heuristic for ambiguous date formats (DD/MM vs MM/DD) based on browser locale
+Create a "Format Normalizer" to clean selected text (remove trailing punctuation, excess whitespace)
+Implement support for timezone abbreviations (EST, PST, CET) mapping to IANA zones
+Implement support for relative time parsing ("in 2 hours", "30 mins ago")
+Create comprehensive test suite covering common datetime formats
+Optimize parser performance to prevent UI jank
+
+TIMEZONE LOGIC & CONVERSION
+Install `luxon` for robust IANA timezone handling and math
+Create a helper to detect User's System Timezone reliably
+Implement logic to resolve "Ambiguous Time" (e.g., during DST fall-back)
+Implement conversion logic: Input Date -> UTC -> Target Zone
+Support user-configured target timezone (default: system timezone)
+Handle "Date Rollover" detection (indicate if converted time is Next Day or Previous Day)
+Create map of common deprecated timezone names to modern IANA equivalents
+
+CONTENT SCRIPT & INTERACTION (Highlight Popup)
+Create `selection` event listener with debouncing (200ms) to detect text highlighting
+Implement logic to discard selections that are too long (>100 chars) or empty
+Implement logic to ignore selections inside editable fields (inputs, textareas) to prevent obstruction
+Only show popup if parsed result is a valid datetime/timezone (silent fail otherwise)
+Create a robust coordinate calculator to position popup near the cursor
+Implement "Smart Positioning" (flip popup above/below/left/right to stay in viewport)
+Create the popup container using Shadow DOM to isolate styles from the host page
+Implement "Click Outside" or new selection to dismiss popup
+Handle `z-index` wars: Ensure popup attempts to sit above maximum page z-index
+Implement "Quick Copy" behavior: Click the result to copy to clipboard
+Add visual feedback (checkmark) upon copying
+
+USER INTERFACE (Popup & Settings Dialog)
+Popup (appears on highlight):
+Design a minimal, high-contrast popup UI (CSS Grid/Flexbox)
+Display converted time in user's local timezone
+Show the Timezone abbreviation and Offset (e.g., "JST (UTC+9)")
+Implement Dark Mode support (auto-detect system preference)
+
+Settings Dialog (optional, accessed via extension icon):
+Create Settings Dialog using Preact
+Implement "Target Timezone" selector (default: system timezone, or user-specified)
+Implement "Format Preferences" (12h vs 24h)
+Implement "Blacklist Domain" feature to disable extension on specific sites
+
+EDGE CASES & ROBUSTNESS
+Handle cross-origin iframe limitations (ignore gracefully)
+Handle PDF viewer contexts (fail silently)
+Silent failure: If text is not a valid datetime, simply don't show popup (no error UI)
+Test with non-English browser locales
+Test with "Zoomed in" page states (ensure popup coordinates are correct)
+Test with dynamic content (AJAX loaded text)
+Ensure extension does not break Copy/Paste functionality
+Memory Leak check: Ensure event listeners are cleaned up if extension context invalidates
+
+DISTRIBUTION & POLISH
+Create high-res icons (16, 32, 48, 128px)
+Write privacy policy (confirming local-only processing)
+Verify manifest.json matches store requirements for Chrome and Firefox
+Package `.zip` artifacts for release
