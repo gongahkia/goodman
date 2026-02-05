@@ -24,7 +24,7 @@ PROJECT SETUP & INFRASTRUCTURE
 
 CORE PARSING ENGINE (The "Omnivorous" Parser)
 
-Implement custom strict-regex pre-parser for military time formats (often missed by NLP libs)
+
 Implement regex parser for epoch timestamps (seconds and milliseconds)
 Implement heuristic for ambiguous date formats (DD/MM vs MM/DD) based on browser locale
 Create a "Format Normalizer" to clean selected text (remove trailing punctuation, excess whitespace)
