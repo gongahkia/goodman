@@ -15,6 +15,25 @@ export function App() {
     });
   }, []);
 
+  // Apply theme whenever settings change
+  useEffect(() => {
+    if (!settings) return;
+
+    const applyTheme = () => {
+      let theme = settings.theme;
+      if (theme === 'auto') {
+        theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      }
+
+      if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+      } else {
+        document.documentElement.removeAttribute('data-theme');
+      }
+    };
+    applyTheme();
+  }, [settings]);
+
   const handleChange = (field: keyof UserSettings, value: any) => {
     if (!settings) return;
     setSettings({ ...settings, [field]: value });
@@ -29,7 +48,9 @@ export function App() {
 
   const handleSave = async () => {
     if (!settings) return;
-    await saveSettings(settings);
+    await saveSettings(settings); // This updates persistent storage
+
+    // Theme applied via useEffect, but we also want to ensure it's saved correctly
     setStatus('Saved!');
     setTimeout(() => setStatus(''), 2000);
   };
@@ -47,6 +68,18 @@ export function App() {
         <h1>ONUL</h1>
         <p>Simple, privacy-first converter.</p>
       </header>
+
+      <section class="setting-group">
+        <label>Theme</label>
+        <select
+          value={settings.theme}
+          onChange={(e: any) => handleChange('theme', e.target.value)}
+        >
+          <option value="auto">Auto (System Default)</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </section>
 
       <section class="setting-group">
         <label>Target Timezone</label>
