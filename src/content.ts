@@ -119,7 +119,8 @@ function handleSelection() {
         showPopup(coords.x, coords.y, {
             time: timeString,
             zone: zoneString,
-            diff: diffLabel
+            diff: diffLabel,
+            theme: currentSettings.theme
         });
 
     } catch (err) {
