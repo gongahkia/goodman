@@ -27,7 +27,7 @@ let isIgnoredDomain = false;
     // Listen for storage changes to update settings dynamically
     if (typeof chrome !== 'undefined' && chrome.storage) {
         chrome.storage.onChanged.addListener((changes) => {
-            if (changes.targetTimezone || changes.format24h || changes.ignoredDomains) {
+            if (changes.targetTimezone || changes.format24h || changes.ignoredDomains || changes.theme) {
                 // Refresh settings
                 getSettings().then(s => {
                     currentSettings = s;
