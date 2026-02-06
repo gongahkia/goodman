@@ -27,17 +27,39 @@ export function initPopup() {
         :host {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             line-height: 1.5;
+
+            /* Default Dark Theme Variables */
+            --bg-color: rgba(20, 20, 20, 0.90);
+            --border-color: rgba(255, 255, 255, 0.15);
+            --text-primary: #ffffff;
+            --text-secondary: rgba(255, 255, 255, 0.7);
+            --diff-bg: rgba(255, 255, 255, 0.15);
+            --diff-text: rgba(255, 255, 255, 0.9);
+            --shadow-color: rgba(0, 0, 0, 0.25);
+            --check-color: #4ade80;
         }
+
+        .popup.light {
+            --bg-color: rgba(255, 255, 255, 0.95);
+            --border-color: rgba(0, 0, 0, 0.1);
+            --text-primary: #111827;
+            --text-secondary: #6B7280;
+            --diff-bg: rgba(0, 0, 0, 0.06);
+            --diff-text: #374151;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+            --check-color: #16a34a;
+        }
+
         .popup {
             position: absolute;
-            background: rgba(20, 20, 20, 0.90);
+            background: var(--bg-color);
             backdrop-filter: blur(12px);
             -webkit-backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.15);
+            border: 1px solid var(--border-color);
             border-radius: 12px;
             padding: 12px 16px;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0,0,0,0.1);
-            color: #ffffff;
+            box-shadow: 0 4px 24px var(--shadow-color), 0 1px 2px rgba(0,0,0,0.05);
+            color: var(--text-primary);
             opacity: 0;
             transform: translateY(4px) scale(0.98);
             transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.2, 0, 0.13, 1.5);
@@ -53,13 +75,13 @@ export function initPopup() {
         .time {
             font-size: 18px;
             font-weight: 700;
-            color: #ffffff;
+            color: var(--text-primary);
             margin-bottom: 2px;
             letter-spacing: -0.02em;
         }
         .meta {
             font-size: 13px;
-            color: rgba(255, 255, 255, 0.7);
+            color: var(--text-secondary);
             font-weight: 500;
             display: flex;
             align-items: center;
@@ -69,20 +91,19 @@ export function initPopup() {
             font-size: 12px;
             padding: 1px 6px;
             border-radius: 4px;
-            background: rgba(255, 255, 255, 0.15);
-            color: rgba(255, 255, 255, 0.9);
+            background: var(--diff-bg);
+            color: var(--diff-text);
         }
         .time {
             cursor: pointer;
-            transition: color 0.1s ease;
+            transition: opacity 0.1s ease;
         }
         .time:hover {
-            color: #ffffff;
-            opacity: 0.9;
+            opacity: 0.7;
         }
         .time.copied::after {
             content: ' ✓';
-            color: #4ade80;
+            color: var(--check-color);
             font-size: 0.8em;
             margin-left: 4px;
         }
@@ -114,10 +135,26 @@ export function initPopup() {
     document.body.appendChild(hostElement);
 }
 
-export function showPopup(x: number, y: number, data: { time: string, zone: string, diff?: string }) {
+export function showPopup(x: number, y: number, data: { time: string, zone: string, diff?: string, theme?: string }) {
     if (!hostElement) initPopup();
 
     if (!popupElement || !shadowRoot) return;
+
+    // Apply Theme
+    popupElement.classList.remove('light', 'dark');
+    if (data.theme === 'light') {
+        popupElement.classList.add('light');
+    }
+    // Default is dark (no class or explicit dark if we wanted, but styles are default dark)
+    // If we wanted explicit dark class we could add it, but currently default variables are dark.
+    // However, if we added a check for system preference in JS, we could pass 'light' or 'dark'.
+    // Let's rely on data.theme passing 'light' or 'dark'. 
+    // If 'auto', the caller should resolve it to 'light' or 'dark' before calling showPopup, 
+    // OR we can use matchMedia here. Ideally caller resolves it.
+
+    if (data.theme === 'light') {
+        popupElement.classList.add('light');
+    }
 
     const timeEl = shadowRoot.querySelector('.time');
     const zoneEl = shadowRoot.querySelector('.zone');
