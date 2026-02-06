@@ -26,7 +26,7 @@ void (async () => {
     }
 
     // Listen for storage changes to update settings dynamically
-    if (chrome.storage) {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
         chrome.storage.onChanged.addListener((changes) => {
             if (changes.targetTimezone || changes.format24h || changes.ignoredDomains || changes.theme) {
                 // Refresh settings
