@@ -66,7 +66,7 @@ export function App() {
     <div class="container">
       <header>
         <h1>ONUL</h1>
-        <p>Simple, privacy-first converter.</p>
+        <p>Simple, privacy-first timezone converter.</p>
       </header>
 
       <section class="setting-group">
