@@ -11,7 +11,13 @@
   /* Default Dark Theme */
   --bg-color: #242424;
   --text-color: rgba(255, 255, 255, 0.87);
+  --primary-color: #646cff;
+  --primary-hover: #535bf2;
+
   --btn-bg: #1a1a1a;
+  --input-bg: #1a1a1a;
+  --border-color: #333;
+
   --link-color: #646cff;
   --link-hover: #535bf2;
   --border-focus: #646cff;
@@ -20,7 +26,14 @@
 [data-theme="light"] {
   --bg-color: #ffffff;
   --text-color: #213547;
+  --primary-color: #646cff;
+  /* Or maybe a slightly darker/different blue? strict equivalence is fine */
+  --primary-hover: #747bff;
+
   --btn-bg: #f9f9f9;
+  --input-bg: #ffffff;
+  --border-color: #ccc;
+
   --link-color: #646cff;
   --link-hover: #747bff;
   --border-focus: #646cff;
@@ -41,6 +54,7 @@ a {
   color: var(--link-color);
   text-decoration: inherit;
 }
+
 a:hover {
   color: var(--link-hover);
 }
@@ -62,9 +76,11 @@ button {
   transition: border-color 0.25s;
   color: var(--text-color);
 }
+
 button:hover {
   border-color: var(--border-focus);
 }
+
 button:focus,
 button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;

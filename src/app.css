@@ -1,19 +1,4 @@
-:root {
-  --bg-color: #0f0f0f;
-  --text-color: #f0f0f0;
-  --accent-color: #646cff;
-  --border-color: #333;
-  --input-bg: #1a1a1a;
-}
-
-body {
-  margin: 0;
-  background-color: var(--bg-color);
-  color: var(--text-color);
-  font-family: Inter, system-ui, sans-serif;
-  width: 320px;
-  min-height: 400px;
-}
+/* :root and body styles are handled in index.css */
 
 .container {
   padding: 16px;
@@ -44,10 +29,12 @@ label {
   font-weight: 500;
 }
 
-select, textarea, input[type="text"] {
+select,
+textarea,
+input[type="text"] {
   background: var(--input-bg);
   border: 1px solid var(--border-color);
-  color: white;
+  color: var(--text-color);
   padding: 8px;
   border-radius: 6px;
   font-size: 0.9rem;
@@ -55,8 +42,9 @@ select, textarea, input[type="text"] {
   box-sizing: border-box;
 }
 
-select:focus, textarea:focus {
-  outline: 2px solid var(--accent-color);
+select:focus,
+textarea:focus {
+  outline: 2px solid var(--primary-color);
   border-color: transparent;
 }
 
@@ -68,7 +56,7 @@ select:focus, textarea:focus {
 }
 
 input[type="checkbox"] {
-  accent-color: var(--accent-color);
+  accent-color: var(--primary-color);
   width: 16px;
   height: 16px;
 }
@@ -76,13 +64,14 @@ input[type="checkbox"] {
 .actions {
   margin-top: auto;
   display: flex;
-    align-items: center;
-    gap: 12px;
+  align-items: center;
+  gap: 12px;
 }
 
 button.primary {
-  background-color: var(--accent-color);
+  background-color: var(--primary-color);
   color: white;
+  /* Keep white text for primary button usually, or check contrast? Primary blue on white text is fine. */
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -96,13 +85,21 @@ button.primary:hover {
 }
 
 .status {
-    color: #4ade80;
-    font-size: 0.85rem;
-    animation: fadeOut 2s forwards;
+  color: #4ade80;
+  font-size: 0.85rem;
+  animation: fadeOut 2s forwards;
 }
 
 @keyframes fadeOut {
-    0% { opacity: 1; }
-    70% { opacity: 1; }
-    100% { opacity: 0; }
+  0% {
+    opacity: 1;
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+  }
 }
