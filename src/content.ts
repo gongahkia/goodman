@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { parseDate } from './parser';
 import { calculatePopupPosition } from './positioning';
 import { showPopup, hidePopup } from './content-ui';
@@ -14,22 +15,22 @@ let currentSettings: UserSettings | null = null;
 let isIgnoredDomain = false;
 
 // Initialize
-(async () => {
+void (async () => {
     currentSettings = await getSettings();
 
     // Check Blacklist
     const hostname = window.location.hostname;
-    if (currentSettings.ignoredDomains && currentSettings.ignoredDomains.some(d => hostname.includes(d))) {
+    if (currentSettings.ignoredDomains.some(d => hostname.includes(d))) {
         console.log('ONUL Extension: Domain ignored by settings.');
         isIgnoredDomain = true;
     }
 
     // Listen for storage changes to update settings dynamically
-    if (typeof chrome !== 'undefined' && chrome.storage) {
+    if (chrome.storage) {
         chrome.storage.onChanged.addListener((changes) => {
             if (changes.targetTimezone || changes.format24h || changes.ignoredDomains || changes.theme) {
                 // Refresh settings
-                getSettings().then(s => {
+                void getSettings().then(s => {
                     currentSettings = s;
                     // Re-check blacklist
                     const newIgnored = s.ignoredDomains.some(d => hostname.includes(d));

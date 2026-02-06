@@ -28,7 +28,7 @@ export interface ViewportInfo {
 export function calculatePopupPosition(
     target: DOMRect,
     popup: Dimensions,
-    gap: number = 8
+    gap = 8
 ): Point {
     const scrollX = window.scrollX;
     const scrollY = window.scrollY;

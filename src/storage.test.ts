@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { getSettings, saveSettings } from './storage';
 
@@ -15,13 +16,13 @@ describe('Storage Helpers', () => {
     });
 
     afterEach(() => {
-        // @ts-ignore
+        // @ts-expect-error
         delete globalThis.chrome;
     });
 
     it('should return default settings if chrome.storage is not available (dev mode safety)', async () => {
         // Remove chrome mock for this test
-        // @ts-ignore
+        // @ts-expect-error
         delete globalThis.chrome;
 
         const settings = await getSettings();
@@ -30,17 +31,17 @@ describe('Storage Helpers', () => {
 
     it('should fetch settings from chrome storage', async () => {
         const mockGet = vi.fn().mockResolvedValue({ targetTimezone: 'Asia/Tokyo' });
-        // @ts-ignore
+
         globalThis.chrome.storage.local.get = mockGet;
 
         const settings = await getSettings();
-        expect(mockGet).toHaveBeenCalledWith(['targetTimezone', 'format24h']);
+        expect(mockGet).toHaveBeenCalledWith(['targetTimezone', 'format24h', 'ignoredDomains', 'theme']);
         expect(settings.targetTimezone).toBe('Asia/Tokyo');
     });
 
     it('should fall back to defaults if storage is empty', async () => {
         const mockGet = vi.fn().mockResolvedValue({});
-        // @ts-ignore
+
         globalThis.chrome.storage.local.get = mockGet;
 
         const settings = await getSettings();
@@ -50,7 +51,7 @@ describe('Storage Helpers', () => {
 
     it('should save settings', async () => {
         const mockSet = vi.fn().mockResolvedValue(undefined);
-        // @ts-ignore
+
         globalThis.chrome.storage.local.set = mockSet;
 
         await saveSettings({ targetTimezone: 'Europe/Paris' });

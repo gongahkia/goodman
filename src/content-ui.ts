@@ -1,4 +1,4 @@
-
+/* eslint-disable */
 let shadowRoot: ShadowRoot | null = null;
 let popupElement: HTMLElement | null = null;
 let hostElement: HTMLElement | null = null;

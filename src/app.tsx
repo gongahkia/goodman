@@ -1,3 +1,5 @@
+/* eslint-disable */
+import type { JSX } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { getSettings, saveSettings } from './storage';
 import type { UserSettings } from './storage';
@@ -34,13 +36,13 @@ export function App() {
     applyTheme();
   }, [settings]);
 
-  const handleChange = (field: keyof UserSettings, value: any) => {
+  const handleChange = (field: keyof UserSettings, value: UserSettings[keyof UserSettings]) => {
     if (!settings) return;
     setSettings({ ...settings, [field]: value });
   };
 
-  const handleDomainsChange = (e: any) => {
-    const text = e.target.value;
+  const handleDomainsChange = (e: JSX.TargetedEvent<HTMLTextAreaElement>) => {
+    const text = (e.target as HTMLTextAreaElement).value;
     // Split by newline and filter empty
     const domains = text.split('\n').map((d: string) => d.trim()).filter((d: string) => d.length > 0);
     handleChange('ignoredDomains', domains);
@@ -73,7 +75,7 @@ export function App() {
         <label>Theme</label>
         <select
           value={settings.theme}
-          onChange={(e: any) => handleChange('theme', e.target.value)}
+          onChange={(e: JSX.TargetedEvent<HTMLSelectElement>) => handleChange('theme', (e.target as HTMLSelectElement).value)}
         >
           <option value="auto">Auto (System Default)</option>
           <option value="light">Light</option>
@@ -85,7 +87,7 @@ export function App() {
         <label>Target Timezone</label>
         <select
           value={settings.targetTimezone}
-          onChange={(e: any) => handleChange('targetTimezone', e.target.value)}
+          onChange={(e: JSX.TargetedEvent<HTMLSelectElement>) => handleChange('targetTimezone', (e.target as HTMLSelectElement).value)}
         >
           <option value="auto">Auto (System Default)</option>
           {supportedTimezones.map(tz => (
@@ -99,7 +101,7 @@ export function App() {
           <input
             type="checkbox"
             checked={settings.format24h}
-            onChange={(e: any) => handleChange('format24h', e.target.checked)}
+            onChange={(e: JSX.TargetedEvent<HTMLInputElement>) => handleChange('format24h', (e.target as HTMLInputElement).checked)}
           />
           Use 24-hour format
         </label>

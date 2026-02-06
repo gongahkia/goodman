@@ -32,21 +32,21 @@ export function getDateDiffLabel(sourceDate: Date, targetDateTime: DateTime, sou
     const sourceDay = sourceDateTime.toISODate();
     const targetDay = targetDateTime.toISODate();
 
-    if (sourceDay === targetDay) {
+    if (!sourceDay || !targetDay || sourceDay === targetDay) {
         return '';
     }
 
     // Calculate difference in days based on Calendar Date only
     // We convert the ISO String (YYYY-MM-DD) back to a UTC DateTime to compare apples-to-apples
-    const s = DateTime.fromISO(sourceDay!, { zone: 'UTC' });
-    const t = DateTime.fromISO(targetDay!, { zone: 'UTC' });
+    const s = DateTime.fromISO(sourceDay, { zone: 'UTC' });
+    const t = DateTime.fromISO(targetDay, { zone: 'UTC' });
     const diff = t.diff(s, 'days').days;
 
     if (diff === 1) return '(Next Day)';
     if (diff === -1) return '(Prev Day)';
 
     // Fallback for >1 day diff
-    return `(${diff > 0 ? '+' : ''}${Math.round(diff)} Days)`;
+    return `(${diff > 0 ? '+' : ''}${Math.round(diff).toString()} Days)`;
 }
 
 // Common deprecated or legacy timezone names mapped to modern IANA identifiers
