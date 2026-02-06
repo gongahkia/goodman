@@ -1,0 +1,39 @@
+ONUL — Feature Suggestions
+===========================
+All proposals maintain the core philosophy: privacy-first, offline, zero-friction, selection-triggered.
+
+1. MULTI-TARGET TIMEZONE
+   Show conversion to 2-3 target zones simultaneously in the popup (e.g., your local zone + a pinned collaborator zone). Many remote workers juggle 2-3 regular zones (e.g., their own + HQ + client). A compact stacked display in the existing popup avoids opening a separate world clock. Settings UI gets a "pinned zones" list (max 3-4). Popup grows vertically to show each conversion as a row.
+
+2. KEYBOARD SHORTCUT TRIGGER
+   Allow a configurable hotkey (e.g., Ctrl+Shift+T) to convert the current selection, as an alternative to auto-trigger on every selection. Some users find auto-popup on selection distracting when they're copy-pasting non-time text frequently. A hotkey mode lets the extension stay silent until explicitly invoked. Add a toggle in settings: "Trigger mode: Auto / Hotkey only / Both".
+
+3. SOURCE TIMEZONE OVERRIDE
+   When selected text has no explicit timezone (e.g., "3:00 PM"), let the user specify a default source timezone instead of assuming local. Common scenario: reading a US company's blog that always writes times in PST but never labels them. Settings gets a "Default source timezone" dropdown (default: auto/local). Parser falls back to this when chrono returns no timezone offset.
+
+4. RELATIVE TIME DISPLAY
+   Show "in 3 hours" or "2 hours ago" alongside the converted absolute time in the popup. Gives immediate context for how far away an event is without mental math. Small secondary line in the popup: "3h 20m from now" or "1h 45m ago". Computed from diff between converted time and current time in target zone.
+
+5. DATE DISPLAY IN POPUP
+   Show the full date (e.g., "Wed, Jan 15") alongside the time when the converted result is not today. Currently the popup shows time + zone + day-diff label, but if the source is "January 15, 2025 at 3pm EST", the user only sees the converted time and "(Next Day)" — not *which* day. Add a date line when the source includes a date component or when day rollover occurs.
+
+6. SMART FORMAT MIRRORING
+   Copy the converted time in the same format as the source text. If user selected "3:00 PM PST", copy as "6:00 PM EST" (not "18:00"). If selected "1800 JST", copy as "0900 UTC". Currently copies just the raw time string. Match the input convention (12h/24h, with/without zone abbrev) to make pasting into replies seamless.
+
+7. CONVERSION HISTORY (LOCAL ONLY)
+   Keep a small local-only log of recent conversions (last 10-20) accessible from the popup settings page. Use case: "I converted a time 5 minutes ago but forgot to copy it." Stored in chrome.storage.local, never leaves the browser. Simple list with source text, converted time, and timestamp. Clear-all button for privacy.
+
+8. ISO 8601 COPY OPTION
+   Secondary copy action (e.g., right-click or small icon) that copies the converted time in ISO 8601 format (2025-01-15T18:00:00-05:00). Devs frequently need machine-readable timestamps for configs, logs, APIs. Keeps the primary click-to-copy as human-readable, adds a secondary ISO copy path.
+
+9. TIMEZONE ABBREVIATION TOOLTIP
+   On hover over the zone label in the popup (e.g., "EST (-05:00)"), show the full IANA name ("America/New_York") and whether DST is active. Helps disambiguate ambiguous abbreviations — "CST" could be US Central, China Standard, or Cuba Standard. Luxon already has this data via .zoneName and .isInDST.
+
+10. ENABLE/DISABLE TOGGLE
+    Quick on/off toggle accessible from the extension icon (badge or single-click) without opening settings. Sometimes users want to temporarily disable ONUL entirely (e.g., during a presentation or screen share) without navigating to settings or adding the current domain to the blacklist. Toggle state persists until manually re-enabled. Extension icon dims or grays out when disabled.
+
+11. POPUP POSITION PREFERENCE
+    Setting to prefer popup above/below/auto relative to selection. Some users have toolbars or sticky headers that collide with the default "above" placement. Simple 3-option radio in settings: Above (default) / Below / Auto.
+
+12. RIGHT-CLICK CONTEXT MENU CONVERSION
+    Add a "Convert timezone with ONUL" option to the browser right-click context menu when text is selected. Alternative trigger for users who prefer right-click workflows over auto-popup. Uses chrome.contextMenus API (requires "contextMenus" permission). Shows result in the same floating popup.
