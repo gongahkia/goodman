@@ -17,7 +17,7 @@ const DEFAULT_SETTINGS: UserSettings = {
 
 export async function getSettings(): Promise<UserSettings> {
 
-    if (chrome.storage) {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
         // Wrap in promise for explicit async handling if API doesn't return promise (Manifest V3 returns promise)
         // Actually Chrome MV3 API returns Promise? 
         // Types might say callback. But newer chrome types support promises.
@@ -36,7 +36,7 @@ export async function getSettings(): Promise<UserSettings> {
 
 export async function saveSettings(settings: Partial<UserSettings>): Promise<void> {
 
-    if (chrome.storage) {
+    if (typeof chrome !== 'undefined' && chrome.storage) {
         await chrome.storage.local.set(settings);
     }
 }
