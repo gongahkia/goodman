@@ -22,4 +22,4 @@
 
 ## Reference
 
-...
+The name `Onul` is in reference to the Korean word *오늘*, which roughly translates to "today".
