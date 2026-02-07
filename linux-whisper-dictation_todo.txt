@@ -1,0 +1,159 @@
+LINUX WHISPER DICTATION: Product Requirements Document (Todo Format)
+Tech Stack: Python CLI (Click/Typer), faster-whisper (CTranslate2), PipeWire/PulseAudio/ALSA, Groq/Gemini/OpenRouter APIs
+Philosophy: CLI-first, cross-distro, local STT with free-tier LLM text sanitization
+================================================================================
+
+--- PHASE 1: AUDIO CAPTURE FOUNDATION ---
+
+(A) Implement PipeWire audio capture backend using pw-record subprocess with configurable sample rate (16kHz default) +audio
+(A) Implement PulseAudio audio capture fallback using parec subprocess for distros without PipeWire +audio
+(A) Implement ALSA audio capture fallback using arecord for minimal systems without PipeWire or PulseAudio +audio
+(A) Write audio backend auto-detector that probes for PipeWire > PulseAudio > ALSA in order and selects first available +audio
+(A) Implement WAV temp file writer that saves captured audio chunks to /tmp with automatic cleanup on exit +audio
+(A) Add configurable audio input device selection by listing available capture devices per backend +audio
+(A) Implement silence detection using RMS energy threshold to auto-stop recording after configurable silence duration (default 2s) +audio
+(A) Add push-to-talk recording mode that captures audio only while global hotkey is held +audio
+(A) Add toggle recording mode that starts/stops capture on single hotkey press +audio
+(A) Write unit tests for each audio backend using mock subprocess calls to verify capture command construction +audio
+
+--- PHASE 2: SPEECH-TO-TEXT ENGINE ---
+
+(A) Integrate faster-whisper as primary STT engine with CTranslate2 backend for local inference +stt
+(A) Implement model downloader that fetches whisper model weights on first run to ~/.cache/linux-whisper-dictation/models/ +stt
+(A) Support whisper model size selection (tiny, base, small, medium, large-v2) via CLI flag and config +stt
+(A) Default to whisper "base" model for balance of speed and accuracy on consumer hardware +stt
+(A) Implement audio file to transcript pipeline: load WAV → run faster-whisper → return text with confidence scores +stt
+(A) Add language auto-detection using faster-whisper's built-in language detection on first 30s of audio +stt
+(A) Implement streaming transcription by chunking audio into overlapping segments and merging partial results +stt
+(A) Add GPU acceleration detection: use CUDA if available via CTranslate2, fall back to CPU int8 quantization +stt
+(A) Write benchmark script that measures transcription latency and WER on a reference audio sample +stt
+(A) Handle faster-whisper import errors gracefully with clear error message pointing to install docs +stt
+
+--- PHASE 3: LLM TEXT SANITIZATION ---
+
+(A) Define abstract LLM backend interface with sanitize(raw_text: str) -> str method and model/key config +llm
+(A) Implement Groq backend using httpx POST to https://api.groq.com/openai/v1/chat/completions with free-tier Llama model +llm
+(A) Implement Google Gemini backend using httpx POST to generativelanguage.googleapis.com with free-tier gemini-pro +llm
+(A) Implement OpenRouter backend using httpx POST to https://openrouter.ai/api/v1/chat/completions with free model selection +llm
+(A) Write system prompt for text sanitization: fix punctuation, capitalization, filler words, grammar while preserving meaning +llm
+(A) Add raw mode that skips LLM sanitization entirely and outputs whisper transcript as-is +llm
+(A) Implement API key storage in ~/.config/linux-whisper-dictation/config.toml with per-backend key fields +llm
+(A) Add API key validation on startup that makes a minimal test request to verify key is active +llm
+(A) Implement retry logic with exponential backoff (max 3 retries) for transient API failures +llm
+(A) Handle rate limit errors (HTTP 429) by falling back to next configured LLM backend automatically +llm
+(A) Add --sanitizer flag to CLI to override config and select LLM backend per invocation +llm
+(A) Write integration tests for each LLM backend using recorded HTTP responses (VCR-style mocking) +llm
+
+--- PHASE 4: OUTPUT & CLIPBOARD ---
+
+(A) Implement clipboard output using wl-copy for Wayland sessions detected via $WAYLAND_DISPLAY +output
+(A) Implement clipboard output fallback using xclip for X11 sessions detected via $DISPLAY +output
+(A) Implement direct-type output using wtype for Wayland to simulate keystrokes into focused window +output
+(A) Implement direct-type output fallback using xdotool type for X11 sessions +output
+(A) Auto-detect display server (Wayland vs X11) and select appropriate clipboard/typing tool +output
+(A) Add output mode config option: "clipboard" (default), "type", or "both" (clipboard + type) +output
+(A) Handle special characters and unicode in typed output by escaping sequences that xdotool/wtype mishandle +output
+(A) Add configurable delay between keystrokes for direct-type mode to avoid dropped characters in slow apps +output
+(A) Add newline handling option: preserve newlines from transcript or flatten to single line +output
+(A) Write tests for output module using mock subprocess to verify correct tool invocation per display server +output
+
+--- PHASE 5: GLOBAL HOTKEY ---
+
+(A) Implement global hotkey listener using evdev to read /dev/input directly for Wayland-compatible hotkeys +hotkey
+(A) Add fallback hotkey listener using pynput for X11 sessions where evdev requires root +hotkey
+(A) Set default hotkey to Super+Shift+Space, configurable via config.toml hotkey field +hotkey
+(A) Implement hotkey rebinding at runtime by writing new keybind to config and reloading listener +hotkey
+(A) Support modifier combos: Ctrl, Alt, Super, Shift + any single key for hotkey definition +hotkey
+(A) Handle hotkey conflicts by warning user if chosen hotkey is already bound by window manager +hotkey
+(A) Add permission check for /dev/input access and guide user to add themselves to input group if denied +hotkey
+(A) Implement hotkey mode toggle between push-to-talk (hold) and toggle (press once start, press again stop) +hotkey
+
+--- PHASE 6: CONFIGURATION ---
+
+(A) Create TOML config file at ~/.config/linux-whisper-dictation/config.toml with all settings +config
+(A) Define config schema: audio_backend, stt_model, llm_backend, llm_api_keys, hotkey, output_mode, silence_threshold +config
+(A) Implement config loader that reads TOML, validates fields, and merges with CLI flag overrides +config
+(A) Add config init command that generates default config.toml with inline comments explaining each field +config
+(A) Implement config validation that checks for required API keys when LLM sanitization is enabled +config
+(A) Support XDG_CONFIG_HOME override for config directory location +config
+(A) Add config show command that pretty-prints current active config including resolved defaults +config
+(A) Write config migration logic for future schema changes with version field in config +config
+
+--- PHASE 7: CLI INTERFACE ---
+
+(A) Create main CLI entry point using Click with subcommands: start, stop, config, status +cli
+(A) Implement "start" command that launches daemon process, binds hotkey, and begins listening +cli
+(A) Implement "stop" command that sends SIGTERM to running daemon via PID file +cli
+(A) Implement "status" command that shows: daemon running/stopped, audio backend, active model, LLM backend +cli
+(A) Implement "config init" subcommand to generate default config file +cli
+(A) Implement "config show" subcommand to display current configuration +cli
+(A) Implement "config set <key> <value>" subcommand to update individual config values +cli
+(A) Implement "transcribe <file>" command for one-shot transcription of an audio file without daemon +cli
+(A) Add --verbose / -v flag for debug logging to stderr +cli
+(A) Add --model flag to override whisper model for current session +cli
+(A) Add --backend flag to override audio capture backend for current session +cli
+(A) Write daemon PID file to /tmp/linux-whisper-dictation.pid and check for stale PIDs on start +cli
+(A) Implement graceful shutdown handler for SIGINT/SIGTERM that cleans up temp files, PID file, and audio streams +cli
+(A) Add version command that prints package version and detected system capabilities +cli
+
+--- PHASE 8: DAEMON & PROCESS MANAGEMENT ---
+
+(A) Implement daemon mode using double-fork or systemd user service to run in background +daemon
+(A) Write systemd user service file (linux-whisper-dictation.service) for auto-start on login +daemon
+(A) Add desktop autostart entry (~/.config/autostart/) for non-systemd desktop environments +daemon
+(A) Implement IPC between CLI client and daemon using Unix domain socket at /tmp/lwd.sock +daemon
+(A) Send start/stop/status commands from CLI to daemon over Unix socket +daemon
+(A) Implement daemon health check that responds to status queries with current state +daemon
+(A) Add watchdog that restarts audio capture if backend process dies unexpectedly +daemon
+(A) Log daemon events to ~/.local/share/linux-whisper-dictation/daemon.log with rotation at 10MB +daemon
+
+--- PHASE 9: CROSS-DISTRO INSTALLATION ---
+
+(A) Write install.sh script that detects distro (Debian/Ubuntu, Fedora, Arch) and installs system deps +install
+(A) Define Debian/Ubuntu dependency list: python3, python3-pip, pipewire/pulseaudio-utils, wl-clipboard, xclip, xdotool +install
+(A) Define Fedora dependency list: python3, python3-pip, pipewire-utils/pulseaudio-utils, wl-clipboard, xclip, xdotool +install
+(A) Define Arch dependency list: python, python-pip, pipewire/pulseaudio, wl-clipboard, xclip, xdotool +install
+(A) Install Python package and deps via pip install --user or pipx after system deps are resolved +install
+(A) Add post-install step that runs model download for default whisper base model +install
+(A) Add post-install check that verifies audio capture works by recording 1s test clip +install
+(A) Create uninstall.sh that removes pip package, config dir, cache dir, systemd service, and autostart entry +install
+(A) Write pyproject.toml with all Python dependencies: faster-whisper, click, httpx, tomli, tomli-w +install
+(A) Add AUR PKGBUILD for Arch users to install via yay/paru +install
+(A) Test install.sh on fresh Docker containers for Ubuntu 22.04, Fedora 39, Arch Linux +install
+
+--- PHASE 10: ERROR HANDLING & RESILIENCE ---
+
+(A) Detect missing system dependencies (wl-copy, xclip, xdotool, wtype) on startup and print install commands +errors
+(A) Handle microphone permission denied errors with clear message about PipeWire/PulseAudio access +errors
+(A) Catch faster-whisper OOM errors on large models and suggest smaller model or CPU-only mode +errors
+(A) Handle no internet gracefully when LLM sanitization is enabled by falling back to raw mode with warning +errors
+(A) Add timeout (30s default) for LLM API calls to prevent hanging on unresponsive endpoints +errors
+(A) Validate audio input is not silent/empty before sending to whisper to avoid wasted inference +errors
+(A) Handle corrupted config.toml by backing up and regenerating default with warning message +errors
+
+--- PHASE 11: TESTING ---
+
+(A) Set up pytest with conftest.py providing fixtures for mock audio, mock API responses, temp config +testing
+(A) Write end-to-end test: record 3s audio → transcribe → sanitize → verify output string +testing
+(A) Write audio backend selection tests covering PipeWire-only, PulseAudio-only, ALSA-only environments +testing
+(A) Write config loading tests for valid TOML, missing fields (defaults applied), invalid values (errors raised) +testing
+(A) Write hotkey binding tests verifying correct evdev/pynput selection per display server +testing
+(A) Write output tests verifying wl-copy vs xclip selection based on WAYLAND_DISPLAY and DISPLAY env vars +testing
+(A) Add CI workflow (GitHub Actions) with Ubuntu runner that installs deps and runs full test suite +testing
+(A) Add CI matrix testing across Python 3.10, 3.11, 3.12 +testing
+
+--- PHASE 12: GUI (POST-CLI STABILITY) ---
+
+Implement system tray icon using pystray that shows recording state (idle/recording/processing) +gui
+Add tray menu items: Start/Stop, Settings, Quit +gui
+Build settings window using PyQt6 or GTK4 with tabs: Audio, STT, LLM, Hotkey, Output +gui
+Implement audio backend dropdown in settings populated from detected available backends +gui
+Implement whisper model selector dropdown with download progress bar for models not yet cached +gui
+Implement LLM backend selector with API key input fields and test-connection button +gui
+Implement hotkey capture widget: user presses desired combo and it records the keybind +gui
+Implement output mode radio buttons: Clipboard / Type / Both +gui
+Add recording indicator: floating overlay widget or tray icon color change during active recording +gui
+Implement notification popups using libnotify (notify-send) for events: recording started, transcription done, error +gui
+Save all GUI settings changes back to config.toml via config module +gui
+Add dark/light theme auto-detection following system GTK/Qt theme +gui
+Package GUI as optional install extra: pip install linux-whisper-dictation[gui] +gui
