@@ -46,6 +46,13 @@ void (async () => {
     // Start Listeners
     document.addEventListener('selectionchange', onSelectionChange);
     document.addEventListener('mousedown', onMouseDown);
+    if (typeof chrome !== 'undefined' && chrome.runtime) {
+        chrome.runtime.onMessage.addListener((msg) => {
+            if (msg?.type === 'ONUL_CONTEXT_MENU_CONVERT' && msg.text) {
+                handleContextMenuConvert(msg.text);
+            }
+        });
+    }
 })();
 
 function onSelectionChange() {
@@ -142,6 +149,53 @@ function handleSelection() {
 /**
  * Checks if the selection is inside an editable element (Input, Textarea, or contenteditable)
  */
+function handleContextMenuConvert(text: string) {
+    if (!currentSettings) return;
+    const cleanText = text.trim();
+    if (!cleanText || cleanText.length > 100) return;
+    const parsed = parseDate(cleanText);
+    if (!parsed) return;
+    try {
+        const targetZone = currentSettings.targetTimezone === 'auto'
+            ? getSystemTimezone()
+            : currentSettings.targetTimezone;
+        const timeFormat = currentSettings.format24h ? 'HH:mm' : 'h:mm a';
+        const srcFmt = detectSourceFormat(parsed.text);
+        const converted = convertToTimezone(parsed.date, targetZone);
+        const diffLabel = getDateDiffLabel(parsed.date, converted, parsed.timezoneOffset);
+        const timeString = converted.toFormat(timeFormat);
+        const zoneString = `${converted.toFormat('ZZZZ')} (${converted.toFormat('ZZ')})`;
+        const dateLabel = getTargetDateLabel(converted);
+        const rows: { time: string; zone: string; diff: string; date: string; copyText: string }[] = [
+            { time: timeString, zone: zoneString, diff: diffLabel, date: dateLabel, copyText: formatMirrored(converted, srcFmt) }
+        ];
+        for (const pz of currentSettings.pinnedTimezones) {
+            if (pz === targetZone) continue;
+            const pc = convertToTimezone(parsed.date, pz);
+            const pd = getDateDiffLabel(parsed.date, pc, parsed.timezoneOffset);
+            rows.push({
+                time: pc.toFormat(timeFormat),
+                zone: `${pc.toFormat('ZZZZ')} (${pc.toFormat('ZZ')})`,
+                diff: pd,
+                date: getTargetDateLabel(pc),
+                copyText: formatMirrored(pc, srcFmt)
+            });
+        }
+        const selection = window.getSelection();
+        let rect: DOMRect;
+        if (selection && selection.rangeCount > 0) {
+            rect = selection.getRangeAt(0).getBoundingClientRect();
+        } else {
+            rect = new DOMRect(window.innerWidth / 2 - 110, window.innerHeight / 2 - 45, 0, 0); // center fallback
+        }
+        const popupHeight = 50 + rows.length * 40;
+        const coords = calculatePopupPosition(rect, { width: 220, height: popupHeight });
+        showPopup(coords.x, coords.y, { rows, theme: currentSettings.theme });
+    } catch (err) {
+        console.error('Timezone conversion error:', err);
+    }
+}
+
 interface SourceFormat {
     is24h: boolean;
     hasZoneAbbrev: boolean;
