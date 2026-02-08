@@ -2,7 +2,7 @@
 import { parseDate } from './parser';
 import { calculatePopupPosition } from './positioning';
 import { showPopup, hidePopup } from './content-ui';
-import { convertToTimezone, getSystemTimezone, getDateDiffLabel } from './timezone';
+import { convertToTimezone, getSystemTimezone, getDateDiffLabel, getTargetDateLabel } from './timezone';
 import { getSettings } from './storage';
 import type { UserSettings } from './storage';
 
@@ -106,17 +106,19 @@ function handleSelection() {
         const diffLabel = getDateDiffLabel(parsed.date, converted, parsed.timezoneOffset);
         const timeString = converted.toFormat(timeFormat);
         const zoneString = `${converted.toFormat('ZZZZ')} (${converted.toFormat('ZZ')})`;
-        const rows: { time: string; zone: string; diff: string }[] = [
-            { time: timeString, zone: zoneString, diff: diffLabel }
+        const dateLabel = getTargetDateLabel(converted);
+        const rows: { time: string; zone: string; diff: string; date: string }[] = [
+            { time: timeString, zone: zoneString, diff: diffLabel, date: dateLabel }
         ];
         for (const pz of currentSettings.pinnedTimezones) {
-            if (pz === targetZone) continue; // skip duplicate
+            if (pz === targetZone) continue;
             const pc = convertToTimezone(parsed.date, pz);
             const pd = getDateDiffLabel(parsed.date, pc, parsed.timezoneOffset);
             rows.push({
                 time: pc.toFormat(timeFormat),
                 zone: `${pc.toFormat('ZZZZ')} (${pc.toFormat('ZZ')})`,
-                diff: pd
+                diff: pd,
+                date: getTargetDateLabel(pc)
             });
         }
         // Get Coordinates

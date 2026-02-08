@@ -49,6 +49,13 @@ export function getDateDiffLabel(sourceDate: Date, targetDateTime: DateTime, sou
     return `(${diff > 0 ? '+' : ''}${Math.round(diff).toString()} Days)`;
 }
 
+export function getTargetDateLabel(targetDateTime: DateTime): string {
+    const today = DateTime.local().toISODate();
+    const targetDay = targetDateTime.toISODate();
+    if (!targetDay || targetDay === today) return '';
+    return targetDateTime.toFormat('ccc, LLL d'); // e.g. "Wed, Jan 15"
+}
+
 // Common deprecated or legacy timezone names mapped to modern IANA identifiers
 const DEPRECATED_TIMEZONES: Record<string, string> = {
     'US/EASTERN': 'America/New_York',

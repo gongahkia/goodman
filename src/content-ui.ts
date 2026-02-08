@@ -7,6 +7,7 @@ export interface PopupRow {
     time: string;
     zone: string;
     diff: string;
+    date: string;
 }
 
 export function initPopup() {
@@ -102,6 +103,11 @@ export function initPopup() {
             gap: 6px;
         }
         .row:not(:first-child) .meta { font-size: 12px; }
+        .date {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-bottom: 1px;
+        }
         .diff {
             font-size: 12px;
             padding: 1px 6px;
@@ -126,6 +132,12 @@ export function showPopup(x: number, y: number, data: { rows: PopupRow[], theme?
     for (const row of data.rows) {
         const rowEl = document.createElement('div');
         rowEl.classList.add('row');
+        if (row.date) {
+            const dateEl = document.createElement('div');
+            dateEl.classList.add('date');
+            dateEl.textContent = row.date;
+            rowEl.appendChild(dateEl);
+        }
         const timeEl = document.createElement('div');
         timeEl.classList.add('time');
         timeEl.title = 'Click to copy';
