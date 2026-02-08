@@ -8,6 +8,7 @@ export interface PopupRow {
     zone: string;
     diff: string;
     date: string;
+    copyText: string; // mirrored format for clipboard
 }
 
 export function initPopup() {
@@ -142,7 +143,7 @@ export function showPopup(x: number, y: number, data: { rows: PopupRow[], theme?
         timeEl.classList.add('time');
         timeEl.title = 'Click to copy';
         timeEl.textContent = row.time;
-        timeEl.addEventListener('click', () => handleCopy(row.time, timeEl));
+        timeEl.addEventListener('click', () => handleCopy(row.copyText, timeEl));
         const metaEl = document.createElement('div');
         metaEl.classList.add('meta');
         const zoneEl = document.createElement('span');

@@ -102,13 +102,14 @@ function handleSelection() {
             ? getSystemTimezone()
             : currentSettings.targetTimezone;
         const timeFormat = currentSettings.format24h ? 'HH:mm' : 'h:mm a';
+        const srcFmt = detectSourceFormat(parsed.text);
         const converted = convertToTimezone(parsed.date, targetZone);
         const diffLabel = getDateDiffLabel(parsed.date, converted, parsed.timezoneOffset);
         const timeString = converted.toFormat(timeFormat);
         const zoneString = `${converted.toFormat('ZZZZ')} (${converted.toFormat('ZZ')})`;
         const dateLabel = getTargetDateLabel(converted);
-        const rows: { time: string; zone: string; diff: string; date: string }[] = [
-            { time: timeString, zone: zoneString, diff: diffLabel, date: dateLabel }
+        const rows: { time: string; zone: string; diff: string; date: string; copyText: string }[] = [
+            { time: timeString, zone: zoneString, diff: diffLabel, date: dateLabel, copyText: formatMirrored(converted, srcFmt) }
         ];
         for (const pz of currentSettings.pinnedTimezones) {
             if (pz === targetZone) continue;
@@ -118,7 +119,8 @@ function handleSelection() {
                 time: pc.toFormat(timeFormat),
                 zone: `${pc.toFormat('ZZZZ')} (${pc.toFormat('ZZ')})`,
                 diff: pd,
-                date: getTargetDateLabel(pc)
+                date: getTargetDateLabel(pc),
+                copyText: formatMirrored(pc, srcFmt)
             });
         }
         // Get Coordinates
@@ -140,6 +142,33 @@ function handleSelection() {
 /**
  * Checks if the selection is inside an editable element (Input, Textarea, or contenteditable)
  */
+interface SourceFormat {
+    is24h: boolean;
+    hasZoneAbbrev: boolean;
+}
+
+function detectSourceFormat(text: string): SourceFormat {
+    const t = text.trim();
+    const hasAmPm = /[ap]\.?m\.?/i.test(t);
+    const isMilitary = /^\d{4}$/.test(t) || /^\d{2}:\d{2}(:\d{2})?$/.test(t);
+    const is24h = !hasAmPm && (isMilitary || /\b([01]?\d|2[0-3]):\d{2}\b/.test(t));
+    const hasZoneAbbrev = /\b[A-Z]{2,5}\s*$/.test(t) || /\b[A-Z]{2,5}\b/.test(t.replace(/[ap]\.?m\.?/gi, '').trim());
+    return { is24h, hasZoneAbbrev };
+}
+
+function formatMirrored(converted: ReturnType<typeof convertToTimezone>, fmt: SourceFormat): string {
+    let time: string;
+    if (fmt.is24h) {
+        time = converted.toFormat('HH:mm');
+    } else {
+        time = converted.toFormat('h:mm a');
+    }
+    if (fmt.hasZoneAbbrev) {
+        time += ` ${converted.toFormat('ZZZZ')}`;
+    }
+    return time;
+}
+
 function isInsideEditable(selection: Selection): boolean {
     const anchor = selection.anchorNode;
     const focus = selection.focusNode;
