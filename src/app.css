@@ -91,15 +91,33 @@ button.primary:hover {
 }
 
 @keyframes fadeOut {
-  0% {
-    opacity: 1;
-  }
-
-  70% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0;
-  }
+  0% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
 }
+.pinned-zones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pinned-zone-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--input-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+.pinned-zone-tag .remove-btn {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 1rem;
+  line-height: 1;
+  opacity: 0.6;
+}
+.pinned-zone-tag .remove-btn:hover { opacity: 1; }

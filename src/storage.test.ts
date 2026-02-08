@@ -35,7 +35,7 @@ describe('Storage Helpers', () => {
         globalThis.chrome.storage.local.get = mockGet;
 
         const settings = await getSettings();
-        expect(mockGet).toHaveBeenCalledWith(['targetTimezone', 'format24h', 'ignoredDomains', 'theme']);
+        expect(mockGet).toHaveBeenCalledWith(['targetTimezone', 'format24h', 'ignoredDomains', 'theme', 'pinnedTimezones']);
         expect(settings.targetTimezone).toBe('Asia/Tokyo');
     });
 

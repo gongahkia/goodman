@@ -41,6 +41,15 @@ export function App() {
     setSettings({ ...settings, [field]: value });
   };
 
+  const handleAddPinnedZone = (tz: string) => {
+    if (!settings || !tz || tz === 'auto') return;
+    if (settings.pinnedTimezones.includes(tz) || settings.pinnedTimezones.length >= 4) return;
+    handleChange('pinnedTimezones', [...settings.pinnedTimezones, tz]);
+  };
+  const handleRemovePinnedZone = (tz: string) => {
+    if (!settings) return;
+    handleChange('pinnedTimezones', settings.pinnedTimezones.filter(z => z !== tz));
+  };
   const handleDomainsChange = (e: JSX.TargetedEvent<HTMLTextAreaElement>) => {
     const text = (e.target as HTMLTextAreaElement).value;
     // Split by newline and filter empty
@@ -94,6 +103,33 @@ export function App() {
             <option value={tz}>{tz}</option>
           ))}
         </select>
+      </section>
+
+      <section class="setting-group">
+        <label>Pinned Zones (max 4)</label>
+        <div class="pinned-zones">
+          {settings.pinnedTimezones.map(tz => (
+            <div class="pinned-zone-tag" key={tz}>
+              <span>{tz}</span>
+              <button class="remove-btn" onClick={() => handleRemovePinnedZone(tz)}>&times;</button>
+            </div>
+          ))}
+        </div>
+        {settings.pinnedTimezones.length < 4 && (
+          <select
+            value=""
+            onChange={(e: JSX.TargetedEvent<HTMLSelectElement>) => {
+              const val = (e.target as HTMLSelectElement).value;
+              handleAddPinnedZone(val);
+              (e.target as HTMLSelectElement).value = '';
+            }}
+          >
+            <option value="" disabled>Add a timezone...</option>
+            {supportedTimezones.filter(tz => !settings.pinnedTimezones.includes(tz)).map(tz => (
+              <option value={tz} key={tz}>{tz}</option>
+            ))}
+          </select>
+        )}
       </section>
 
       <section class="setting-group">

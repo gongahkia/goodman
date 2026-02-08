@@ -28,7 +28,7 @@ void (async () => {
     // Listen for storage changes to update settings dynamically
     if (typeof chrome !== 'undefined' && chrome.storage) {
         chrome.storage.onChanged.addListener((changes) => {
-            if (changes.targetTimezone || changes.format24h || changes.ignoredDomains || changes.theme) {
+            if (changes.targetTimezone || changes.format24h || changes.ignoredDomains || changes.theme || changes.pinnedTimezones) {
                 // Refresh settings
                 void getSettings().then(s => {
                     currentSettings = s;
@@ -101,26 +101,31 @@ function handleSelection() {
         const targetZone = currentSettings.targetTimezone === 'auto'
             ? getSystemTimezone()
             : currentSettings.targetTimezone;
-
+        const timeFormat = currentSettings.format24h ? 'HH:mm' : 'h:mm a';
         const converted = convertToTimezone(parsed.date, targetZone);
         const diffLabel = getDateDiffLabel(parsed.date, converted, parsed.timezoneOffset);
-
+        const timeString = converted.toFormat(timeFormat);
+        const zoneString = `${converted.toFormat('ZZZZ')} (${converted.toFormat('ZZ')})`;
+        const rows: { time: string; zone: string; diff: string }[] = [
+            { time: timeString, zone: zoneString, diff: diffLabel }
+        ];
+        for (const pz of currentSettings.pinnedTimezones) {
+            if (pz === targetZone) continue; // skip duplicate
+            const pc = convertToTimezone(parsed.date, pz);
+            const pd = getDateDiffLabel(parsed.date, pc, parsed.timezoneOffset);
+            rows.push({
+                time: pc.toFormat(timeFormat),
+                zone: `${pc.toFormat('ZZZZ')} (${pc.toFormat('ZZ')})`,
+                diff: pd
+            });
+        }
         // Get Coordinates
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
-
-        // Calculate Position
-        const coords = calculatePopupPosition(rect, { width: 220, height: 90 });
-
-        // Format Output based on Settings
-        const timeFormat = currentSettings.format24h ? 'HH:mm' : 'h:mm a';
-        const timeString = converted.toFormat(timeFormat);
-        const zoneString = `${converted.toFormat('ZZZZ')} (${converted.toFormat('ZZ')})`;
-
+        const popupHeight = 50 + rows.length * 40; // base + per-row
+        const coords = calculatePopupPosition(rect, { width: 220, height: popupHeight });
         showPopup(coords.x, coords.y, {
-            time: timeString,
-            zone: zoneString,
-            diff: diffLabel,
+            rows,
             theme: currentSettings.theme
         });
 
