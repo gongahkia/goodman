@@ -1,5 +1,5 @@
 [![](https://img.shields.io/badge/onul_1.0-passing-green)](https://github.com/gongahkia/onul/releases/tag/1.0) 
-![](https://github.com/gongahkia/yuho/actions/workflows/ci.yml/badge.svg)
+![](https://github.com/gongahkia/onul/actions/workflows/ci.yml/badge.svg)
 
 # `Onul`
 
