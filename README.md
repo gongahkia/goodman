@@ -33,10 +33,10 @@ Time Zone Converter [chock-full](https://www.merriam-webster.com/dictionary/choc
 
 ```console
 $ git clone https://github.com/gongahkia/onul && cd onul
-$ npm install && npm run build
+$ npm install && npm run build 
+$ chmod +x release.sh && ./release.sh # alternatively run this
+$ bash release.sh # or this if you're on WSL
 ```
-
-Alternatively, run `bash release.sh` to build and zip the extension.
 
 2. Then follow the below instructions for your corresponding browser.
 
@@ -59,7 +59,9 @@ Support for other browsers like Opera, Vivaldi have not been extensively tested,
 
 ## Architecture
 
-<img src="./asset/reference/architecture.png" width="100%">
+<div align="center">
+    <img src="./asset/reference/architecture.png" width="50%">
+</div>
 
 ## Reference
 
