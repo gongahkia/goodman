@@ -6,7 +6,7 @@ Time Zone Converter [chock-full](https://www.merriam-webster.com/dictionary/choc
 
 ## Stack
 
-*Script*: 
+* *Script*: [TypeScript](), ...
 
 ## Screenshots
 
