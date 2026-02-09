@@ -1,0 +1,156 @@
+CALENDAR CONVERTER CLI: Product Requirements Document (Todo Format)
+Tech Stack: Go CLI (Cobra), ICS parsing (icalendar), AppleScript bridge, REST API clients, Homebrew distribution
+Philosophy: CLI-first, file-first with optional API mode, universal calendar/task interchange with conflict resolution
+================================================================================
+
+--- PHASE 1: CORE DATA MODEL & ICS ENGINE ---
+
+(A) Define unified internal CalendarItem struct with fields: UID, Title, Description, StartTime, EndTime, DueDate, Priority, Status, Location, Tags, Recurrence, Reminders, Subtasks, CompletionDate, Timezone, IsAllDay, ItemType (event/task/journal) +core
+(A) Define unified Recurrence struct supporting RRULE fields: Freq, Interval, Count, Until, ByDay, ByMonth, ByMonthDay, BySetPos, ExDates, RDates +core
+(A) Define unified Priority type with normalized 1-5 scale and per-app mapping tables (ICS 1-9, TickTick 0-5, Todoist 1-4 inverted, Things none) +core
+(A) Define unified Status enum: pending, in_progress, completed, cancelled, with per-app status mapping tables +core
+(A) Define Subtask struct with Title, Status, SortOrder for apps that support checklists (TickTick, Things, Todoist) +core
+(A) Define Reminder struct with offset Duration and optional AbsoluteTime to normalize reminder differences across apps +core
+(A) Define CalendarCollection struct as ordered slice of CalendarItem with metadata: SourceApp, ExportDate, OriginalFilePath +core
+(A) Implement ICS parser that reads RFC 5545 .ics files and maps VEVENT components to CalendarItem structs +ics
+(A) Implement ICS parser support for VTODO components mapping DUE, PERCENT-COMPLETE, STATUS to CalendarItem task fields +ics
+(A) Implement ICS parser support for VJOURNAL components as note-type CalendarItems +ics
+(A) Implement VTIMEZONE parser that resolves timezone definitions embedded in ICS files to IANA tz database identifiers +ics
+(A) Implement RRULE parser that converts ICS RRULE strings to internal Recurrence struct with full RFC 5545 compliance +ics
+(A) Implement RRULE flattener that expands recurrence rules into individual CalendarItem instances when target app lacks RRULE support, logging a warning to stderr per flattened item +ics
+(A) Implement EXDATE and RDATE parser to handle recurrence exceptions and additional occurrence dates +ics
+(A) Implement ICS writer that serializes CalendarItem structs back to valid RFC 5545 .ics files with VEVENT and VTODO support +ics
+(A) Implement ICS writer VTIMEZONE emission using IANA tz identifiers and proper UTC offset transition rules +ics
+(A) Implement all-day event handling: DATE vs DATE-TIME distinction, prevent off-by-one-day errors across timezone boundaries +ics
+(A) Write table-driven tests for ICS parser covering: single event, recurring event with EXDATE, VTODO with DUE, all-day event, multi-timezone file, malformed input +ics
+(A) Write table-driven tests for RRULE parser covering: daily, weekly with ByDay, monthly with ByMonthDay, yearly, count-limited, until-limited, complex BySetPos patterns +ics
+
+--- PHASE 2: APP-SPECIFIC PARSERS (FILE-BASED) ---
+
+(A) Implement TickTick CSV parser mapping columns (folder, list, title, tags, content, is_checklist, start_date, due_date, reminder, repeat, priority, status, created_time, completed_time, timezone, is_all_day) to CalendarItem +ticktick
+(A) Implement TickTick CSV checklist content parser that extracts subtask items from the content field when is_checklist is true +ticktick
+(A) Implement TickTick priority mapper: TickTick 0(none)/1(low)/3(medium)/5(high) to unified 1-5 scale +ticktick
+(A) Implement TickTick repeat field parser converting TickTick repeat strings to internal Recurrence struct +ticktick
+(A) Implement TickTick CSV writer that serializes CalendarItem structs to TickTick-compatible CSV format with correct column headers +ticktick
+(A) Write tests for TickTick CSV parser with sample exports covering: simple task, checklist task, recurring task, completed task, task with tags and reminders +ticktick
+(A) Implement Todoist CSV parser mapping columns (TYPE, CONTENT, DESCRIPTION, PRIORITY, INDENT, AUTHOR, RESPONSIBLE, DATE, DATE_LANG, TIMEZONE) to CalendarItem +todoist
+(A) Implement Todoist priority mapper: Todoist 4(highest)/3/2/1(lowest) inverted mapping to unified 1-5 scale +todoist
+(A) Implement Todoist INDENT field parser to reconstruct subtask hierarchy from flat CSV rows using indent levels +todoist
+(A) Implement Todoist CSV writer with case-sensitive TYPE column (task/section/note) and UTF-8 encoding +todoist
+(A) Write tests for Todoist CSV parser covering: tasks with subtasks via indent, sections, notes, priority levels, date formats +todoist
+(A) Implement Google Calendar CSV parser mapping columns (Subject, Start Date, Start Time, End Date, End Time, All Day Event, Description, Location, Private) to CalendarItem +gcal
+(A) Implement Google Calendar CSV writer with English-language headers required by Google Calendar import +gcal
+(A) Write tests for Google Calendar CSV parser covering: timed event, all-day event, multi-day event, event with location and description +gcal
+(A) Implement Outlook CSV parser mapping columns (Subject, Start Date, Start Time, End Date, End Time, All day event, Reminder on/off, Reminder Date, Reminder Time, Categories, Description, Location, Priority) to CalendarItem +outlook
+(A) Implement Outlook CSV writer with correct column headers for Outlook import compatibility +outlook
+(A) Write tests for Outlook CSV parser covering: timed event, all-day event, event with reminder, event with categories +outlook
+(A) Implement Notion CSV parser that reads Notion database exports with configurable column name mapping (Title, Date, Status, Tags, Priority properties) +notion
+(A) Implement Notion CSV writer that outputs Notion-importable CSV with property columns matching target database schema +notion
+(A) Write tests for Notion CSV parser covering: database with date property, multi-select tags, status property, formula/rollup exclusion +notion
+(A) Implement Things 3 SQLite reader that queries ~/Library/Group Containers/JLMPQHK86H.com.culturedcode.ThingsMac/Things Database.thingsdatabase/main.sqlite for tasks, projects, areas, checklists +things
+(A) Implement Things 3 JSON-URL writer that constructs things:///add-json payloads from CalendarItem structs, chunked to respect URL length limits +things
+(A) Implement Things 3 AppleScript writer as fallback for bulk import when URL scheme payload exceeds size limits +things
+(A) Write tests for Things 3 SQLite reader using a fixture database with: inbox task, project with tasks, area, task with checklist, completed task, task with tags and deadline +things
+(A) Implement Trello JSON parser that reads Trello board export JSON mapping cards (name, desc, due, labels, checklists, closed) to CalendarItem +trello
+(A) Implement Trello JSON writer that constructs Trello-importable JSON from CalendarItem structs +trello
+(A) Write tests for Trello JSON parser covering: card with due date, card with checklist, card with labels, archived card +trello
+(A) Implement Asana CSV parser mapping columns (Name, Section, Due Date, Assignee, Description, Tags, Completed) to CalendarItem +asana
+(A) Implement Asana CSV writer with correct column headers for Asana import +asana
+(A) Implement OmniFocus TaskPaper parser that reads OmniFocus TaskPaper export format mapping projects, tasks, tags, defer/due dates, notes to CalendarItem +omnifocus
+(A) Implement OmniFocus TaskPaper writer that serializes CalendarItem structs to OmniFocus-compatible TaskPaper format with @tags, @defer(), @due() annotations +omnifocus
+(A) Write tests for OmniFocus TaskPaper parser covering: project with nested tasks, task with defer and due dates, task with tags, completed task, task with note +omnifocus
+
+--- PHASE 3: APPLE BRIDGE (SORTED 3 PATHWAY) ---
+
+(A) Implement AppleScript executor helper that runs osascript commands from Go and parses structured output +apple
+(A) Implement Apple Reminders writer via AppleScript that creates reminders with title, notes, due date, priority, list assignment from CalendarItem +apple
+(A) Implement Apple Reminders reader via AppleScript that fetches all reminders across lists and maps to CalendarItem structs +apple
+(A) Implement Apple Calendar writer via AppleScript that creates calendar events with title, start/end time, notes, location, recurrence from CalendarItem +apple
+(A) Implement Apple Calendar reader via AppleScript that fetches events from specified calendars within a date range and maps to CalendarItem structs +apple
+(A) Implement Sorted 3 import orchestrator that routes tasks to Apple Reminders and events to Apple Calendar, then logs instructions for user to sync Sorted 3 +apple
+(A) Implement Sorted 3 export orchestrator that reads from Apple Calendar and Apple Reminders, filters by a user-specified Sorted 3 list/calendar name +apple
+(A) Implement Apple bridge permission checker that verifies Automation/Accessibility permissions and provides osascript error recovery guidance +apple
+(A) Write integration tests for Apple Reminders read/write cycle using a test reminder list that is created and cleaned up +apple
+(A) Write integration tests for Apple Calendar read/write cycle using a test calendar that is created and cleaned up +apple
+
+--- PHASE 4: API-BASED CONNECTORS ---
+
+(B) Implement OAuth2 PKCE flow helper for API-based connectors with token storage in ~/.config/calconv/tokens.json +api
+(B) Implement TickTick REST API client with OAuth2 auth supporting: list tasks, create task, update task, delete task +api
+(B) Implement TickTick API-to-CalendarItem mapper using API JSON response fields (id, title, content, desc, startDate, dueDate, priority, status, tags, items) +api
+(B) Implement TickTick CalendarItem-to-API mapper for creating/updating tasks via API with field validation +api
+(B) Implement Todoist REST API client with OAuth2 auth supporting: get tasks, create task, update task, close task, get projects +api
+(B) Implement Todoist Sync API client for incremental sync using sync tokens for efficient bulk reads +api
+(B) Implement Todoist API-to-CalendarItem mapper handling natural language dates, label IDs, section/project hierarchy +api
+(B) Implement Google Calendar API client with OAuth2 auth supporting: list events, insert event, update event, delete event, list calendars +api
+(B) Implement Google Calendar API-to-CalendarItem mapper handling attendees, conferencing, extended properties +api
+(B) Implement Microsoft Graph API client with OAuth2 auth supporting: list events, create event, update event for Outlook calendars +api
+(B) Implement Notion API client with Bearer token auth supporting: query database, create page, update page properties +api
+(B) Implement Notion API-to-CalendarItem mapper with user-configurable property-to-field mapping via config +api
+(B) Write integration tests for each API client using recorded HTTP fixtures (go-vcr or httptest) to avoid live API calls in CI +api
+
+--- PHASE 5: CONFLICT RESOLUTION ENGINE ---
+
+(A) Implement duplicate detector that matches CalendarItems by UID, or by (Title + StartTime/DueDate) fuzzy match when UID is absent +conflict
+(A) Implement interactive conflict resolver that presents side-by-side diff of conflicting items in terminal and prompts user to pick source/target/merge/skip +conflict
+(A) Implement field-level merge mode where user can cherry-pick individual fields (title from source, date from target) during conflict resolution +conflict
+(A) Implement priority mapping conflict handler that shows source priority value, target app scale, and asks user to confirm or override mapped value +conflict
+(A) Implement data loss warning system that detects unsupported fields in target format (e.g., subtasks → Google Calendar) and prompts user: flatten to description / drop / abort +conflict
+(A) Implement tag/label mapping resolver that detects unmapped tags and prompts user to create new tags in target, map to existing, or drop +conflict
+(A) Implement recurrence downgrade handler: when RRULE fails to map to target, prompt user to accept flattened instances with date range or skip +conflict
+(A) Implement batch conflict mode with --auto-resolve flag supporting strategies: prefer-source, prefer-target, skip-conflicts, fail-on-conflict +conflict
+(A) Implement conflict resolution log that writes all decisions to a JSON file at ~/.config/calconv/conflict-log.json for audit +conflict
+(A) Write tests for duplicate detector covering: exact UID match, fuzzy title+date match, no match, multiple candidates +conflict
+(A) Write tests for data loss warning covering: subtask flattening, reminder drop, priority unmappable, tag mismatch +conflict
+
+--- PHASE 6: CLI INTERFACE ---
+
+(A) Initialize Go module with cobra CLI framework, root command with --version, --verbose, --config flags +cli
+(A) Implement `calconv convert` command with positional args: source-format, target-format, input-file, output-file +cli
+(A) Implement `calconv convert` auto-detection of source format from file extension (.ics, .csv, .json, .sqlite, .taskpaper) with --from flag override +cli
+(A) Implement `calconv convert` --from and --to flags accepting: ticktick, todoist, gcal, outlook, apple-cal, apple-reminders, sorted3, things, notion, trello, asana, omnifocus, ics +cli
+(A) Implement `calconv list-formats` command that prints all supported source and target formats with capabilities matrix (events/tasks/recurring/subtasks) +cli
+(A) Implement `calconv validate` command that parses input file, reports warnings/errors, and previews item count and field coverage without converting +cli
+(A) Implement `calconv diff` command that compares two calendar files and shows added/removed/modified items +cli
+(A) Implement `calconv sync` command that uses API connectors to pull from source app, diff with local, push to target app with conflict resolution +cli
+(A) Implement `calconv config` command for managing settings in ~/.config/calconv/config.toml: default formats, API credentials path, conflict strategy, timezone preference +cli
+(A) Implement `calconv auth` command with subcommands (login, logout, status) for managing OAuth tokens per service +cli
+(A) Implement progress bar using a terminal UI library for long-running conversions and API syncs +cli
+(A) Implement --dry-run flag on convert and sync commands that shows planned changes without writing output +cli
+(A) Implement --quiet flag that suppresses all output except errors and final summary +cli
+(A) Implement JSON and plain-text output modes via --output-format flag for scripting integration +cli
+(A) Implement stdin/stdout piping support: read from stdin when input-file is "-", write to stdout when output-file is "-" +cli
+(A) Write CLI integration tests using Go's exec.Command to verify: convert happy path, format auto-detection, --dry-run output, piped I/O, invalid input error messages +cli
+
+--- PHASE 7: CONFIGURATION & SETTINGS ---
+
+(A) Implement TOML config file loader from ~/.config/calconv/config.toml with defaults for all settings +config
+(A) Implement config option: preferred_mode = "file" | "api" controlling default connector selection +config
+(A) Implement config option: default_timezone for normalizing events without explicit timezone +config
+(A) Implement config option: conflict_strategy = "ask" | "prefer-source" | "prefer-target" | "skip" | "fail" +config
+(A) Implement config option: priority_map as custom per-app priority mapping overrides +config
+(A) Implement config option: tag_map as custom per-app tag/label name mappings +config
+(A) Implement config section: [api.ticktick], [api.todoist], [api.google], [api.microsoft], [api.notion] for client_id, client_secret, redirect_uri +config
+(A) Implement config validation on load that reports unknown keys and type mismatches with line numbers +config
+(A) Implement XDG base directory compliance: config in $XDG_CONFIG_HOME/calconv/, cache in $XDG_CACHE_HOME/calconv/, data in $XDG_DATA_HOME/calconv/ +config
+(A) Write tests for config loader covering: missing file with defaults, partial config merge, invalid TOML syntax error, unknown key warning +config
+
+--- PHASE 8: ERROR HANDLING & EDGE CASES ---
+
+(A) Implement structured error types: ParseError, ValidationError, ConflictError, APIError, PermissionError with source file/line context +errors
+(A) Implement charset detection for CSV files (UTF-8, UTF-16, Latin-1) with automatic transcoding to UTF-8 +errors
+(A) Implement date/time parser that handles ambiguous formats (MM/DD/YYYY vs DD/MM/YYYY) by inferring from locale or prompting user +errors
+(A) Implement graceful handling of oversized files with streaming parser for ICS and CSV instead of loading entire file into memory +errors
+(A) Implement partial failure mode: continue converting valid items when individual items fail, collect errors, report summary at end +errors
+(A) Implement retry logic with exponential backoff for API calls with configurable max retries +errors
+(A) Implement signal handler for SIGINT/SIGTERM that cleanly writes partial output and conflict log before exit +errors
+(A) Write tests for error handling covering: malformed CSV row, invalid ICS property, API 429 rate limit, interrupted conversion resume +errors
+
+--- PHASE 9: BUILD & DISTRIBUTION ---
+
+(A) Create Makefile with targets: build, test, lint (golangci-lint), fmt, vet, coverage, install +build
+(A) Create goreleaser config for cross-platform binary builds (darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64) +build
+(A) Create Homebrew formula in a tap repo (homebrew-calconv) with binary download, sha256 verification, and test block +build
+(A) Create GitHub Actions CI workflow: lint, test, build on push; goreleaser on tag push for releases +build
+(A) Create GitHub Actions workflow job that runs Apple bridge integration tests on macOS runner only +build
+(A) Implement `calconv --version` output including git commit hash and build date via ldflags injection +build
