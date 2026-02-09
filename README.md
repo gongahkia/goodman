@@ -29,12 +29,14 @@ Time Zone Converter [chock-full](https://www.merriam-webster.com/dictionary/choc
 
 ## Usage
 
-1. First run the below commands to clone and install `Onul` on your local machine.
+1. Clone the repo and build from source.
 
 ```console
 $ git clone https://github.com/gongahkia/onul && cd onul
-$ rm -r README.md 
+$ npm install && npm run build
 ```
+
+Alternatively, run `bash release.sh` to build and zip the extension.
 
 2. Then follow the below instructions for your corresponding browser.
 
@@ -57,7 +59,7 @@ Support for other browsers like Opera, Vivaldi have not been extensively tested,
 
 ## Architecture
 
-...
+<img src="./asset/reference/architecture.png" width="100%">
 
 ## Reference
 
