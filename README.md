@@ -2,11 +2,13 @@
 
 # `Onul`
 
-Time Zone Converter [chock-full](https://www.merriam-webster.com/dictionary/chock-full) of [hidden features](#usage).
+Browser extension that converts [Time Zones](https://en.wikipedia.org/wiki/Time_zone) in-line, [chock-full](https://www.merriam-webster.com/dictionary/chock-full) of [hidden features](#usage).
 
 ## Stack
 
-* *Script*: [TypeScript](), ...
+* *Scripting*: [TypeScript](https://www.typescriptlang.org/), [Vite](https://vite.dev/), [Vitest](https://vitest.dev/), [ESLint](https://eslint.org/), [Prettier](https://prettier.io/), [Preact](https://preactjs.com/)
+* *Parsing*: [chrono-node](https://github.com/wanasit/chrono), [Luxon](https://moment.github.io/luxon/)
+* *Platform*: [Chrome Extensions Manifest V3](https://developer.chrome.com/docs/extensions/develop/migrate/what-is-mv3)
 
 ## Screenshots
 
