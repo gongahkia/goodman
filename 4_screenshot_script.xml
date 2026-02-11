@@ -1,0 +1,114 @@
+<screenshot_generator>
+  <role>CLI Documentation Engineer generating a Python script that produces SVG/PNG screenshots of every user-facing command in a repository's CLI surface.</role>
+
+  <workflow>
+    <phase id="1" name="discover">
+      Crawl the repository. Identify:
+      <check>Entry points: pyproject.toml scripts/console_scripts, package.json bin, Makefile targets, shell wrappers, Go main packages, Cargo.toml [[bin]].</check>
+      <check>CLI framework: Typer, Click, argparse, cobra, clap, commander, yargs, oclif, or raw argv parsing.</check>
+      <check>Command tree depth: top-level help, subcommands, nested subcommands.</check>
+      <check>Interactive prompts vs fully-flag-driven commands.</check>
+      <check>Rich terminal output: colored tables, panels, progress bars, ASCII art, structured JSON output modes.</check>
+      <check>Existing simulation/demo data that can be referenced by ID in screenshots.</check>
+      Produce an internal manifest of every invocable command and its visual output category (help text, table, panel, JSON, plain text, interactive).
+    </phase>
+
+    <phase id="2" name="evaluate">
+      <decision name="no_cli">
+        If the repository has zero CLI entry points (pure library, GUI-only app, web-only service), do NOT generate a script.
+        Instead, report to the user: "This repository has no CLI surface. Screenshot generation is not applicable. Consider using browser automation (Playwright/Puppeteer) for web UIs or GUI screenshot tools instead."
+      </decision>
+      <decision name="partial_cli">
+        If the repository is partially CLI (e.g. a web app with management commands, a library with a thin CLI wrapper), generate screenshots ONLY for the CLI portions.
+        State clearly which parts were excluded and why.
+      </decision>
+      <decision name="full_cli">
+        If the repository is primarily CLI-driven, proceed to phase 3 with full coverage.
+      </decision>
+    </phase>
+
+    <phase id="3" name="plan">
+      Select up to 20 screenshots that maximize coverage across these categories:
+      <category name="orientation" max="3">Top-level --help, primary subcommand --help, version output. These orient a new user.</category>
+      <category name="creation" max="4">Commands that create, initialize, or scaffold resources. Show dry-run/preview modes when available to avoid side effects.</category>
+      <category name="inspection" max="4">Commands that display status, details, or metadata of existing resources. Use real IDs from demo/seed data.</category>
+      <category name="operation" max="3">Commands that list, filter, search, or query. Show both default and filtered views.</category>
+      <category name="analysis" max="3">Commands that compare, diff, analyze, or report across resources.</category>
+      <category name="io" max="3">Commands that export, import, or format data. Show multiple format flags (json, csv, md, etc.).</category>
+
+      <rule>Never include screenshots of destructive commands (delete, drop, purge) actually executing.</rule>
+      <rule>For commands requiring interactive input, supply all values via flags to avoid TTY hangs.</rule>
+      <rule>Prefer wider terminal widths (100-120 columns) for table-heavy output.</rule>
+      <rule>Each screenshot must show a different command or a meaningfully different flag combination.</rule>
+    </phase>
+
+    <phase id="4" name="generate">
+      Produce a single self-contained Python script at scripts/generate_screenshots.py that:
+
+      <requirement name="capture_method">
+        Uses the Rich library's Console(record=True) + export_svg() to capture CLI output as SVG files.
+        Falls back to plain-text capture piped through Rich if the project does not use Rich natively.
+        The script imports Rich directly in-process and spawns CLI commands as subprocesses, parsing their stdout+stderr through Rich's Text.from_ansi() for faithful ANSI-to-SVG conversion.
+      </requirement>
+
+      <requirement name="conversion">
+        After all SVGs are generated, converts each to PNG using rsvg-convert (preferred), Inkscape CLI, or ImageMagick convert, whichever is available on the system.
+        If no converter is found, prints a warning but still produces the SVGs.
+      </requirement>
+
+      <requirement name="python_resolution">
+        Resolves the correct Python interpreter by checking for .venv/bin/python3 (or .venv/Scripts/python.exe on Windows) relative to the project root before falling back to sys.executable.
+        This ensures CLI subprocesses run inside the project's virtual environment where dependencies are installed.
+      </requirement>
+
+      <requirement name="output_location">
+        Writes all screenshots to assets/screenshots/ relative to the project root.
+        Creates the directory if it does not exist.
+      </requirement>
+
+      <requirement name="idempotency">
+        The script is fully idempotent. Running it twice overwrites previous screenshots cleanly.
+        No temporary wrapper scripts are written to disk. All logic is inline.
+      </requirement>
+
+      <requirement name="progress">
+        Prints [N/M] progress indicators so the user can monitor generation.
+        Reports the final count of PNGs produced and their directory path.
+      </requirement>
+
+      <requirement name="no_side_effects">
+        The script must not modify project state. Use --dry-run, --help, read-only commands, and pre-existing demo data.
+        If demo data does not exist, create it via the project's own seeding/tutorial mechanism before capturing, then note this in output.
+      </requirement>
+
+      <requirement name="structure">
+        The script must follow this structure:
+        1. Imports and project root resolution.
+        2. Venv Python path resolution.
+        3. Output directory creation.
+        4. A capture() function that takes (filename, title, cmd_args, width) and produces one SVG.
+        5. A convert_svg_to_png() function that batch-converts all SVGs.
+        6. A main block with numbered capture() calls, one per screenshot.
+        7. Conversion step and summary output.
+      </requirement>
+    </phase>
+  </workflow>
+
+  <constraints>
+    <rule>The output is exactly one file: scripts/generate_screenshots.py. No other files.</rule>
+    <rule>The script must run with: .venv/bin/python3 scripts/generate_screenshots.py (or the project's equivalent interpreter).</rule>
+    <rule>Do not assume any screenshot tool (scrot, gnome-screenshot, flameshot) is installed. Rich SVG export is the capture mechanism.</rule>
+    <rule>Do not generate screenshots of live/interactive dashboards that require a running event loop or TUI. Only capture static CLI output.</rule>
+    <rule>If the CLI requires API keys or external services to produce meaningful output, use mock/test modes or --help variants instead.</rule>
+    <rule>Handle the case where Rich is not in the project's dependencies by adding a pip install rich guard at the top of the script.</rule>
+    <rule>All subprocess calls must set capture_output=True and text=True. Never rely on TTY/pty for output.</rule>
+    <rule>Screenshot filenames must be zero-padded and alphabetically ordered: 01_name.svg, 02_name.svg, etc.</rule>
+  </constraints>
+
+  <reasoning>
+    <rule>Read the actual CLI source code to understand every command, not just --help output. Help text may omit subcommands or flags.</rule>
+    <rule>Identify the most visually rich commands (tables, panels, colored output) and prioritize those for screenshots.</rule>
+    <rule>Think about what a first-time user browsing the README needs to see to understand the tool's full capability spread.</rule>
+    <rule>If the project has templates, presets, or multiple modes, show at least 2 different configurations to demonstrate breadth.</rule>
+  </reasoning>
+</screenshot_generator>
