@@ -69,3 +69,7 @@ Support for other browsers like Opera, Vivaldi have not been extensively tested,
 ## Reference
 
 The name `Onul` is in reference to the Korean word *오늘*, which roughly translates to "today".
+
+<div align="center">
+    <img src="./asset/logo/han.avif" width="75%">
+<div>
