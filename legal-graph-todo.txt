@@ -1,0 +1,104 @@
+(A) Set up Rust workspace with two crates: `legagraph-core` (graph engine, PageRank, traversal logic) and `legagraph-tui` (Ratatui frontend), using Cargo workspace with shared types crate +infra
+(A) Set up Python package `legagraph-ingest` with pyproject.toml for eyecite-based citation extraction and CourtListener DB ingestion pipeline +infra
+(A) Define IPC protocol between Python ingest layer and Rust core: use JSON-over-stdin/stdout subprocess model where Rust spawns Python as a child process for ingestion tasks +infra
+(A) Create shared schema definition (SQL migration files) for PostgreSQL tables: `opinions`, `citations`, `courts`, `dockets`, `pagerank_scores`, `user_documents`, `user_citations` +db
+(A) Write Rust DB connection pool module using `sqlx` with async PostgreSQL driver, connection string from env/config file +db
+(A) Build CLI entrypoint in Rust using `clap` with subcommands: `init-db`, `sync`, `ingest`, `compute-pagerank`, `serve-tui`, `export` +cli
+(A) Implement `init-db` subcommand: run SQL migrations to create schema, create indexes on citation source/target opinion IDs, full-text search indexes on case names +db
+(A) Write Python script `download_courtlistener.py` that uses CourtListener Bulk Data API to download opinion and citation dataset files (compressed CSV/JSON) with progress bars via `tqdm` +db
+(A) Implement resume-capable download logic in `download_courtlistener.py`: check existing file sizes, use HTTP Range headers to resume interrupted downloads +db
+(A) Write Python script `load_courtlistener.py` that streams downloaded bulk files into PostgreSQL using `psycopg` COPY protocol for high-throughput ingestion of opinions table +db
+(A) Extend `load_courtlistener.py` to ingest citation relationships into `citations` table with foreign keys to source and target opinion IDs +db
+(A) Add court metadata ingestion to `load_courtlistener.py`: populate `courts` table with court names, jurisdictions, levels (federal/state/appellate/supreme) from CourtListener bulk data +db
+(A) Create PostgreSQL GIN index on `opinions.case_name` using `pg_trgm` extension for fuzzy case name search +db
+(A) Create B-tree indexes on `citations.citing_opinion_id`, `citations.cited_opinion_id`, `opinions.court_id`, `opinions.date_filed` for fast graph traversal and filtered queries +db
+(A) Implement `sync` subcommand in Rust: shell out to Python download + load scripts sequentially, capture stdout/stderr, surface progress to user +cli
+(A) Implement Python module `citation_extractor.py` using `eyecite` library: accept raw opinion text, return list of structured citation objects with reporter, volume, page, and pin cite +ingest
+(A) Write `citation_resolver.py`: take eyecite output citations and fuzzy-match them against CourtListener `opinions` table using reporter+volume+page lookup, return matched opinion IDs +ingest
+(A) Implement user document import pipeline in Python: accept a directory path of .txt/.pdf files, extract text (use `pdfplumber` for PDFs), run through `citation_extractor.py` +ingest
+(A) Store user-imported documents in `user_documents` table with columns: id, filename, raw_text, import_timestamp +ingest
+(A) Store resolved citations from user documents in `user_citations` table linking user_document_id to matched CourtListener opinion_id, with citation string and confidence score +ingest
+(A) Implement `ingest` subcommand in Rust: accept `--path <dir>` flag, spawn Python ingest subprocess, stream JSON results back, insert into DB +cli
+(A) Build Rust graph module: load citation edges from `citations` table into an adjacency list structure (`HashMap<OpinionId, Vec<OpinionId>>`) for both forward (cites) and reverse (cited-by) directions +graph
+(A) Implement iterative PageRank algorithm in Rust: accept adjacency list, damping factor (default 0.85), convergence threshold (1e-6), max iterations (100), return HashMap<OpinionId, f64> +graph
+(A) Add chunked PageRank computation: process nodes in batches of 1M to limit peak memory, flush intermediate scores to `pagerank_scores` table between chunks +graph
+(A) Implement `compute-pagerank` subcommand: load full citation graph, run PageRank, write results to `pagerank_scores` table with columns (opinion_id, score, computed_at) +cli
+(A) Build ancestor traversal function in Rust: given opinion_id and max_depth, BFS/DFS through forward citation edges, return tree structure with depth annotations +graph
+(A) Build descendant traversal function in Rust: given opinion_id and max_depth, BFS/DFS through reverse citation edges (cases that cite this one), return tree structure +graph
+(A) Add configurable depth limit to both traversal functions: accept `--depth <n>` CLI flag (default 3), clamp to max 10 to prevent runaway queries +graph
+(A) Implement Ratatui app scaffold: async runtime with `tokio`, event loop handling keyboard input, tick events, and resize events +tui
+(A) Create TUI layout with 3 panes: left sidebar (search + results list), main content (case detail + citation tree), bottom bar (status + keybindings help) +tui
+(A) Implement search input widget in left sidebar: text input field with cursor, accepting typed characters, backspace, Enter to submit +tui
+(A) Implement search-by-citation-string mode: parse user input as legal citation (e.g., "410 U.S. 113"), query `opinions` table via reporter+volume+page match +search
+(A) Implement search-by-case-name mode: use `pg_trgm` similarity search on `opinions.case_name`, return top 20 results ranked by similarity score +search
+(A) Implement search-by-docket-number mode: exact and prefix match on `dockets.docket_number` field +search
+(A) Implement search-by-court filter: dropdown/selector widget listing courts from `courts` table, filter search results to selected court(s) +search
+(A) Implement search-by-date-range filter: accept start/end date inputs, add WHERE clause on `opinions.date_filed` BETWEEN range +search
+(A) Build combined search mode: allow user to combine case name text + court filter + date range in single query, AND-compose the filters +search
+(A) Display search results in scrollable list widget in left sidebar: show case name, citation, court, date, truncated to fit pane width +tui
+(A) Implement list navigation: j/k or arrow keys to move selection, Enter to select case and load detail view +tui
+(A) Build case detail view in main pane: display case name, full citation, court, date filed, docket number, PageRank score, opinion excerpt (first 500 chars) +tui
+(A) Build citation tree widget in main pane below case detail: render ancestors and descendants as indented tree with unicode box-drawing characters (├── └──) +tui
+(A) Make citation tree navigable: arrow keys to move between nodes, Enter on a tree node to pivot (make that case the new focus, reload tree) +tui
+(A) Show PageRank score next to each node in citation tree, formatted as scientific notation (e.g., 2.3e-5) with color gradient (higher = brighter) +tui
+(A) Add depth indicator to each tree node showing current depth level and configured max depth (e.g., [2/5]) +tui
+(A) Implement Tab key to cycle focus between search pane, results list, case detail, and citation tree +tui
+(A) Implement loading spinner widget: show animated spinner with status text ("Computing PageRank...", "Loading citations...") during async operations +tui
+(A) Display PageRank computation progress in TUI: show progress bar with percentage, nodes processed count, estimated time remaining +tui
+(A) Implement async data fetching: DB queries run on background tokio tasks, UI remains responsive with loading indicators while data loads +tui
+(A) Add error display widget: show database connection errors, query failures, and ingestion errors in bottom status bar with auto-dismiss after 5 seconds +tui
+(B) Implement `export` subcommand: accept `--opinion-id <id>` and `--depth <n>`, traverse citation subgraph, serialize to JSON file +export
+(B) Define JSON export schema: root object with `metadata` (export timestamp, depth, root opinion), `nodes` array (opinion objects with id, name, citation, court, date, pagerank), `edges` array (source_id, target_id, citation_string) +export
+(B) Add `--output <path>` flag to export subcommand, default to `./legagraph_export.json` +export
+(B) Add TUI export trigger: keybinding `e` on focused case to export current case's subgraph at configured depth to JSON +export
+(B) Show export confirmation in TUI status bar: display output file path and node/edge counts after successful export +tui
+(B) Implement config file support: read `~/.config/legagraph/config.toml` for database URL, default depth, damping factor, max search results +cli
+(B) Add `--config <path>` CLI flag to override default config file location +cli
+(B) Implement case history tracking in TUI: maintain a stack of viewed cases, allow `Backspace` or `b` to go back to previous case +tui
+(B) Add breadcrumb bar above case detail showing navigation history as clickable/selectable case names +tui
+(B) Implement `/` key to activate search mode from any pane, `Esc` to cancel search and return to previous focus +tui
+(B) Add `q` keybinding to quit TUI with confirmation prompt if unsaved export pending +tui
+(B) Add `?` keybinding to show help overlay listing all keybindings and search syntax +tui
+(B) Implement court hierarchy display: show court level (district → circuit → supreme) as visual indicator (icon or color) next to court name in results and tree +tui
+(B) Add citation count badges to tree nodes: show (cited by N) count next to each node for quick importance gauge +tui
+(B) Implement incremental PageRank update: when new user documents are ingested, recompute PageRank only for affected subgraph rather than full recomputation +graph
+(B) Add `--force` flag to `compute-pagerank` to force full recomputation even if scores exist +cli
+(B) Implement opinion text preview popup: press `p` on any tree node to show full opinion text in scrollable overlay modal +tui
+(B) Add syntax highlighting for legal citations within opinion text preview using regex-based colorization +tui
+(B) Implement date-based horizontal positioning hint in tree view: annotate tree nodes with year, sort siblings by date filed +tui
+(B) Add statistics view accessible via `s` key: show total opinions count, total citations, avg citations per case, top 10 highest PageRank cases +tui
+(B) Implement search result pagination: load 20 results at a time, `n`/`p` keys or scroll to load next/previous page +search
+(B) Add search history: store last 50 searches, accessible via up arrow in search input field +search
+(B) Implement bookmark feature: press `m` to bookmark current case, `M` to view bookmarks list, stored in local SQLite file +tui
+(B) Add multi-select in search results: `Space` to toggle selection, `Enter` to view comparative citation tree of all selected cases +tui
+(B) Implement Python `validate_db.py` script: verify CourtListener data integrity after load by checking foreign key consistency, null rates, and row counts against expected ranges +db
+(B) Add `--jurisdiction <state|federal>` filter to search, mapped to court metadata +search
+(B) Implement ancestor/descendant count summary in case detail: show total ancestor count and total descendant count at configured depth without loading full tree +tui
+(B) Add color theme support: define color palette in config.toml, apply consistently across all TUI widgets (default: dark theme with blue/cyan accent) +tui
+(B) Implement clipboard copy: `y` key on focused case copies full citation string to system clipboard via `arboard` crate +tui
+(B) Add `--log-level <debug|info|warn|error>` CLI flag, log to `~/.local/share/legagraph/legagraph.log` using `tracing` crate +cli
+(B) Implement PDF text extraction fallback chain in Python ingest: try `pdfplumber` first, fall back to `pymupdf` if extraction fails, log warning if both fail +ingest
+(B) Add citation confidence threshold to `citation_resolver.py`: only store matches with confidence >= 0.8 by default, configurable via `--min-confidence` flag +ingest
+(B) Implement parallel citation resolution in Python: use `concurrent.futures.ThreadPoolExecutor` to resolve multiple citations against DB simultaneously +ingest
+(B) Add user document import progress reporting: emit JSON progress events (files processed, citations found, citations resolved) for TUI consumption +ingest
+(B) Implement `--watch <dir>` mode for ingest subcommand: use filesystem watcher to auto-ingest new files added to watched directory +ingest
+(C) Add mouse support to TUI: clickable search results, tree nodes, and tab switching via mouse events in Ratatui +tui
+(C) Implement resize-aware layout: dynamically adjust pane widths and tree indentation based on terminal dimensions +tui
+(C) Add minimap widget for large trees: show compressed overview of full tree with viewport indicator in corner of main pane +tui
+(C) Implement graph cycle detection in traversal: detect and annotate circular citation references (case A cites B which cites A) with visual indicator +graph
+(C) Add `--format dot` option to export subcommand: output Graphviz DOT format alongside JSON for external visualization +export
+(C) Implement batch user document import: accept `.zip` or `.tar.gz` archives, extract and process all contained documents +ingest
+(C) Add deduplication to user document import: hash file contents, skip already-imported documents, report duplicates +ingest
+(C) Implement citation frequency analysis: count how many times a specific case is cited across the corpus, store in materialized view for fast lookup +graph
+(C) Add temporal citation trend view: show how citation frequency for a case changes over time as a sparkline or bar chart in TUI +tui
+(C) Implement `--since <date>` flag for descendant traversal: only show citing cases filed after specified date +graph
+(C) Add network metrics display: show betweenness centrality and clustering coefficient for focused case alongside PageRank +graph
+(C) Implement opinion diff view: when two cases are selected, show side-by-side comparison of their citation networks highlighting shared ancestors +tui
+(C) Add fuzzy search with typo tolerance using Levenshtein distance on case names (threshold: edit distance <= 2) +search
+(C) Implement saved search filters: allow user to save named filter combinations (court + date range + jurisdiction) for quick reuse +search
+(C) Add JSON import: accept previously exported JSON files to reconstruct subgraph view without DB access +export
+(C) Implement health check subcommand: verify DB connection, check table row counts, validate PageRank freshness, report status +cli
+(C) Add `--prune-orphans` flag to maintenance subcommand: remove opinions with zero inbound and zero outbound citations from graph computation +db
+(C) Implement session persistence: save TUI state (current case, search query, depth, pane focus) to disk on quit, restore on next launch +tui
+(C) Add notification when PageRank scores are stale (>7 days since last computation or new data ingested since last run) in TUI status bar +tui
+(C) Implement cross-reference detection in user documents: identify when two user-uploaded documents cite the same CourtListener opinion, surface as "related documents" +ingest
