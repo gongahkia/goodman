@@ -1,0 +1,95 @@
+(A) Set up Go module with Bubble Tea, Lip Gloss, BubbleZone, and bubbletea-charts (or termui sparkline) deps +core
+(A) Define core domain types: Model{name, paramSize, quantization, digest}, InferenceSession{modelName, pid, startedAt} +core
+(A) Define MetricSnapshot{timestamp, tps, contextUsed, contextMax, vramUsedMB, vramTotalMB, ramUsedMB, cpuPercent} +core
+(A) Implement in-memory ring buffer (fixed-size circular buffer, default 3600 entries = 1hr at 1s poll) for time-series per model +core +data
+(A) Build Ollama REST API client: GET /api/ps to list currently loaded models with size, VRAM usage, and expiry +ollama +api
+(A) Build Ollama REST API client: GET /api/tags to enumerate all locally available models with metadata +ollama +api
+(A) Build Ollama REST API client: POST /api/show to retrieve model details (parameter count, quantization, template, system prompt) +ollama +api
+(A) Implement generation stream interceptor: proxy or tap POST /api/generate and /api/chat SSE streams to calculate real-time TPS +ollama +api
+(A) Calculate tokens-per-second from Ollama's streaming response timing: count tokens emitted between first and last chunk +ollama +metrics
+(A) Extract context window usage from Ollama response metadata (prompt_eval_count + eval_count vs model context length) +ollama +metrics
+(A) Extract eval_duration, prompt_eval_duration, load_duration from Ollama response final JSON for latency breakdown +ollama +metrics
+(A) Parse Ollama server logs (tail ~/.ollama/logs/server.log) as supplementary metrics source for load/unload events +ollama +logs
+(A) Detect Ollama Prometheus endpoint (if enabled via OLLAMA_PROMETHEUS) and scrape /metrics for additional counters +ollama +prometheus
+(A) Build GPU poller interface: GPUPoller{Poll() -> []GPUMetrics{id, name, vramUsed, vramTotal, temp, utilization, powerW}} +gpu
+(A) Implement NVIDIA GPU poller: shell out to `nvidia-smi --query-gpu=index,name,memory.used,memory.total,temperature.gpu,utilization.gpu,power.draw --format=csv,nounits,noheader` at 1s interval +gpu +nvidia
+(A) Parse nvidia-smi CSV output into []GPUMetrics, handle multi-GPU systems by indexing each GPU separately +gpu +nvidia
+(A) Implement Apple Silicon unified memory poller: use `sudo powermetrics --samplers gpu_power -i 1000 -n 1` or IOKit bindings for GPU utilization +gpu +apple
+(A) For Apple Silicon, calculate effective "VRAM" from unified memory via `memory_pressure` and Ollama's reported model size +gpu +apple
+(A) Implement GPU vendor auto-detection on startup: check for nvidia-smi binary, then /sys/class/drm (AMD), then sysctl hw.model (Apple) +gpu
+(A) Build system resource poller: track host RAM usage (runtime.MemStats + /proc/meminfo or sysctl), CPU load, and Ollama process RSS +system +metrics
+(A) Implement poller orchestrator: manage multiple concurrent polling goroutines (Ollama API, GPU, system) with configurable intervals +core +poller
+(A) Use context.Context for graceful poller shutdown on SIGINT/SIGTERM, drain all channels before exit +core
+(A) Design main TUI layout: top bar (status), left pane (model list), center pane (live metrics), right pane (GPU panel), bottom bar (keybinds) +tui
+(A) Implement model list panel: show all loaded models with name, quant level, VRAM footprint, and active inference indicator +tui
+(A) Highlight currently selected model in model list, update center pane metrics to reflect selection +tui
+(A) Implement center metrics panel: display current TPS, avg TPS (last 60s), peak TPS, p50/p95 latency as numeric readout +tui +metrics
+(A) Render TPS sparkline chart (last 120 data points) using terminal block characters in center panel +tui +chart
+(A) Render context window usage as horizontal bar gauge: [used/max] with percentage and color gradient (green->yellow->red) +tui +chart
+(A) Implement GPU panel: per-GPU VRAM bar gauge, temperature, utilization %, power draw, fan speed (if available) +tui +gpu
+(A) Render VRAM usage sparkline over time (last 120 points) in GPU panel +tui +chart
+(A) Implement multi-GPU tab cycling (tab key) when multiple GPUs detected, show per-GPU detail +tui +gpu
+(A) Display total system RAM bar gauge with Ollama process RSS highlighted as separate segment +tui +system
+(A) Implement real-time log tail panel (toggleable with L key): stream last 50 lines of Ollama server log +tui +logs
+(A) Implement keyboard navigation: j/k select model, tab cycle panels, L toggle logs, q quit, ? help, r refresh +tui
+(A) Build help overlay (? key) listing all keybindings in modal popup +tui
+(A) Implement status bar showing: Ollama connection status (connected/disconnected), poll interval, uptime, last error +tui
+(A) Auto-reconnect to Ollama API on connection failure with 5s backoff, show "reconnecting..." in status bar +ollama +resilience
+(A) Handle Ollama not running: show clear "Ollama not detected at localhost:11434" message with retry option +ollama +resilience
+(A) Build CLI entry point with cobra: `ollama-ops [--host <url>] [--poll-interval <duration>] [--gpu-poll-interval <duration>]` +cli
+(A) Add `--host` flag defaulting to http://localhost:11434 for custom Ollama server address +cli
+(A) Add `--poll-interval` flag (default 1s) controlling metrics refresh rate +cli
+(A) Add `--no-gpu` flag to disable GPU polling (for headless/remote servers without GPU access) +cli
+(A) Validate CLI inputs: check host is reachable, intervals are parseable durations (min 100ms, max 60s) +cli
+(A) Wire CLI -> poller orchestrator -> ring buffers -> TUI subscription pipeline using Bubble Tea Cmd/Msg pattern +core
+(A) Implement Bubble Tea tick command dispatching metric updates to TUI at poll interval +tui +core
+(A) Write unit test: ring buffer wraps correctly at capacity, oldest entries evicted +test +core
+(A) Write unit test: TPS calculation from mock token stream timestamps produces correct tokens/sec +test +metrics
+(A) Write unit test: nvidia-smi CSV parser handles single-GPU and multi-GPU output +test +gpu
+(A) Write unit test: Ollama /api/ps response JSON deserialization with multiple loaded models +test +ollama
+(A) Write integration test: start poller with mock Ollama HTTP server, verify ring buffer fills with correct snapshots +test +integration
+(A) Write integration test: GPU poller gracefully returns empty metrics when nvidia-smi not found +test +gpu
+(B) Implement AMD GPU poller: parse `rocm-smi --showmeminfo vram --showtemp --showuse --csv` output +gpu +amd
+(B) Handle AMD multi-GPU via rocm-smi device index enumeration +gpu +amd
+(B) Implement Apple Silicon Neural Engine utilization via `ioreg -l -w 0 | grep -i ane` if available +gpu +apple
+(B) Detect and display Ollama model loading progress (model download/pull percentage) from API or log parsing +ollama +progress
+(B) Implement inference request counter: track total requests, active concurrent requests, requests/min per model +ollama +metrics
+(B) Calculate and display time-to-first-token (TTFT) metric separately from overall TPS +ollama +metrics
+(B) Track prompt eval speed vs generation speed as separate sparklines (prefill TPS vs decode TPS) +tui +chart
+(B) Implement model comparison view (c key): side-by-side metrics for two selected models +tui +compare
+(B) Add latency histogram view (h key): distribution of response latencies as horizontal bar chart +tui +chart
+(B) Implement threshold-based TUI alerts: flash status bar red when VRAM >90%, TPS drops >50% from rolling avg, temp >85C +tui +alerts
+(B) Add configurable alert thresholds via CLI flags: --vram-warn <pct> --tps-warn <pct-drop> --temp-warn <celsius> +cli +alerts
+(B) Implement alert notification panel: scrollable list of timestamped alerts, dismissable with d key +tui +alerts
+(B) Play terminal bell (BEL char) on critical alerts if --bell flag is set +cli +alerts
+(B) Implement model lifecycle tracking: detect load/unload events from Ollama logs, show timeline in detail view +ollama +lifecycle
+(B) Add request latency breakdown waterfall: load_duration + prompt_eval_duration + eval_duration stacked bar +tui +chart
+(B) Implement "zoom" on sparkline charts: +/- keys to adjust time window (30s / 1m / 5m / 15m / 1hr) +tui +chart
+(B) Add pause/resume data collection (p key) freezing the display for analysis without stopping pollers +tui
+(B) Implement process tree view: show Ollama server PID, child runner processes, and their individual CPU/memory +system +metrics
+(B) Support remote Ollama monitoring via SSH tunnel or direct HTTPS with TLS cert validation +cli +remote
+(B) Add `--json-stream` flag: emit newline-delimited JSON metrics to stdout for piping to external tools +cli +export
+(B) Add `--csv` flag: dump metrics snapshot to CSV file on exit for spreadsheet analysis +cli +export
+(B) Implement configurable layout presets via ~/.config/ollama-ops/layout.toml (choose which panels visible) +tui +config
+(B) Implement color theme configuration via ~/.config/ollama-ops/theme.toml with dark/light/accessible presets +tui +config
+(B) Add mouse support: click to select model, scroll sparklines, click panel to focus +tui
+(B) Write unit test: Apple Silicon memory parser correctly maps unified memory to VRAM equivalent +test +gpu
+(B) Write unit test: alert threshold triggers at exact boundary values +test +alerts
+(B) Write unit test: ring buffer time-window query returns correct subset for zoom levels +test +core
+(B) Write benchmark: TUI render cycle with 8 models loaded and 4 GPU panels at 1s poll stays under 16ms +test +perf
+(B) Write integration test: full pipeline with mock Ollama + mock nvidia-smi produces expected TUI model state +test +integration
+(C) Implement refusal detection: send configurable prompt suite to model via /api/generate, classify responses as refusal/compliance using keyword heuristics +governance +refusal
+(C) Build default refusal test prompt set: 50 prompts covering safety categories (harmful content, PII, illegal advice) +governance +refusal
+(C) Display refusal test results as pass/fail matrix in dedicated TUI panel (g key for governance view) +tui +governance
+(C) Implement accuracy eval runner: user provides JSONL eval set {prompt, expected}, run model and compute exact-match/BLEU/F1 +governance +eval
+(C) Track eval scores over multiple runs in session memory, display as trend line in governance panel +tui +governance
+(C) Implement token probability/logprob display when Ollama supports it (parse logprobs from response) +ollama +advanced
+(C) Add model memory estimation: predict VRAM needed before loading based on param count and quantization level +ollama +predict
+(C) Implement Ollama version detection and warn if running outdated version with known issues +ollama +compat
+(C) Add multi-server view: connect to multiple Ollama instances, aggregate in unified dashboard with server tabs +cli +multi
+(C) Implement webhook notifications: POST alert JSON to configurable URL for external integrations +alerts +webhook
+(C) Add disk I/O monitoring for model loading: track read throughput during model load from Ollama blob store +system +metrics
+(C) Implement energy consumption estimation from GPU power draw over time (kWh calculator) +gpu +energy
+(C) Add network throughput panel for remote Ollama: track bytes sent/received per request +system +metrics
+(C) Write E2E test: launch TUI with vhs, simulate keystrokes across all panels, validate golden screenshot output +test +e2e
+(C) Write fuzz test: feed malformed nvidia-smi/rocm-smi output to GPU parsers, verify no panics +test +fuzz
