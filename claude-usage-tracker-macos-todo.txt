@@ -1,0 +1,151 @@
+PROJECT: Claude Usage Tracker — macOS Menu Bar App + Fastfetch-style TUI HUD
+
+DATA SOURCE PRIORITY: (1) ~/.claude/ local logs [no auth], (2) Anthropic workspace API [admin key], (3) Claude.ai web session [deferred]
+STACK: SwiftUI + AppKit, Swift CLI binary for TUI, App Groups shared container, Keychain, TOML config, JSON cache
+
+=== PHASE 1: PROJECT SCAFFOLDING ===
+(A) Create Xcode project as macOS App with SwiftUI lifecycle targeting macOS 13+ +core
+(A) Set LSUIElement=YES in Info.plist to suppress Dock icon and run as agent-only app +core
+(A) Add App Groups entitlement with group identifier "group.dev.claudeusage" for shared container access between app and CLI binary +core
+(A) Add Network Client and Keychain Access Groups entitlements under App Sandbox +core
+(A) Create Swift Package Manager multi-target setup: main app target "ClaudeUsage", CLI target "claude-usage" +core
+(A) Add swift-toml SPM dependency (https://github.com/LebJe/TOMLKit) for config parsing +core
+(A) Configure App Groups shared container path constant: FileManager.containerURL(forSecurityApplicationGroupIdentifier:) stored as AppConstants.sharedContainerURL +core
+(A) Add LaunchAtLogin SPM dependency (https://github.com/sindresorhus/LaunchAtLogin-Modern) for login item support +core
+
+=== PHASE 2: CONFIG SYSTEM ===
+(A) Define Config struct with Codable: accounts [Account], pollIntervalSeconds Int (default 300), tui TUIConfig, display DisplayConfig +config
+(A) Define Account struct: id UUID, name String, type AccountType enum (claudeCode/anthropicAPI/claudeAI), isActive Bool, createdAt Date +config
+(A) Define TUIConfig struct: layout [String] (ordered field names), colorScheme String, showLogo Bool, separatorChar String, labelWidth Int +config
+(A) Define DisplayConfig struct: menubarStyle String ("icon"/"tokens"/"cost"), showBadge Bool, compactMode Bool, dualIcon Bool (default false) +config
+(A) Define AccountType enum with rawValue String; claudeCode requires no credentials, anthropicAPI requires keychain key, claudeAI is .unsupported +config
+(A) Implement ConfigManager class reading/writing ~/.config/claude-usage/config.toml using TOMLKit, creating directory if absent +config
+(A) ConfigManager.load() returns Config, falls back to Config.default if file absent or parse fails +config
+(A) ConfigManager.save(_ config: Config) serialises and writes atomically via FileManager replaceItem +config
+(A) Config.default returns Config with one claudeCode account named "Local", pollIntervalSeconds 300, sane TUIConfig defaults +config
+
+=== PHASE 3: KEYCHAIN ===
+(A) Implement KeychainManager enum with static func store(key: String, service: String, account: String) throws +keychain
+(A) Implement KeychainManager.retrieve(service: String, account: String) throws -> String +keychain
+(A) Implement KeychainManager.delete(service: String, account: String) throws +keychain
+(A) Use service="claude-usage", account=account.id.uuidString for all keychain ops +keychain
+(A) Wrap SecItem* calls in KeychainError enum: itemNotFound, duplicateItem, unexpectedData, underlying(OSStatus) +keychain
+
+=== PHASE 4: DATA MODEL & CACHE ===
+(A) Define UsageSnapshot struct: accountId UUID, timestamp Date, inputTokens Int, outputTokens Int, cacheCreationTokens Int, cacheReadTokens Int, totalCostUSD Double, modelBreakdown [ModelUsage] +cache
+(A) Define ModelUsage struct: modelId String, inputTokens Int, outputTokens Int, costUSD Double +cache
+(A) Define DailyAggregate struct: date DateComponents (year/month/day), snapshots [UsageSnapshot], totalInputTokens Int computed, totalOutputTokens Int computed, totalCostUSD Double computed +cache
+(A) Implement CacheManager writing UsageSnapshot array to shared container at "usage_cache.json" via JSONEncoder +cache
+(A) CacheManager.append(_ snapshot: UsageSnapshot) loads existing, appends, prunes entries older than 30 days, saves +cache
+(A) CacheManager.latest(forAccount id: UUID) -> UsageSnapshot? returns most recent snapshot for account +cache
+(A) CacheManager.history(forAccount id: UUID, days: Int) -> [UsageSnapshot] returns sorted ascending +cache
+(A) CacheManager.todayAggregate(forAccount id: UUID) -> DailyAggregate computes today's totals +cache
+(A) CacheManager uses file coordinator (NSFileCoordinator) for concurrent access safety between app and CLI +cache
+
+=== PHASE 5: CLAUDE CODE LOG PARSER (DATA SOURCE 1 — DEFAULT MVP) ===
+(A) Implement ClaudeCodeLogParser targeting ~/.claude/ directory +logs
+(A) ClaudeCodeLogParser.discoverSessionFiles() -> [URL] globs ~/.claude/projects/**/*.jsonl recursively +logs
+(A) Define ClaudeCodeEntry Codable matching Claude Code JSONL schema: type String, message Message?, usage Usage? +logs
+(A) Define Usage Codable: input_tokens Int, output_tokens Int, cache_creation_input_tokens Int?, cache_read_input_tokens Int? +logs
+(A) ClaudeCodeLogParser.parseFile(_ url: URL) -> [ClaudeCodeEntry] reads line-by-line, skips malformed lines silently +logs
+(A) ClaudeCodeLogParser.aggregateToday() -> UsageSnapshot sums all usage fields from today's entries across all session files, uses model "claude-code-local", zero cost (local logs lack pricing) +logs
+(A) ClaudeCodeLogParser.aggregatePeriod(days: Int) -> [UsageSnapshot] groups by calendar day, returns one snapshot per day +logs
+(A) Add FSEvents-based directory watcher on ~/.claude/projects/ to invalidate cache when new session files appear, post "ClaudeCodeLogsChanged" notification +logs
+(A) ClaudeCodeLogParser handles file permission errors gracefully, emits to Logger(subsystem:) instead of crashing +logs
+
+=== PHASE 6: ANTHROPIC API CLIENT (DATA SOURCE 2) ===
+(B) Implement AnthropicAPIClient using URLSession async/await targeting https://api.anthropic.com +api
+(B) AnthropicAPIClient.init(apiKey: String) stores key, sets default headers: x-api-key, anthropic-version: "2023-06-01", Content-Type: application/json +api
+(B) Implement AnthropicAPIClient.fetchUsage(startDate: Date, endDate: Date) async throws -> AnthropicUsageResponse calling GET /v1/usage with query params start_date, end_date (yyyy-MM-dd) +api
+(B) Define AnthropicUsageResponse Codable: data [AnthropicUsagePeriod], has_more Bool, first_id String?, last_id String? +api
+(B) Define AnthropicUsagePeriod Codable: start_time String, end_time String, input_tokens Int, output_tokens Int, cache_creation_input_tokens Int, cache_read_input_tokens Int, model String +api
+(B) AnthropicAPIClient.validateKey() async -> Bool calls GET /v1/models, returns true on 200, false on 401 +api
+(B) Implement APIError enum: invalidKey, rateLimited(retryAfter: Int?), serverError(Int), decodingFailed, networkError(Error) +api
+(B) Map HTTP 401 -> APIError.invalidKey, 429 -> APIError.rateLimited parsing Retry-After header, 5xx -> APIError.serverError +api
+(B) AnthropicAPIClient converts AnthropicUsageResponse to [UsageSnapshot] applying pricing constants per model (claude-3-5-sonnet: $3/$15 per 1M in/out, claude-3-opus: $15/$75, claude-3-haiku: $0.25/$1.25, default: $0/$0) +api
+(B) Pricing constants stored as static dict [String: (inputPer1M: Double, outputPer1M: Double)] on AnthropicAPIClient +api
+
+=== PHASE 7: POLLING SERVICE ===
+(A) Implement PollingService @MainActor class with timer: Timer? and accounts: [Account] +poll
+(A) PollingService.start(config: Config) creates repeating Timer with config.pollIntervalSeconds interval, fires immediately on start +poll
+(A) PollingService.stop() invalidates and nils timer +poll
+(A) PollingService.pollOnce() async iterates active accounts, dispatches to correct parser/client by AccountType, appends result to CacheManager +poll
+(A) PollingService.pollOnce() runs account fetches concurrently via async let or TaskGroup, max concurrency 3 +poll
+(A) PollingService posts "UsageDidUpdate" via NotificationCenter after each pollOnce completion with userInfo containing updated accountIds +poll
+(A) PollingService exposes @Published var lastPollDate: Date? and @Published var isPolling: Bool for UI binding +poll
+(A) PollingService.forceRefresh() cancels existing poll, runs pollOnce immediately +poll
+(A) PollingService reloads config from ConfigManager before each poll cycle to pick up live config changes +poll
+
+=== PHASE 8: MENU BAR ===
+(A) Implement MenuBarManager class creating NSStatusItem with variable length in NSStatusBar.system +menubar
+(A) MenuBarManager sets status item button image to SF Symbol "chart.bar.fill" with renderingMode .template by default +menubar
+(A) Implement MenuBarPopoverView SwiftUI view shown in NSPopover attached to status item button on click +menubar
+(A) MenuBarPopoverView header row: app name, last-updated relative time (e.g. "2m ago"), spinner when isPolling=true +menubar
+(A) MenuBarPopoverView account tabs or segmented control if multiple accounts configured, default to first active account +menubar
+(A) MenuBarPopoverView per-account section: input tokens today, output tokens today, cache tokens today, estimated cost today +menubar
+(A) MenuBarPopoverView 7-day trend bar chart using Swift Charts framework (macOS 13+) showing daily totalCostUSD +menubar
+(A) MenuBarPopoverView footer: "Refresh Now" button calling PollingService.forceRefresh(), "Settings…" button opening settings window +menubar
+(A) MenuBarManager updates status item button title with cost string (e.g. "$0.42") when DisplayConfig.menubarStyle == "cost" +menubar
+(A) MenuBarManager updates status item button title with token count (e.g. "12k") when DisplayConfig.menubarStyle == "tokens" +menubar
+(A) MenuBarManager observes "UsageDidUpdate" notification to refresh popover content without reopening popover +menubar
+(A) Popover width 340pt, fixed; auto-dismissed on click outside via NSPopover.behavior = .transient +menubar
+
+=== PHASE 9: SETTINGS WINDOW ===
+(A) Implement SettingsWindowController as NSWindowController opening a 600x480 SwiftUI Settings view +settings
+(A) SettingsView uses TabView with tabs: Accounts, Display, Polling, CLI, About +settings
+(A) AccountsTab: List of Account rows showing name, type badge, active toggle; add/delete buttons +settings
+(A) AccountsTab "Add Account" sheet: name TextField, AccountType Picker, conditional API key SecureField for anthropicAPI type, Save validates before dismissing +settings
+(A) AccountsTab save action: stores Account in config, stores API key in Keychain, saves config via ConfigManager +settings
+(A) AccountsTab delete: removes from config, removes from Keychain, calls ConfigManager.save +settings
+(A) AccountsTab validates anthropicAPI key on add via AnthropicAPIClient.validateKey(), shows inline error on failure +settings
+(A) DisplayTab: Picker for menubarStyle ("Icon only"/"Show cost"/"Show tokens"), Toggle showBadge, Toggle compactMode +settings
+(A) PollingTab: Slider or TextField for pollIntervalSeconds (range 60-3600), preview label "Every X minutes" +settings
+(A) CLITab: instructions to install claude-usage binary, button "Install to /usr/local/bin" running privileged copy with SMJobBless or user-confirmed shell command +settings
+(A) CLITab: .zshrc snippet TextField pre-filled with "claude-usage" showing copy-to-clipboard button +settings
+(A) CLITab: TUI layout editor: reorderable List of field name strings matching TUIConfig.layout; drag-to-reorder via .onMove +settings
+(A) AboutTab: app version from Bundle, GitHub link, data source attribution +settings
+(A) Settings window opens via NSApp.activate(ignoringOtherApps: true) + window.makeKeyAndOrderFront, reverts activation policy to .accessory on window close +settings
+
+=== PHASE 10: TUI BINARY (claude-usage CLI) ===
+(A) Create Swift executable target "claude-usage" in same Xcode project, entry point main.swift +tui
+(A) CLI binary reads shared container usage_cache.json via AppConstants.sharedContainerURL (same App Group) +tui
+(A) CLI binary reads ~/.config/claude-usage/config.toml for layout, colors, account filter +tui
+(A) Implement ANSIColor enum: black, red, green, yellow, blue, magenta, cyan, white, bright variants; escape(code:) -> String returning "\u{1B}[\(code)m" +tui
+(A) Implement TUIRenderer struct that takes [UsageSnapshot] + TUIConfig and renders to String +tui
+(A) TUIRenderer renders Claude ASCII logo (8-line block, left column, 20 chars wide) alongside data (right column) in side-by-side layout matching fastfetch style +tui
+(A) TUIRenderer field mapping: "input_tokens" -> "Input Tokens", "output_tokens" -> "Output Tokens", "cache_tokens" -> "Cache Tokens", "cost_usd" -> "Cost Today", "last_updated" -> "Updated", "model_breakdown" -> per-model sub-rows +tui
+(A) TUIRenderer pads label to TUIConfig.labelWidth (default 18), right-aligns value, applies per-field ANSI color from colorScheme +tui
+(A) TUIRenderer colorScheme "default": labels cyan, values white, header bright white, separator dark gray +tui
+(A) TUIRenderer prints separator line (TUIConfig.separatorChar repeated 40 times) between accounts +tui
+(A) CLI parses args: --account NAME (filter), --no-color (strip ANSI), --format json (JSON output), --help +tui
+(A) --format json outputs raw UsageSnapshot as JSON to stdout for piping to other tools +tui
+(A) CLI exits 0 on success, 1 if cache file absent (prints "Run ClaudeUsage.app first to populate data"), 2 on parse error +tui
+(A) CLI binary compiled with -O whole-module-optimization, target launch time <100ms +tui
+
+=== PHASE 11: NOTIFICATIONS ===
+(B) Implement NotificationManager using UNUserNotificationCenter +notify
+(B) NotificationManager.requestPermission() called once on first launch, stores result in UserDefaults +notify
+(B) NotificationManager.checkThreshold(snapshot: UsageSnapshot, limitUSD: Double) posts UNNotificationRequest if snapshot.totalCostUSD > limitUSD +notify
+(B) Notification content: title "Claude Usage Alert", body "Account '\(name)' reached $\(cost) today (limit: $\(limit))" +notify
+(B) CostLimit configurable per-account in AccountsTab Settings as optional Double field, default nil (disabled) +notify
+(B) Throttle threshold notifications: store last-notified date per account in UserDefaults, skip if already notified today +notify
+
+=== PHASE 12: PERFORMANCE & POLISH ===
+(A) All CacheManager file I/O on background DispatchQueue.global(qos: .utility), results dispatched to MainActor via Task { @MainActor in } +core
+(A) PollingService.pollOnce() wrapped in Task with .background priority, never blocks main thread +core
+(A) MenuBarPopoverView uses LazyVStack for account list to avoid rendering off-screen rows +menubar
+(A) App launches in agent mode with no visible window; first render of popover deferred until user clicks status item +core
+(A) ClaudeCodeLogParser caches file modification dates; skips re-parsing unchanged files on subsequent poll cycles +logs
+(A) UsageSnapshot encoding uses ISO8601DateEncodingStrategy for cross-binary compatibility +cache
+(A) Stale data indicator: if CacheManager.latest timestamp > pollIntervalSeconds * 2 old, MenuBar shows orange dot badge +menubar
+(A) CLI binary handles missing shared container gracefully (e.g. app not yet run) with clear exit message +tui
+
+=== PHASE 13: DUAL ICON STUB (LOW PRIORITY) ===
+(C) When DisplayConfig.dualIcon == true, create second NSStatusItem for second active account if exactly 2 accounts configured +menubar
+(C) Second NSStatusItem shows second account's cost/token in menu bar, opens same popover scrolled to that account +menubar
+(C) If dualIcon == true but fewer than 2 active accounts, ignore silently without error +menubar
+
+=== PHASE 14: CLAUDE.AI WEB SESSION STUB (DEFERRED) ===
+(C) Add AccountType.claudeAI case to enum with isSupported computed property returning false +api
+(C) In AccountsTab, show "(coming soon)" label next to Claude.ai account type option, disable Save if type selected +settings
+(C) Stub ClaudeAIWebClient struct with fetchUsage() async throws that always throws APIError.unsupported +api
