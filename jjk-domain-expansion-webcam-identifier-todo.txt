@@ -1,0 +1,66 @@
+(A) Create project root jjk-domain-identifier/ with subdirs: backend/, frontend/, corpus/, checkpoints/, models/, assets/ +infra
+(A) Create requirements.txt with pinned versions: fastapi, uvicorn[standard], opencv-python-headless, mediapipe, torch, torchvision, onnx, onnxruntime, numpy, pillow, python-dotenv, albumentations +infra
+(A) Create .env with keys: MODEL_PATH=models/jjk_classifier.onnx, CORPUS_PATH=corpus/, CONFIDENCE_THRESHOLD=0.70, TEMPORAL_WINDOW=10, CONSENSUS_FRAMES=5, MAX_FPS=15, HOST=0.0.0.0, PORT=8000 +infra
+(A) Create backend/config.py that loads all .env keys via python-dotenv and exposes typed constants; fail fast with ValueError if MODEL_PATH or CORPUS_PATH missing +backend
+(A) Define canonical class label registry in backend/labels.py as ordered list of snake_case strings matching corpus/ subdirectory names (e.g. unlimited_void, malevolent_shrine, chimera_shadow_garden, self_embodiment_of_perfection, coffin_of_the_iron_mountain, horizon_of_the_captivating_scenery, true_mutual_love, deadly_sentencing, idle_death_gamble, womb_profusion) +backend
+(A) Create corpus/ subdirectory per class label in backend/labels.py; each dir holds raw manga panel JPEGs/PNGs named arbitrarily +data
+(A) Write data_pipeline/crop_hands.py: iterate corpus/, run MediaPipe Hands (static_image_mode=True, min_detection_confidence=0.5) on each image, crop bounding-box ROI around detected hand with 20px padding, save to corpus_cropped/{class_label}/ preserving filename +data
+(A) Write data_pipeline/extract_landmarks.py: for each image in corpus_cropped/, run MediaPipe Hands, extract 21 keypoints as flat array [x0,y0,z0,...,x20,y20,z20] (63 floats), save as .npy alongside image; skip and log if no hand detected +data
+(A) Write data_pipeline/normalize_landmarks.py: load each .npy landmark file, subtract wrist keypoint (index 0) from all 21 points, divide by L2 norm of vector from wrist to middle-finger-MCP (index 9) to make scale-invariant, overwrite .npy in place +data
+(A) Write data_pipeline/augment.py: for each normalized .npy landmark, generate N_AUG=20 synthetic variants per sample by applying: random 2D rotation ±35° (rotate x,y coords around centroid), random uniform scale 0.85–1.15×, random Gaussian noise std=0.01 on all coords, random horizontal flip (negate x coords), save augmented .npy files to corpus_augmented/{class_label}/ +data
+(A) Write data_pipeline/build_dataset.py: glob all .npy files from corpus_augmented/, assign integer label from sorted labels.py list, stratified-shuffle-split 80/10/10, export X_train.npy, y_train.npy, X_val.npy, y_val.npy, X_test.npy, y_test.npy to dataset/ dir +data
+(A) Write data_pipeline/verify_dataset.py: load all split .npy files, assert shapes (N,63) and (N,), print per-class sample counts for each split to confirm balance, raise AssertionError if any class has 0 samples in any split +data
+(A) Define MLP model in backend/model_def.py as nn.Sequential: Linear(63,256), ReLU, Dropout(0.3), Linear(256,128), ReLU, Dropout(0.3), Linear(128,len(LABELS)) with Xavier uniform init on all Linear weights +model
+(A) Write backend/train.py: load dataset/ .npy splits into torch TensorDatasets with DataLoader(batch_size=64, shuffle=True), instantiate MLP, train with CrossEntropyLoss and AdamW(lr=1e-3, weight_decay=1e-4) for max 200 epochs +model
+(A) Add CosineAnnealingLR scheduler over T_max=200 epochs to train.py optimizer loop +model
+(A) Implement early stopping in train.py: track best val_loss, save checkpoint to checkpoints/best_model.pt if improved, halt training after 15 epochs without improvement, restore best weights before export +model
+(A) Log per-epoch metrics in train.py to checkpoints/training_log.csv: epoch, train_loss, val_loss, val_acc, lr +model
+(A) Print per-class precision/recall/F1 on test split at end of train.py using sklearn.metrics.classification_report with target_names from labels.py +model
+(A) Export best model in train.py to models/jjk_classifier.onnx using torch.onnx.export with input shape (1,63), opset_version=17, dynamic_axes={'input':{0:'batch'},'output':{0:'batch'}} +model
+(A) Write backend/inference.py: load models/jjk_classifier.onnx via onnxruntime.InferenceSession at module level; expose run(landmark_vec: np.ndarray) -> tuple[str|None, float] that returns (class_label, confidence) or (None, 0.0) if confidence < CONFIDENCE_THRESHOLD +model
+(A) Implement TemporalSmoother class in backend/inference.py: maintain collections.deque(maxlen=TEMPORAL_WINDOW), append class_label per frame, return majority-vote label only if it appears >= CONSENSUS_FRAMES times in window, else return None +model
+(A) Write backend/panels.py: at import time scan CORPUS_PATH subdirs matching labels.py, build dict mapping class_label -> list of absolute image file paths; expose get_panel(class_label: str) -> Path that returns random.choice of matching paths, raises KeyError if class unknown +backend
+(A) Initialize FastAPI app in backend/main.py, add CORSMiddleware(allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]) +backend
+(A) Register FastAPI startup event in main.py that calls inference.py load, panels.py scan, MediaPipe Hands init; log loaded model path and class count; call sys.exit(1) if any component fails +backend
+(A) Implement GET /health in main.py returning JSON {status:"ok", model_loaded:bool, num_classes:int, classes:list[str]} +backend
+(A) Implement GET /api/panels/{class_label} in main.py: call panels.get_panel(class_label), return FileResponse with media_type auto-detected from suffix; return 404 JSON if class_label not in registry +backend
+(A) Implement WebSocket endpoint /ws/infer in main.py: accept connection, enter async recv loop receiving JSON {frame: <base64-jpeg-string>} messages +backend
+(A) Inside /ws/infer handler: base64-decode received frame string, convert bytes to numpy uint8 array, decode with cv2.imdecode to BGR image +backend
+(A) Inside /ws/infer handler: convert BGR to RGB, run mediapipe_hands.process(rgb_frame), extract world_landmarks[0] if any hand detected, else emit {class_label:null, confidence:0, landmarks:[], panel_url:null} and continue +backend
+(A) Inside /ws/infer handler: flatten detected hand landmarks to 63-float numpy array [[lm.x,lm.y,lm.z] for lm in hand_landmarks.landmark], apply same normalize_landmarks logic from data pipeline +backend
+(A) Inside /ws/infer handler: pass normalized vector to inference.run(), pass result through TemporalSmoother.update(), get smoothed_label; if smoothed_label not None, call panels.get_panel(smoothed_label) for panel path +backend
+(A) Inside /ws/infer handler: emit JSON {class_label: str|null, confidence: float, landmarks: [[x,y,z]×21], panel_url: str|null} where panel_url is relative URL string /api/panels/{class_label} or null +backend
+(A) Add frame-rate gate in /ws/infer handler: store last_inference_time, skip inference and emit cached last result if elapsed < 1/MAX_FPS seconds +backend
+(A) Implement WebSocket error handling in /ws/infer: catch WebSocketDisconnect, log client IP + disconnect time, break recv loop cleanly without raising +backend
+(B) Add GET /api/classes endpoint returning {classes: list[str], count: int} +backend
+(B) Add structured detection logging in main.py: on each non-null detection append JSON line {ts, class_label, confidence, client_ip} to backend/logs/detections.jsonl, create file if absent +backend
+(A) Create frontend/index.html: single page, two-column flexbox, left col contains #webcam-canvas 640×480, right col contains #manga-panel <img> 640×480 + #label-overlay <div> +frontend
+(A) Create frontend/style.css: dark background (#0a0a0a), white text, columns side-by-side, manga panel has object-fit:contain, #label-overlay positioned absolute top-left of right col, monospace font +frontend
+(A) Create frontend/app.js: on DOMContentLoaded call initWebcam() and initWebSocket() +frontend
+(A) Implement initWebcam() in app.js: call navigator.mediaDevices.getUserMedia({video:{width:640,height:480,facingMode:'user'}}), set hidden <video id="feed"> srcObject, on loadedmetadata start renderLoop() +frontend
+(A) Implement renderLoop() in app.js: use requestAnimationFrame, throttle to MAX_FPS=15 by comparing performance.now() delta, draw video frame to #webcam-canvas via ctx.drawImage(video,0,0,640,480), call captureAndSend() +frontend
+(A) Implement captureAndSend() in app.js: call canvas.toDataURL('image/jpeg',0.7), strip data URI prefix to get raw base64, if ws.readyState===WebSocket.OPEN send JSON.stringify({frame:base64}) +frontend
+(A) Implement initWebSocket() in app.js: new WebSocket('ws://'+location.hostname+':8000/ws/infer'), set ws.onmessage to handleInference(evt), ws.onerror and ws.onclose to scheduleReconnect() +frontend
+(A) Implement handleInference(evt) in app.js: parse JSON, call drawSkeleton(landmarks) on #webcam-canvas, update #manga-panel src if panel_url non-null else set src to 'assets/no-detection.png', update #label-overlay text with class_label+confidence% or 'no sign detected' +frontend
+(A) Implement drawSkeleton(landmarks) in app.js: clear previous overlay, draw MediaPipe hand connection pairs (use hardcoded HAND_CONNECTIONS array of 21 index pairs per MediaPipe topology), scale normalized x*640 y*480, draw lines strokeStyle='#00ff88' lineWidth=2, draw circles fillStyle='#ffffff' radius=4 at each keypoint +frontend
+(A) Add hardcoded HAND_CONNECTIONS constant array in app.js matching MediaPipe Hands 21-keypoint topology: [[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]] +frontend
+(A) Implement scheduleReconnect() in app.js: exponential backoff starting 1s, doubling each attempt, cap at 30s, max 10 retries; on each attempt call initWebSocket(); update #status-dot color to red while disconnected +frontend
+(B) Add #status-dot <span> in header: 10px circle, green when ws.readyState===OPEN, red otherwise, update in handleInference and scheduleReconnect +frontend
+(B) Add CSS transition on #manga-panel: opacity 0.3s ease-in-out; in handleInference set opacity:0, update src, on image load set opacity:1 +frontend
+(B) Display human-readable display name for class_label in label overlay (e.g. unlimited_void → "Unlimited Void") using a JS lookup map LABEL_DISPLAY keyed by snake_case +frontend
+(B) Add thin progress bar below #manga-panel showing confidence value (0–100%) styled as filled bar with JJK purple accent color #7c3aed +frontend
+(A) Create assets/no-detection.png: plain dark placeholder image with centered text "no sign detected" (can be generated once with Pillow script at project setup) +frontend
+(A) Write Makefile at project root with targets: install (pip install -r requirements.txt), crop (python data_pipeline/crop_hands.py), landmarks (python data_pipeline/extract_landmarks.py), normalize (python data_pipeline/normalize_landmarks.py), augment (python data_pipeline/augment.py), dataset (python data_pipeline/build_dataset.py), train (python backend/train.py), serve (uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload) +infra
+(A) Add Makefile target pipeline: runs crop → landmarks → normalize → augment → dataset sequentially +infra
+(A) Add Makefile target all: runs pipeline → train → serve sequentially +infra
+(A) Serve frontend/index.html via FastAPI StaticFiles mount at /static and redirect GET / to /static/index.html so single uvicorn process serves both API and frontend +backend
+(A) Mount corpus/ dir as StaticFiles at /corpus in FastAPI so panel images are directly URL-addressable; update panels.py get_panel to return /corpus/{class_label}/{filename} URL string instead of file path for panel_url field +backend
+(B) Add GET /api/stats endpoint returning per-class detection counts aggregated from detections.jsonl for the current session +backend
+(C) Design game state machine in backend/game.py with states IDLE, COUNTDOWN (3s), SHOW_TARGET, JUDGING (10s window), RESULT using asyncio state transitions +game
+(C) Implement WebSocket endpoint /ws/game in main.py that manages a shared game session: broadcasts target class_label + panel_url to all connected players at round start +game
+(C) In /ws/game: accept player webcam frames same as /ws/infer, score each player per frame as score = confidence * (1 - elapsed/JUDGING_DURATION) where elapsed is seconds since SHOW_TARGET started +game
+(C) In /ws/game: at end of JUDGING state, determine winner as player with highest cumulative score, broadcast {winner, scores:{player_id:float}, correct_class, round} JSON to all clients +game
+(C) In /ws/game: track N_ROUNDS=5 rounds per session, broadcast {game_over, final_scores} after last round +game
+(C) Add game UI overlay to frontend/index.html: hidden <div id="game-overlay"> containing target-sign display (name + panel), countdown timer, per-player score bars, round counter; show/hide based on WebSocket game state messages +game
+(C) Add start-game button to frontend that connects to /ws/game WebSocket and shows game UI overlay, hiding normal inference UI +game
+(C) In game frontend: render target manga panel full-width center screen during SHOW_TARGET state, show player webcam feeds side by side below target +game
