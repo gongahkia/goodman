@@ -1,0 +1,126 @@
+(A) Create Xcode project with macOS and iOS targets in a single workspace named LookAway +core
+(A) Create local Swift Package "LookAwayCore" under Packages/ directory inside the workspace +core
+(A) Add LookAwayCore as a local package dependency to both macOS and iOS targets via Xcode package settings +core
+(A) Configure CloudKit container identifier "iCloud.com.yourapp.lookaway" in Apple Developer portal and add CloudKit entitlement to both targets' .entitlements files +sync
+(A) Add com.apple.developer.ubiquity-kvstore-identifier entitlement to both targets for NSUbiquitousKeyValueStore settings sync +sync
+(A) Enable Push Notifications capability on both targets (required for CloudKit silent push delivery) +sync
+(A) Enable Background Modes capability on iOS target with "Background fetch" and "Remote notifications" modes checked +ios
+(A) Define BreakType enum in LookAwayCore with cases: eye (20-20-20), micro, long +core
+(A) Define BreakStatus enum in LookAwayCore with cases: completed, skipped, snoozed +core
+(A) Define BreakSession struct in LookAwayCore: id (UUID), type (BreakType), scheduledAt (Date), endedAt (Date?), status (BreakStatus) +core
+(A) Implement SwiftData @Model class BreakSessionRecord mirroring all BreakSession fields for local persistence in LookAwayCore +core
+(A) Define BreakConfig struct in LookAwayCore: intervalMinutes (Int), durationSeconds (Int), isEnabled (Bool) with memberwise init +core
+(A) Define AppSettings struct in LookAwayCore: eyeConfig (BreakConfig), microConfig (BreakConfig), longConfig (BreakConfig), snoozeDurationMinutes (Int default 5), historyRetentionDays (Int default 7), isPaused (Bool) +settings
+(A) Implement AppSettings.defaults static property: eye (interval 20min, duration 20sec, enabled true), micro (interval 45min, duration 30sec, enabled true), long (interval 90min, duration 900sec, enabled true) +settings
+(A) Implement Codable conformance on AppSettings, BreakConfig, BreakType, BreakStatus for JSON serialization +settings
+(A) Implement AppSettings.clampRetention() mutating func clamping historyRetentionDays to 1...30 +settings
+(A) Define DayStat struct in LookAwayCore: date (Date), completed (Int), skipped (Int), complianceRate (Double computed as completed / max(completed+skipped, 1)) +stats
+(A) Implement BreakScheduler class in LookAwayCore with @Published nextBreak: (type: BreakType, fireDate: Date)? and @Published currentSettings: AppSettings +core
+(A) BreakScheduler.start(settings: AppSettings) computes fireDate for each enabled break type (now + intervalMinutes), picks soonest, schedules via Timer.scheduledTimer(fire:interval:repeats:block:) +core
+(A) BreakScheduler.stop() invalidates and nils all active Timer references +core
+(A) BreakScheduler.snooze(minutes: Int) invalidates current timer, updates nextBreak.fireDate to now + snooze minutes, reschedules timer +core
+(A) BreakScheduler.skip(repository: BreakHistoryRepository) saves BreakSession with status .skipped for the current break type, reschedules next break at normal interval from now +core
+(A) BreakScheduler.markCompleted(repository: BreakHistoryRepository) saves BreakSession with status .completed, reschedules next break at normal interval from now +core
+(A) BreakScheduler.pause() calls stop() and sets currentSettings.isPaused = true +core
+(A) BreakScheduler.resume() sets isPaused = false and calls start(settings: currentSettings) +core
+(A) BreakScheduler.reschedule(with settings: AppSettings) calls stop() then start(settings:) with the new settings +core
+(A) Implement BreakHistoryRepository class in LookAwayCore with init(modelContext: ModelContext) +core
+(A) BreakHistoryRepository.save(_ session: BreakSession) inserts a new BreakSessionRecord into the SwiftData ModelContext and calls try? context.save() +core
+(A) BreakHistoryRepository.fetchSessions(from: Date, to: Date) -> [BreakSession] performs SwiftData FetchDescriptor with predicate scheduledAt >= from && scheduledAt <= to +core
+(A) BreakHistoryRepository.pruneOldRecords(retentionDays: Int) deletes all BreakSessionRecord entries where scheduledAt < (today minus retentionDays) +core
+(A) BreakHistoryRepository.dailyStats(for days: Int) -> [DayStat] groups fetched sessions by calendar day and maps to DayStat array sorted ascending by date +stats
+(A) Implement SettingsSyncService in LookAwayCore using NSUbiquitousKeyValueStore.default +sync
+(A) SettingsSyncService.push(_ settings: AppSettings) JSON-encodes settings and stores under NSUbiquitousKeyValueStore key "app_settings", then calls synchronize() +sync
+(A) SettingsSyncService.pull() -> AppSettings? reads "app_settings" key from NSUbiquitousKeyValueStore, JSON-decodes and returns AppSettings or nil +sync
+(A) SettingsSyncService.observeChanges(handler: @escaping (AppSettings) -> Void) registers NotificationCenter observer for NSUbiquitousKeyValueStoreDidChangeExternallyNotification and calls handler with pulled settings +sync
+(A) SettingsSyncService.stopObserving() removes the NSUbiquitousKeyValueStoreDidChangeExternallyNotification observer +sync
+(A) Implement CloudKitSyncService in LookAwayCore referencing CKContainer(identifier: "iCloud.com.yourapp.lookaway").privateCloudDatabase +sync
+(A) CloudKitSyncService.uploadSession(_ session: BreakSession) creates CKRecord(recordType: "BreakSession") with fields id (String), type (String), scheduledAt (Date), status (String) and calls database.save() +sync
+(A) CloudKitSyncService.fetchSessions(since date: Date) async -> [BreakSession] runs CKQuery on "BreakSession" with NSPredicate("modificationDate > %@", date) and maps CKRecord to BreakSession +sync
+(A) CloudKitSyncService.sync(repository: BreakHistoryRepository) fetches remote sessions since lastSyncDate, saves new ones locally, then uploads local sessions that have no matching remote CKRecord +sync
+(A) Store and retrieve lastSyncDate in UserDefaults under key "ck_last_sync_date"; update to Date() after each successful CloudKitSyncService.sync() call +sync
+(A) CloudKitSyncService wraps all CKDatabase calls in do-catch; on CKError.networkUnavailable or CKError.quotaExceeded log the error and return without crashing +sync
+(B) CloudKitSyncService on CKError.accountTemporarilyUnavailable posts a NotificationCenter notification that UI layers observe to show a non-blocking banner +sync
+(A) Implement BreakSessionRecord CKRecord conflict resolution: when same UUID exists locally and remotely with differing status, prefer completed > snoozed > skipped +sync
+(A) macOS: Set LSUIElement = YES in macOS target Info.plist so the app runs as a menu bar agent with no Dock icon +macos
+(A) macOS: Implement AppDelegate class conforming to NSApplicationDelegate; instantiate BreakScheduler, BreakHistoryRepository, SettingsSyncService, CloudKitSyncService as shared singletons in applicationDidFinishLaunching +macos
+(A) macOS: In applicationDidFinishLaunching call BreakHistoryRepository.pruneOldRecords(retentionDays: settings.historyRetentionDays) to clean stale data on each launch +macos
+(A) macOS: In applicationWillTerminate persist Date() to UserDefaults key "last_break_fire_date" so scheduler can offset the first break after relaunch +macos
+(A) macOS: On launch read UserDefaults "last_break_fire_date"; if time since that date < intervalMinutes for next break type, offset the first break fireDate accordingly so a break does not fire immediately after relaunch +macos
+(A) macOS: Create NSStatusItem with length NSStatusItem.variableLength and set button image to NSImage(systemSymbolName: "eye", accessibilityDescription: "LookAway") as template image +macos
+(A) macOS: Toggle NSStatusItem button image to NSImage(systemSymbolName: "eye.slash") when isPaused == true +macos
+(A) macOS: Show red NSStatusItem.button.appearsDisabled = false and overlay a red dot badge when break is overdue by more than 2 minutes (fireDate + 120s < Date()) +macos
+(A) macOS: Build NSMenu with items: disabled label "[Type] break in MM:SS" updated every second via Timer, NSMenuItem.separator(), "Pause Breaks"/"Resume Breaks" toggling on state, "Take Break Now", "Snooze [N] min", NSMenuItem.separator(), "Open LookAway", NSMenuItem.separator(), "Quit LookAway" +macos
+(A) macOS: "Take Break Now" NSMenuItem action fires the earliest enabled break type immediately by calling BreakScheduler.markCompleted then triggering overlay +macos
+(A) macOS: Create WindowGroup SwiftUI scene as the main settings/dashboard window; open it from "Open LookAway" menu item using NSApp.setActivationPolicy(.regular) then NSApp.activate(ignoringOtherApps: true) +macos
+(A) macOS: Implement NavigationSplitView with sidebar items [Dashboard, Schedule, Statistics, Settings] bound to a @State selectedItem enum +macos
+(A) macOS DashboardView: CountdownRing component showing next break type label and live MM:SS countdown updated by Timer.publish(every: 1, on: .main, in: .common) +macos
+(A) macOS DashboardView: large Text showing today's compliance percentage with subtitle "Today's compliance" below it +macos
+(A) macOS DashboardView: three Toggle rows bound to AppSettings.eyeConfig.isEnabled, microConfig.isEnabled, longConfig.isEnabled; onChange calls BreakScheduler.reschedule() +macos
+(A) macOS DashboardView: "Pause All" / "Resume" Button calling BreakScheduler.pause() or resume() depending on isPaused state +macos
+(A) macOS ScheduleView: three GroupBox sections (Eye Break, Micro Break, Long Break) each with Stepper for intervalMinutes (range 1...120, label "Every \(n) min") and Stepper for durationSeconds (range 5...3600, label "For \(n) sec") +macos
+(A) macOS ScheduleView: "Restore Defaults" button at bottom that resets currentSettings to AppSettings.defaults and calls BreakScheduler.reschedule() +macos
+(A) macOS StatisticsView: Swift Charts Chart with two BarMark series per date — completed (color .green) and skipped (color .red) — using DayStat data from BreakHistoryRepository.dailyStats() +stats
+(A) macOS StatisticsView: date range SegmentedPicker with options [7, 14, 30] days controlling the dailyStats query range +stats
+(A) macOS StatisticsView: summary HStack below chart showing total sessions (Int), overall completion rate (Double formatted as %) and streak days (Int) from ComplianceCalculator +stats
+(A) macOS StatisticsView chart legend: HStack with two colored rounded rectangles (green = Completed, red = Skipped) +stats
+(A) macOS SettingsView: Stepper "Snooze duration: \(n) min" bound to snoozeDurationMinutes (range 1...30) +settings
+(A) macOS SettingsView: Stepper "Keep history for \(n) days" bound to historyRetentionDays (range 1...30) with onChange { BreakHistoryRepository.pruneOldRecords($0) } +settings
+(A) macOS SettingsView: Toggle "Launch at Login" bound to LaunchAtLoginService.isEnabled +macos
+(A) macOS SettingsView: Text "Last synced: [formatted date]" and Button "Sync Now" calling CloudKitSyncService.sync() +sync
+(A) Implement CountdownRing SwiftUI view: ZStack of Circle().stroke(lineWidth: 8) background and Circle().trim(from: 0, to: progress).stroke(style: StrokeStyle(lineWidth: 8, lineCap: .round)) foreground, animated with .animation(.linear(duration: 1)) +macos
+(A) macOS: Implement LaunchAtLoginService wrapping SMAppService.mainApp.register() and unregister() +macos
+(A) macOS LaunchAtLoginService.isEnabled computed var returns SMAppService.mainApp.status == .enabled +macos
+(A) macOS LaunchAtLoginService.enable() calls try? SMAppService.mainApp.register() and logs any SMAppServiceError +macos
+(A) macOS LaunchAtLoginService.disable() calls try? SMAppService.mainApp.unregister() +macos
+(A) macOS: Implement BreakOverlayWindowController holding an array of NSWindow, one per screen in NSScreen.screens +macos
+(A) macOS BreakOverlayWindowController.show(breakType: BreakType, duration: Int) creates one NSWindow per NSScreen.screens entry with styleMask .borderless, level .screenSaver, collectionBehavior [.canJoinAllSpaces, .fullScreenAuxiliary], isOpaque false, backgroundColor .clear +macos
+(A) macOS: Each overlay NSWindow hosts a SwiftUI BreakOverlayView via NSHostingView set as contentView +macos
+(A) macOS BreakOverlayView: NSVisualEffectView wrapped in UIViewRepresentable with material .fullScreenUI and blendingMode .behindWindow as ZStack background layer +macos
+(A) macOS BreakOverlayView center content for .eye type: large SF Symbol "eye" image, title "Eye Break", instruction Text "Look at something 20 feet away for 20 seconds", CountdownRing with duration countdown +macos
+(A) macOS BreakOverlayView center content for .micro and .long types: breathing circle (Circle that scales from 0.5 to 1.0 using withAnimation(.easeInOut(duration: 4).repeatForever(autoreverses: true))), title, instruction Text "Relax and breathe", CountdownRing countdown +macos
+(A) macOS BreakOverlayView: Snooze button bottom-left with label "Snooze \(snoozeDurationMinutes) min" that calls BreakScheduler.snooze() and dismisses all overlay windows +macos
+(A) macOS BreakOverlayView: Skip button bottom-right with label "Skip" that calls BreakScheduler.skip() and dismisses all overlay windows +macos
+(A) macOS BreakOverlayWindowController.show() animates each window alphaValue from 0 to 1 over 0.3s via NSAnimationContext.runAnimationGroup() +macos
+(A) macOS BreakOverlayWindowController.dismiss() animates alphaValue from 1 to 0 over 0.3s then calls window.orderOut(nil) in completion block +macos
+(A) macOS: Play NSSound(named: NSSound.Name("Glass"))?.play() immediately before showing overlay windows +macos
+(A) macOS: Before showing overlay check NSWorkspace.shared.frontmostApplication; if it is running fullscreen (CGWindowListCopyWindowInfo checking kCGWindowLayer == 0 and kCGWindowIsOnscreen == 1 for that app's PID) then call BreakScheduler.markCompleted silently instead of showing overlay +macos
+(A) macOS: Before showing overlay check CGSessionCopyCurrentDictionary()?["CGSSessionScreenIsLocked"] as? Bool; if true call BreakScheduler.markCompleted silently and skip overlay +macos
+(A) macOS: In applicationDidFinishLaunching check UserDefaults "hasOnboarded"; if false present onboarding NSWindow as sheet over main window +macos
+(A) macOS onboarding page 1: VStack with large "eye" SF Symbol, title "20-20-20 Rule", body text explaining the rule, Next button advancing to page 2 +onboarding
+(A) macOS onboarding page 2: VStack with breathing circle animation preview, title "Rest Breaks", body text explaining micro and long breaks, Next button advancing to page 3 +onboarding
+(A) macOS onboarding page 3: VStack with Toggle for launch at login, Button "Enable Notifications" calling UNUserNotificationCenter.current().requestAuthorization([.alert,.sound]), Button "Get Started" that sets UserDefaults "hasOnboarded" = true and dismisses sheet +onboarding
+(A) macOS: Request UNAuthorizationOptions [.alert, .sound] via UNUserNotificationCenter on first launch for system notification fallback when overlay is dismissed early +macos
+(A) iOS: Create @main SwiftUI App struct; in init create ModelContainer for [BreakSessionRecord].self and inject as environment value +ios
+(A) iOS: On init request UNAuthorizationOptions [.alert, .sound, .badge] via UNUserNotificationCenter.current().requestAuthorization and store Bool result in UserDefaults "notif_granted" +ios
+(A) iOS: Implement TabView with tabs Dashboard (systemImage "house"), Schedule (systemImage "clock"), Statistics (systemImage "chart.bar"), Settings (systemImage "gear") +ios
+(A) iOS DashboardView: Text showing next break type and countdown (MM:SS) updated by Timer.publish, Text showing today compliance %, three Toggle rows for break types +ios
+(A) iOS ScheduleView: List with three Section headers (Eye Break, Micro Break, Long Break) each containing Stepper for interval (1...120 min) and Stepper for duration (5...3600 sec) +ios
+(A) iOS StatisticsView: Swift Charts BarMark chart matching macOS design, date range Picker [7, 14, 30], summary row with total sessions / rate / streak +ios
+(A) iOS SettingsView: Stepper for snooze duration, Stepper for retention days, iCloud sync status Text and "Sync Now" Button, "Request Notification Permission" Button shown if notif_granted == false +ios
+(A) iOS: Implement NotificationScheduler struct with schedule(settings: AppSettings) that cancels all pending UNNotificationRequests then creates one UNNotificationRequest per enabled break type with UNTimeIntervalNotificationTrigger(timeInterval: intervalMinutes*60, repeats: true) +ios
+(A) iOS NotificationScheduler: UNNotificationContent for eye break sets title "Eye Break", body "Look at something 20 feet away for 20 seconds", sound .default +ios
+(A) iOS NotificationScheduler: UNNotificationContent for micro break sets title "Micro Break", body "Step away and relax for a moment", sound .default +ios
+(A) iOS NotificationScheduler: UNNotificationContent for long break sets title "Long Break", body "Take a full break and breathe deeply", sound .default +ios
+(A) iOS: Define UNNotificationCategory "BREAK_CATEGORY" with actions: UNNotificationAction(identifier: "SNOOZE", title: "Snooze \(n) min", options: []) and UNNotificationAction(identifier: "DONE", title: "Done", options: .foreground) +ios
+(A) iOS: Register the BREAK_CATEGORY with UNUserNotificationCenter.current().setNotificationCategories() in app init +ios
+(A) iOS: Implement UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:) — on "SNOOZE" response cancel existing notification for that category and schedule new one offset by snoozeDurationMinutes; on "DONE" save completed BreakSession via BreakHistoryRepository +ios
+(A) iOS: Register BGAppRefreshTask identifier "com.yourapp.lookaway.refresh" in Info.plist key BGTaskSchedulerPermittedIdentifiers +ios
+(A) iOS: BGAppRefreshTask handler calls NotificationScheduler.schedule(settings:) to recalibrate, then schedules next BGAppRefreshTask with earliestBeginDate = now + 15 min +ios
+(A) iOS: In App.onReceive(UIApplication.didBecomeActiveNotification) cancel all pending notifications and call NotificationScheduler.schedule(settings:) to recalibrate timing from now +ios
+(A) iOS: Show full-screen SwiftUI sheet when app is active (foreground) and a break fires — sheet contains break type title, breathing animation or eye icon, CountdownRing, Snooze and Done buttons; dismiss on Snooze or Done +ios
+(A) iOS: In App init check UserDefaults "hasOnboarded"; if false show onboarding as fullScreenCover +ios
+(A) iOS onboarding page 1 (TabView .page style): SF Symbol "eye.fill", title, 20-20-20 explanation text, "Next" button +onboarding
+(A) iOS onboarding page 2: breathing circle preview animation, micro/long break explanation, "Next" button +onboarding
+(A) iOS onboarding page 3: Button "Enable Notifications" calling requestAuthorization, Toggle "Enable Eye Breaks" / "Micro Breaks" / "Long Breaks", "Get Started" button sets hasOnboarded and dismisses cover +onboarding
+(A) iOS: On app open call CloudKitSyncService.sync() and SettingsSyncService.pull() to load remote settings before rendering UI +ios
+(A) Implement ComplianceCalculator.streakDays(stats: [DayStat]) -> Int counting consecutive days ending today where complianceRate >= 0.8 (returns 0 if today's rate < 0.8) +stats
+(A) Implement ComplianceCalculator.overallRate(stats: [DayStat]) -> Double as sum(completed) / max(sum(completed)+sum(skipped), 1) +stats
+(B) macOS: Add "Pause until tomorrow" NSMenuItem that calls BreakScheduler.pause() and schedules a Timer firing at next midnight to call resume() +macos
+(B) macOS: Observe NSWorkspace.didActivateApplicationNotification to re-evaluate fullscreen presentation mode detection on every app switch without polling +macos
+(B) iOS: Set UNUserNotificationCenter badge count to number of breaks skipped today; clear to 0 on UIApplication.didBecomeActiveNotification +ios
+(B) macOS: SettingsSyncService.observeChanges handler calls BreakScheduler.reschedule(with:) with the incoming remote settings so schedule stays in sync across devices after iCloud change +sync
+(B) Write XCTest unit tests for BreakScheduler: test snooze() offsets fireDate by correct minutes, test skip() saves skipped BreakSession, test markCompleted() saves completed BreakSession +core
+(B) Write XCTest unit tests for ComplianceCalculator: streakDays returns 0 for all-skipped input, returns N for N consecutive fully-compliant days, handles empty array +stats
+(C) Add macOS app icon assets (1024x1024 png) and iOS app icon assets (1024x1024 png) using "eye" SF Symbol as the base design element in Assets.xcassets +macos +ios
+(C) macOS StatisticsView: export stats as CSV via NSSavePanel writing date, completed, skipped columns per row +stats
