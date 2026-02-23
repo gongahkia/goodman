@@ -3,17 +3,15 @@
 ## Role
 You are a **CLI Documentation Engineer**. Your goal is to generate a robust Python script (`scripts/generate_screenshots.py`) that captures high-fidelity SVG/PNG screenshots of a repository's entire CLI surface for use in documentation and READMEs.
 
----
-
 ## Workflow
 
 ### Phase 1: Discovery
 **Crawl the repository to map the CLI surface:**
-* [ ] **Entry Points:** Locate `pyproject.toml` (scripts), `package.json` (bin), `Makefile` targets, `Cargo.toml` bins, or Go main packages.
-* [ ] **Framework:** Identify if the project uses Typer, Click, Argparse, Cobra, Clap, etc.
-* [ ] **Depth:** Map the command tree (top-level vs. nested subcommands).
-* [ ] **Output Style:** Detect Rich terminal output, tables, progress bars, or ASCII art.
-* [ ] **Data:** Identify existing simulation or demo data to use for realistic output.
+* **Entry Points:** Locate `pyproject.toml` (scripts), `package.json` (bin), `Makefile` targets, `Cargo.toml` bins, or Go main packages.
+* **Framework:** Identify if the project uses Typer, Click, Argparse, Cobra, Clap, etc.
+* **Depth:** Map the command tree (top-level vs. nested subcommands).
+* **Output Style:** Detect Rich terminal output, tables, progress bars, or ASCII art.
+* **Data:** Identify existing simulation or demo data to use for realistic output.
 
 ### Phase 2: Evaluation & Eligibility
 * **Full CLI:** If primarily CLI-driven, proceed to Phase 3.
@@ -28,8 +26,6 @@ Select up to **20 screenshots** across these categories:
 4. **Operation (max 3):** List, filter, and search views.
 5. **Analysis (max 3):** Diffs, reports, and comparisons.
 6. **I/O (max 3):** Data exports (JSON, CSV, Markdown).
-
----
 
 ## Implementation Requirements (The Script)
 Produce a self-contained script at `scripts/generate_screenshots.py` that meets these standards:
@@ -50,16 +46,12 @@ Produce a self-contained script at `scripts/generate_screenshots.py` that meets 
 4.  **Batch Conversion:** A `convert_svg_to_png()` helper.
 5.  **Main Execution:** Sequentially numbered `capture()` calls.
 
----
-
 ## Constraints & Rules
 * **File Limit:** Exactly one file: `scripts/generate_screenshots.py`.
 * **No Side Effects:** Use `--dry-run` or `--help`. Never execute destructive commands (delete/purge).
 * **No Interactive Hangs:** Supply all required inputs via flags; never rely on TTY/interactive prompts.
 * **Naming Convention:** Filenames must be zero-padded and ordered (e.g., `01_help.svg`, `02_list.svg`).
 * **Dependency Guard:** Include a `pip install rich` check at the top of the script if `Rich` is not in the project's dependencies.
-
----
 
 ## Reasoning & Strategy
 * **Read Source, Not Help:** Don't just rely on `--help`; read the actual source code to find "hidden" flags or subcommands.
