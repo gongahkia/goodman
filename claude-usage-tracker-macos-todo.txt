@@ -23,6 +23,15 @@ STACK: SwiftUI + AppKit, Swift CLI binary for TUI, App Groups shared container, 
 (A) ConfigManager.load() returns Config, falls back to Config.default if file absent or parse fails +config
 (A) ConfigManager.save(_ config: Config) serialises and writes atomically via FileManager replaceItem +config
 (A) Config.default returns Config with one claudeCode account named "Local", pollIntervalSeconds 300, sane TUIConfig defaults +config
+(A) Define SparklineConfig struct: enabled Bool (default true), windowHours Int (default 168), style String ("cost"/"tokens"), resolution Int (default 24 data points) +config
+(A) Define ForecastConfig struct: enabled Bool (default true), showInPopover Bool (default true), showInTUI Bool (default false) +config
+(B) Define WebhookConfig struct: enabled Bool (default false), url String, events [String] (e.g. ["threshold","daily_digest"]), payloadTemplate String? +config
+(A) Define AnalyticsConfig struct: enabled Bool (default true), showMonthlyView Bool (default true), showHeatmap Bool (default false) +config
+(B) Define ModelOptimizerConfig struct: enabled Bool (default true), cheapThresholdTokens Int (default 1000), showInPopover Bool (default true) +config
+(A) Define iCloudSyncConfig struct: enabled Bool (default false), localOnly Bool (default true), containerIdentifier String (default "iCloud.dev.claudeusage") +config
+(A) Define GlobalHotkeyConfig struct: enabled Bool (default true), modifiers [String] (default ["option","command"]), key String (default "c") +config
+(C) Define AutomationRule struct in config layer: id UUID, name String, triggerType String ("cost_gt"/"tokens_gt"), threshold Double, shellCommand String, lastFiredAt Date?, enabled Bool; stored as [[automations]] array in TOML +config
+(A) Extend Config struct to include: sparkline SparklineConfig, forecast ForecastConfig, webhook WebhookConfig, analytics AnalyticsConfig, modelOptimizer ModelOptimizerConfig, iCloudSync iCloudSyncConfig, hotkey GlobalHotkeyConfig, automations [AutomationRule] +config
 
 === PHASE 3: KEYCHAIN ===
 (A) Implement KeychainManager enum with static func store(key: String, service: String, account: String) throws +keychain
@@ -41,6 +50,12 @@ STACK: SwiftUI + AppKit, Swift CLI binary for TUI, App Groups shared container, 
 (A) CacheManager.history(forAccount id: UUID, days: Int) -> [UsageSnapshot] returns sorted ascending +cache
 (A) CacheManager.todayAggregate(forAccount id: UUID) -> DailyAggregate computes today's totals +cache
 (A) CacheManager uses file coordinator (NSFileCoordinator) for concurrent access safety between app and CLI +cache
+(A) Define ForecastSnapshot struct: accountId UUID, generatedAt Date, projectedEODCostUSD Double, projectedEOWCostUSD Double, projectedEOMCostUSD Double, burnRatePerHour Double +cache
+(A) Implement ForecastEngine.compute(history: [UsageSnapshot], now: Date) -> ForecastSnapshot: derive hourly burn rate from today's snapshots, extrapolate linearly to end-of-day/week/month; clamp projections at zero +cache
+(B) Define ModelHint struct: accountId UUID, date Date, expensiveModelTokens Int, cheaperAlternativeExists Bool, estimatedSavingsUSD Double, recommendedModel String +cache
+(B) Implement ModelOptimizerAnalyzer.analyze(breakdown: [ModelUsage], config: ModelOptimizerConfig) -> ModelHint?: if expensive-model token share > cheapThresholdTokens and cheaper alternative exists, compute savings delta using AnthropicAPIClient.pricingConstants +cache
+(A) CacheManager.latestForecast(forAccount id: UUID) -> ForecastSnapshot? reads "forecast_cache.json" in shared container +cache
+(A) CacheManager.saveForecast(_ forecast: ForecastSnapshot) writes/overwrites "forecast_cache.json" in shared container +cache
 
 === PHASE 5: CLAUDE CODE LOG PARSER (DATA SOURCE 1 — DEFAULT MVP) ===
 (A) Implement ClaudeCodeLogParser targeting ~/.claude/ directory +logs
@@ -92,7 +107,7 @@ STACK: SwiftUI + AppKit, Swift CLI binary for TUI, App Groups shared container, 
 
 === PHASE 9: SETTINGS WINDOW ===
 (A) Implement SettingsWindowController as NSWindowController opening a 600x480 SwiftUI Settings view +settings
-(A) SettingsView uses TabView with tabs: Accounts, Display, Polling, CLI, About +settings
+(A) SettingsView uses TabView with tabs: Accounts, Display, Polling, Analytics, Integrations, Automations, Sync, CLI, About +settings
 (A) AccountsTab: List of Account rows showing name, type badge, active toggle; add/delete buttons +settings
 (A) AccountsTab "Add Account" sheet: name TextField, AccountType Picker, conditional API key SecureField for anthropicAPI type, Save validates before dismissing +settings
 (A) AccountsTab save action: stores Account in config, stores API key in Keychain, saves config via ConfigManager +settings
@@ -104,6 +119,11 @@ STACK: SwiftUI + AppKit, Swift CLI binary for TUI, App Groups shared container, 
 (A) CLITab: .zshrc snippet TextField pre-filled with "claude-usage" showing copy-to-clipboard button +settings
 (A) CLITab: TUI layout editor: reorderable List of field name strings matching TUIConfig.layout; drag-to-reorder via .onMove +settings
 (A) AboutTab: app version from Bundle, GitHub link, data source attribution +settings
+(A) AnalyticsTab: Toggle for ForecastConfig.enabled ("Show spend forecasts"), Toggle ForecastConfig.showInPopover, Toggle ForecastConfig.showInTUI, Toggle AnalyticsConfig.showMonthlyView ("Show monthly view in History"), Toggle AnalyticsConfig.showHeatmap ("Show hourly usage heatmap"), Toggle ModelOptimizerConfig.enabled ("Show model cost hints"), Stepper ModelOptimizerConfig.cheapThresholdTokens, Toggle ModelOptimizerConfig.showInPopover; all changes persist via ConfigManager.save +settings
+(B) IntegrationsTab: Toggle WebhookConfig.enabled, TextField WebhookConfig.url (validated as URL on input), MultiSelect checkboxes for WebhookConfig.events (["threshold","daily_digest","weekly_summary"]), TextEditor WebhookConfig.payloadTemplate (optional JSON template with {{variables}}), Button "Send Test Payload" calling WebhookService.sendTest() showing inline success/error badge +settings
+(A) HotkeyTab (embedded in Display or as subtab): Toggle GlobalHotkeyConfig.enabled, key recorder view (custom NSView wrapping Carbon event tap) showing current binding e.g. "⌥⌘C", button "Reset to Default" restoring ["option","command"]+"c" +settings
+(C) AutomationsTab: List of AutomationRule rows showing name, trigger summary, enabled toggle; Add button opens sheet: name TextField, triggerType Picker (Cost >  / Tokens >), threshold TextField, shellCommand TextField, test "Run Now" button with stdout/stderr output view; delete swipe action removes rule from config +settings
+(A) SyncTab: Toggle iCloudSyncConfig.enabled with inline note "Requires iCloud Drive", when enabled shows last sync timestamp and sync status badge (idle/syncing/error), Button "Sync Now" calling iCloudSyncManager.syncNow(), Toggle iCloudSyncConfig.localOnly; disabled state shows "iCloud sync is off — data stays local only" +settings
 (A) Settings window opens via NSApp.activate(ignoringOtherApps: true) + window.makeKeyAndOrderFront, reverts activation policy to .accessory on window close +settings
 
 === PHASE 10: TUI BINARY (claude-usage CLI) ===
@@ -149,3 +169,95 @@ STACK: SwiftUI + AppKit, Swift CLI binary for TUI, App Groups shared container, 
 (C) Add AccountType.claudeAI case to enum with isSupported computed property returning false +api
 (C) In AccountsTab, show "(coming soon)" label next to Claude.ai account type option, disable Save if type selected +settings
 (C) Stub ClaudeAIWebClient struct with fetchUsage() async throws that always throws APIError.unsupported +api
+
+=== PHASE 15: MENUBAR SPARKLINE ===
+(A) Implement SparklineRenderer struct: takes [Double] (cost or token values), bounds CGRect, returns CGPath via Core Graphics +menubar
+(A) SparklineRenderer.render(values: [Double], in rect: CGRect) -> CGPath: normalise values to [0,1], draw polyline; fill area under curve with 20% alpha stroke color +menubar
+(A) Implement MenuBarSparklineImage: creates NSImage(size: NSSize(width:22, height:16)), locks focus, draws SparklineRenderer path in white (.template rendering), unlocks +menubar
+(A) MenuBarManager.updateSparklineIcon(snapshots: [UsageSnapshot], config: SparklineConfig) samples last config.windowHours of snapshots at config.resolution evenly-spaced points, feeds to SparklineRenderer, sets result as statusItem button image +menubar
+(A) SparklineConfig.style "cost" samples totalCostUSD; "tokens" samples (inputTokens+outputTokens) +menubar
+(A) SparklineConfig.enabled == false falls back to static SF Symbol "chart.bar.fill" icon (existing behavior) +menubar
+(A) MenuBarManager regenerates sparkline image on each "UsageDidUpdate" notification; throttles to max 1 redraw per 5 seconds using DispatchWorkItem cancellation +menubar
+(A) Add SparklineTab or subsection in DisplayTab: Toggle enabled, Picker style ("Cost"/"Tokens"), Stepper windowHours (range 24–720 in steps of 24), Stepper resolution (range 12–48) +settings
+
+=== PHASE 16: SPEND FORECASTING ===
+(A) PollingService.pollOnce() calls ForecastEngine.compute after each successful aggregate, stores result via CacheManager.saveForecast +poll
+(A) MenuBarPopoverView forecast section (shown when ForecastConfig.showInPopover == true): three rows "EOD", "EOW", "EOM" with projected cost values formatted as "$X.XX", shown below today's stats +menubar
+(A) Forecast section header "Projected Spend" with SF Symbol "chart.line.uptrend.xyaxis"; hidden entirely if ForecastConfig.enabled == false +menubar
+(A) ForecastEngine returns nil if fewer than 2 UsageSnapshots exist for today (insufficient data); popover shows "Not enough data yet" placeholder in forecast section +cache
+(A) TUIRenderer adds forecast block when ForecastConfig.showInTUI == true: three rows EOD/EOW/EOM after standard fields, separated by half-separator +tui
+(A) CLI --forecast flag forces forecast block output regardless of TUIConfig setting +tui
+
+=== PHASE 17: WEBHOOK / SLACK ALERTS ===
+(B) Implement WebhookService class with URLSession async/await +integrations
+(B) WebhookService.send(event: WebhookEvent, snapshot: UsageSnapshot, config: WebhookConfig) async throws: serialises payload, POST to config.url with Content-Type application/json, throws on non-2xx +integrations
+(B) Define WebhookEvent enum: thresholdBreached(limitUSD: Double), dailyDigest, weeklyDigest +integrations
+(B) WebhookService.buildPayload(event: WebhookEvent, snapshot: UsageSnapshot, template: String?) -> Data: if template non-nil, replace {{account}}, {{cost}}, {{tokens}}, {{date}}, {{event}} tokens; else use default JSON schema +integrations
+(B) Default payload schema: {"event": String, "account": String, "timestamp": ISO8601, "cost_usd": Double, "input_tokens": Int, "output_tokens": Int} +integrations
+(B) NotificationManager.checkThreshold posts webhook via WebhookService if WebhookConfig.enabled && "threshold" in WebhookConfig.events, in addition to local UNNotification +notify
+(B) Implement PollingService daily digest: track lastDailyDigestDate in UserDefaults; if current poll crosses midnight and "daily_digest" in events, call WebhookService.send(.dailyDigest) with yesterday's DailyAggregate +poll
+(B) Implement weekly digest: fires on Monday 00:00 crossing if "weekly_summary" in events +poll
+(B) WebhookService.sendTest(config: WebhookConfig) async -> Result<Void, Error>: sends dummy payload with event "test", returns result for Settings UI display +integrations
+(B) WebhookConfig.url validated via URL(string:) != nil check; invalid URL disables send and shows error badge in IntegrationsTab +integrations
+
+=== PHASE 18: GLOBAL HOTKEY ===
+(A) Implement HotkeyManager class using Carbon RegisterEventHotKey API; registered on app launch if GlobalHotkeyConfig.enabled == true +hotkey
+(A) HotkeyManager.register(config: GlobalHotkeyConfig) maps config.modifiers ["option","command"] to cmdKey|optionKey Carbon modifiers, config.key "c" to keycode via UCKeyTranslate lookup table +hotkey
+(A) HotkeyManager hotkey handler calls MenuBarManager.togglePopover() on main thread via DispatchQueue.main.async +hotkey
+(A) HotkeyManager.unregister() calls UnregisterEventHotKey; called on config change or app termination +hotkey
+(A) HotkeyManager observes ConfigManager changes; if hotkey config differs, unregisters old and registers new binding +hotkey
+(A) Implement KeyRecorderView: NSViewRepresentable wrapping custom NSView that captures keyDown + modifier flags, converts to GlobalHotkeyConfig, calls onChange callback; shows current binding as e.g. "⌥⌘C" using NSEvent.ModifierFlags description +settings
+(A) HotkeyTab saves new binding via ConfigManager.save, re-registers via HotkeyManager.register; shows "Hotkey registered" confirmation badge for 2 seconds +settings
+
+=== PHASE 19: MONTHLY / ROLLING ANALYTICS ===
+(A) Implement AnalyticsEngine struct with static methods operating on [UsageSnapshot] +analytics
+(A) AnalyticsEngine.monthToDate(snapshots: [UsageSnapshot], account: UUID) -> DailyAggregate: filter current calendar month, return aggregate +analytics
+(A) AnalyticsEngine.rollingAverage(snapshots: [UsageSnapshot], days: Int, account: UUID) -> Double: mean of daily totalCostUSD over last `days` days +analytics
+(A) AnalyticsEngine.heatmap(snapshots: [UsageSnapshot], account: UUID) -> [[Double]]: 7x24 grid [weekday][hour] of average cost; normalised to [0,1] +analytics
+(A) Implement HistoryView SwiftUI view shown as a separate popover section or Sheet triggered by "History" button in MenuBarPopoverView footer +menubar
+(A) HistoryView tab bar: "7 Day" (existing chart), "30 Day" bar chart, "Month-to-Date" totals, "Heatmap" +analytics
+(A) HistoryView "30 Day" tab: Swift Charts BarMark for each of last 30 days, x-axis date labels every 7 days, y-axis cost in USD; respects AnalyticsConfig.showMonthlyView toggle +analytics
+(A) HistoryView "Month-to-Date" tab: total cost, total input/output/cache tokens, daily average, highest single-day cost with date label +analytics
+(A) HistoryView "Heatmap" tab: 7×24 grid of colored Rectangle marks (cool→hot color scale), x-axis hours 0–23, y-axis Mon–Sun; shown only if AnalyticsConfig.showHeatmap == true, else placeholder "Enable heatmap in Analytics settings" +analytics
+(A) HistoryView hidden entirely if AnalyticsConfig.enabled == false; History button in popover footer also hidden +menubar
+(A) CLI --history flag prints 30-day summary table (date | cost | input | output) to stdout; --heatmap flag prints 7×24 ASCII grid using block chars ░▒▓█ +tui
+
+=== PHASE 20: MODEL COST OPTIMIZER HINTS ===
+(B) PollingService.pollOnce() calls ModelOptimizerAnalyzer.analyze after each aggregate if ModelOptimizerConfig.enabled == true, stores ModelHint to "model_hints.json" in shared container via CacheManager +poll
+(B) ModelOptimizerAnalyzer.analyze: if any model in breakdown contains "opus" or "sonnet" and session average output_tokens < cheapThresholdTokens, flag as cheaperAlternativeExists; compute estimatedSavingsUSD as (currentModel.costUSD - haikuCost) +cache
+(B) MenuBarPopoverView model hint banner: shown below forecast section when ModelHint.cheaperAlternativeExists == true and ModelOptimizerConfig.showInPopover == true; text "↓ ~$X.XX/day switching to {{recommendedModel}}" with SF Symbol "lightbulb" in yellow +menubar
+(B) Model hint banner has dismiss button storing dismissedDate per account in UserDefaults; re-surfaces after 7 days +menubar
+(B) TUIRenderer adds model hint row when hint present and TUIConfig includes "model_hint" field name in layout +tui
+(B) AnalyticsTab ModelOptimizerConfig.cheapThresholdTokens Stepper range 100–10000, label "Flag sessions shorter than N output tokens" with explanatory footnote +settings
+
+=== PHASE 21: ICLOUD / MULTI-MACHINE AGGREGATION (CORE, LOCAL-FIRST) ===
+(A) Implement iCloudSyncManager class; when iCloudSyncConfig.localOnly == true all methods are no-ops, data remains in local App Groups container only +sync
+(A) iCloudSyncManager.containerURL: FileManager.url(forUbiquityContainerIdentifier: config.containerIdentifier)?.appendingPathComponent("usage_cache.json") +sync
+(A) iCloudSyncManager.syncNow() async: reads local usage_cache.json, reads remote if exists, merges by deduplicating on (accountId, timestamp) keeping union, writes merged result to both local and iCloud container using NSFileCoordinator +sync
+(A) Merge conflict resolution: prefer entry with higher (inputTokens + outputTokens) when timestamps match within 1 second tolerance +sync
+(A) iCloudSyncManager.startMetadataQuery() sets up NSMetadataQuery monitoring iCloud container for changes to usage_cache.json; on change notification calls syncNow() +sync
+(A) PollingService.pollOnce() calls iCloudSyncManager.syncNow() at end of cycle if iCloudSyncConfig.enabled == true +poll
+(A) SyncTab displays sync status via @Published var syncState: SyncState enum (idle, syncing, error(String), disabled); last sync timestamp from UserDefaults("lastCloudSyncDate") +settings
+(A) iCloudSyncManager posts "iCloudSyncDidComplete" notification; MenuBarManager observes to refresh popover (merged remote data may change displayed totals) +sync
+(A) iCloudSyncConfig.enabled == false (default) means zero iCloud entitlement usage; iCloud container entitlement added to App Sandbox only when feature is shipped and enabled; document in CLITab/AboutTab that iCloud is opt-in +sync
+(A) CacheManager.history merges local + remote snapshots transparently when iCloudSyncConfig.enabled, so all consumers (popover, TUI, analytics) see aggregated multi-machine data without changes +cache
+
+=== PHASE 22: TRIGGER-BASED AUTOMATIONS (STRETCH GOAL) ===
+(C) Implement AutomationEngine struct; evaluate(rules: [AutomationRule], snapshot: UsageSnapshot) -> [AutomationRule] returns rules whose trigger condition is met +automations
+(C) AutomationEngine.fire(rule: AutomationRule) async: runs rule.shellCommand via Process(), captures stdout/stderr, logs result to Logger(subsystem:); updates rule.lastFiredAt in config via ConfigManager.save +automations
+(C) PollingService.pollOnce() calls AutomationEngine.evaluate then fires matching enabled rules concurrently via TaskGroup; skips rules fired within last poll interval to prevent re-fire on same data +poll
+(C) AutomationRule triggerType "cost_gt": fires if snapshot.totalCostUSD > threshold +automations
+(C) AutomationRule triggerType "tokens_gt": fires if (inputTokens + outputTokens) > threshold +automations
+(C) AutomationsTab "Run Now" test button: calls AutomationEngine.fire(rule:) on selected rule, shows stdout/stderr in inline expandable text view, does NOT update lastFiredAt (test mode) +settings
+(C) AutomationRule shellCommand executed with $CLAUDE_COST, $CLAUDE_TOKENS, $CLAUDE_ACCOUNT env vars set to snapshot values for use in user scripts +automations
+(C) AutomationEngine sanitises shellCommand: rejects empty string, warns user in Settings if command contains rm -rf or equivalent destructive patterns via static regex check +automations
+
+=== PHASE 23: APPLESCRIPT / SHORTCUTS BRIDGE (STRETCH GOAL) ===
+(C) Add NSAppleScriptEnabled=YES and scripting definition file (ClaudeUsage.sdef) to Info.plist +scriptable
+(C) Define scriptable suite "Claude Usage Suite" with classes: Application (std), UsageRecord (properties: accountName String, inputTokens Int, outputTokens Int, costUSD Double, lastUpdated Date) +scriptable
+(C) Implement get today usage AppleScript command returning list of UsageRecord for all active accounts from CacheManager +scriptable
+(C) Implement get forecast AppleScript command returning ForecastSnapshot fields as record (projectedEOD, projectedEOW, projectedEOM) +scriptable
+(C) Implement refresh AppleScript command calling PollingService.forceRefresh() and awaiting completion before returning +scriptable
+(C) Expose same surface via Intent framework: define AppIntent structs GetTodayUsageIntent and GetForecastIntent conforming to AppIntent; add Intents extension target linked to shared App Group container so Shortcuts.app can read data without launching main app +scriptable
+(C) GetTodayUsageIntent returns IntentResult with [UsageRecord] serialised; visible in Shortcuts.app as "Get Claude Usage Today" action +scriptable
+(C) GetForecastIntent returns IntentResult with projected costs; visible as "Get Claude Spend Forecast" action in Shortcuts.app +scriptable
