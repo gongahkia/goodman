@@ -1,3 +1,4 @@
+(A) Project name is Aki +meta
 (A) Initialize Rust workspace with three crates: `privacy-core` (capture, detection, transformation), `privacy-tui` (Ratatui dashboard), `privacy-output` (virtual camera output), shared types in `privacy-common` +infra
 (A) Define frame pipeline architecture: CaptureSource → RawFrame(RGBA pixels + dimensions + timestamp) → SensitivityDetector → DetectedRegions → Transformer → TransformedFrame → OutputSink, all connected via crossbeam channels +infra
 (A) Implement macOS screen capture using `screencapturekit-rs` crate (ScreenCaptureKit bindings): capture specific window by window ID or full screen region, deliver frames as raw RGBA byte buffers at configurable FPS +capture
@@ -73,3 +74,4 @@
 (C) Add startup self-test: on first run, display test frame with known sensitive patterns, verify detection pipeline catches them all, report readiness score +cli
 (C) Implement transition animation between transformation modes: when user switches mode via `t`, crossfade between old and new transformation over 10 frames for smooth visual transition +transform
 (C) Add remote control API: localhost WebSocket server accepting commands (pause, resume, switch_mode, get_stats) for integration with Stream Deck or custom control panels +output
+(C) Add under reference section of README.md that the name is in reference to the japanese 空き (Aki) which roughly means Empty, vacant, or a gap. (You’ll see this in 空き容量 (aki yōryō), which means free disk space.)
