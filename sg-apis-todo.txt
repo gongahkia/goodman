@@ -1,0 +1,172 @@
+# SG APIs Developer Tool — todo.txt PRD
+# Targets: Claude Code skill + Codex skill + MCP server
+# APIs: data.gov.sg, OneMap, LTA DataMall, NEA, SingStat, MAS, HDB, CorpPass
+# Interface: Natural language → API resolution → multi-format output
+# Auth: keystore + env var override
+# Cache: SQLite with per-category TTL
+# Error model: graceful degradation + failure flagging
+
+(A) Initialize monorepo with workspace packages: core, auth, cache, router, skill-claude, skill-codex, mcp-server +core
+(A) Define ApiResponse<T> generic type with fields: data, source, cached, timestamp, errors[] +core
+(A) Implement base HTTP client with configurable timeout, retry count, and user-agent header +core
+(A) Implement structured logger with levels: debug, info, warn, error, api-fail +core
+(A) Create config loader merging env vars, ~/.sg-apis/config.json, and CLI flags in priority order +core
+(A) Define ApiError class with fields: apiName, statusCode, message, retryable +core
+(A) Implement exponential backoff retry wrapper with configurable max attempts and jitter +core
+(A) Implement rate limit detector: parse X-RateLimit-* and Retry-After headers, block and wait accordingly +core
+
+(A) Design keystore SQLite schema: { apiName, key, addedAt, lastUsed } stored in ~/.sg-apis/keys.db +auth
+(A) Implement `key set <apiName> <key>` command to insert/update key in keystore +auth
+(A) Implement `key get <apiName>` command to retrieve decrypted key from keystore +auth
+(A) Implement `key list` command showing all stored API names with masked key values +auth
+(A) Implement `key delete <apiName>` command to remove key entry from keystore +auth
+(A) Implement env var override: if SG_API_<APINAME>_KEY is set, prefer it over keystore value +auth
+(A) Implement CorpPass OAuth2 PKCE flow: generate code verifier/challenge, build auth URL, capture callback token +auth
+(A) Implement CorpPass token refresh: store access_token, refresh_token, expires_at in keystore, auto-refresh before expiry +auth
+
+(A) Create SQLite cache table schema: (key TEXT PK, value TEXT, cached_at INTEGER, ttl_seconds INTEGER) +cache
+(A) Implement cache.get(key) checking TTL expiry before returning value, return null on miss or expired +cache
+(A) Implement cache.set(key, value, ttl) with upsert behavior, overwrite existing entries +cache
+(A) Implement cache.invalidate(pattern) deleting all keys matching SQLite LIKE pattern +cache
+(A) Implement cache.stats() returning hit count, miss count, total entry count, and size on disk +cache
+(A) Define per-category TTL constants: realtime=30s, nearRealtime=120s, daily=3600s, static=86400s, archival=604800s +cache
+(A) Assign TTL category per API endpoint in a central endpoint-to-ttl config map +cache
+Implement cache warming command: pre-fetch and cache a configurable list of endpoints on process start +cache
+
+(A) Define intent taxonomy with domains: transport, weather, property, financial, demographic, geo, utility +router
+(A) Implement intent classifier calling claude-haiku-4-5-20251001 with structured JSON output: { intent, apiName, params, confidence } +router
+(A) Define ApiRoute type: { apiName, endpointKey, paramExtractor(nlInput) -> params } +router
+(A) Implement resolveRoute(nlQuery) -> ApiRoute[] returning ranked candidate routes sorted by confidence descending +router
+(A) Implement geo parameter extractor: detect Singapore postal codes (6-digit), addresses, and building names; geocode via OneMap +router
+(A) Implement date range extractor: parse relative expressions (last 3 months) and absolute (Jan 2024) to ISO8601 date pairs +router
+(A) Implement LTA stop extractor: detect bus stop codes (5-digit numeric), route numbers, and MRT station names +router
+(A) Implement disambiguation handler: if top route confidence < 0.7, return top-3 candidates with explanations for user selection +router
+(A) Implement multi-API fan-out: if intent spans multiple APIs, resolve all routes and execute concurrently +router
+Implement query context carry-over: persist last-resolved params per session for follow-up queries +router
+(A) Implement API name alias map: weather→NEA, bus→LTA, mrt→LTA, property→HDB, forex→MAS, population→SingStat +router
+(A) Implement fallback to data.gov.sg dataset keyword search when no specific route is matched with confidence >= 0.5 +router
+Implement query validator: reject queries with no resolvable SG context, return structured { error, suggestion } +router
+Log all resolved routes with confidence scores at debug level to structured logger +router
+Write unit tests for intent classifier covering: geo, transport, weather, financial, and demographic intent classes +router
+
+(A) Implement datagovClient.searchDatasets(keyword, limit) using data.gov.sg CKAN package_search API +api-datagov
+(A) Implement datagovClient.getDataset(datasetId) fetching dataset metadata and resource list +api-datagov
+(A) Implement datagovClient.getResource(resourceId, limit, offset, filters) querying tabular data via CKAN datastore_search +api-datagov
+Implement datagovClient.downloadResource(resourceId) fetching full CSV or JSON resource file +api-datagov
+(A) Implement automatic pagination for getResource: loop with offset increments until all records fetched or limit reached +api-datagov
+Parse and normalize column types from CKAN field definitions (text, numeric, timestamp) into typed objects +api-datagov
+(A) Implement dataset keyword index: on first run fetch all dataset names+IDs into SQLite for fast local fuzzy search +api-datagov
+Implement datagovClient.listPopularDatasets() returning curated list of 20 high-value SG open datasets +api-datagov
+(A) Map common NL terms to known dataset IDs: dengue clusters, school directory, hawker centres, resale flat prices, road names +api-datagov
+Handle CKAN API errors: map HTTP 404 to DatasetNotFound, 429 to RateLimited, 5xx to ApiUnavailable +api-datagov
+
+(A) Implement onemapClient.geocode(searchVal) using OneMap search endpoint, return { lat, lng, postal, address, building } +api-onemap
+Implement onemapClient.reverseGeocode(lat, lng) using OneMap reverse geocode endpoint +api-onemap
+Implement onemapClient.getRoute(start, end, routeType) where routeType in {walk, drive, pt, cycle} +api-onemap
+(A) Implement onemapClient.getThemes() listing all available map theme names and IDs +api-onemap
+Implement onemapClient.getThemeData(themeId, extents) fetching POIs for a theme within a lat/lng bounding box +api-onemap
+Implement onemapClient.convertSVY21(x, y) converting SVY21 easting/northing to WGS84 lat/lng +api-onemap
+(A) Authenticate OneMap requests: store email/password in keystore, obtain token, inject Bearer header, auto-refresh on 401 +api-onemap
+Implement OneMap pagination: read totalNumPages from response, fetch remaining pages when full result is requested +api-onemap
+
+(A) Implement ltaClient.getBusArrival(stopCode, busServiceNo?) using LTA DataMall BusArrivalv2 endpoint +api-lta
+(A) Implement ltaClient.getBusRoutes(busServiceNo?) with full 500-record/page pagination +api-lta
+Implement ltaClient.getBusStops() returning full stop list with lat/lng, road, description; paginate fully +api-lta
+(A) Implement ltaClient.getMrtCrowdDensity(trainLine) for real-time crowd level per station +api-lta
+Implement ltaClient.getMrtCrowdForecast(trainLine) for predicted crowd levels by time interval +api-lta
+(A) Implement ltaClient.getTaxiAvailability() returning all available taxi locations as GeoJSON point features +api-lta
+(A) Implement ltaClient.getTrafficIncidents() returning live incident list with type, lat/lng, and message +api-lta
+Implement ltaClient.getErpRates() returning current ERP gantry ID, vehicle type, rate, and time bands +api-lta
+Implement ltaClient.getParkingAvailability() returning HDB/URA/LTA carpark lot availability counts +api-lta
+Implement ltaClient.getVmsMessage() returning Variable Message Sign board content and locations +api-lta
+(A) Inject LTA API key from keystore into AccountKey header on every request +api-lta
+Implement LTA-specific rate limit queue: enforce 50 req/min cap, buffer excess requests in FIFO queue +api-lta
+
+(A) Implement neaClient.get2hrForecast() returning area-level rain forecast with area polygon and validity period +api-nea
+(A) Implement neaClient.get24hrForecast() returning general + regional forecast with time bands and condition text +api-nea
+Implement neaClient.get4DayForecast() returning daily forecast with temperature range, humidity range, condition +api-nea
+(A) Implement neaClient.getRealtimeWeather() returning temperature, humidity, rainfall, wind speed/direction per station +api-nea
+(A) Implement neaClient.getPsi() returning PSI readings for overall, north, south, east, west, central regions +api-nea
+(A) Implement neaClient.getPm25() returning hourly PM2.5 sub-index by region +api-nea
+Implement neaClient.getUvIndex() returning hourly UV index with timestamp +api-nea
+(A) Implement neaClient.getDengueClusters() returning active cluster locations, case counts, and polygon boundaries +api-nea
+
+(A) Implement singstatClient.searchTables(keyword) using SingStat tablebuilder search API +api-singstat
+Implement singstatClient.getTableMetadata(tableId) returning variable definitions, time range, and frequency +api-singstat
+(A) Implement singstatClient.getData(tableId, variables[], timeRange) fetching statistical rows +api-singstat
+Implement singstatClient.listPopularTables() returning curated tables: population, GDP, CPI, unemployment, trade balance +api-singstat
+Normalize SingStat response into flat row-column format: { rowKey, colKey, value, unit, period } +api-singstat
+Inject SingStat API key from keystore into request headers when endpoint requires authentication +api-singstat
+
+(A) Implement masClient.getExchangeRates(currency?, date?) using MAS exchange rates API +api-mas
+Implement masClient.getInterestRates(rateType?, dateRange?) returning SIBOR/SOR/SORA time series +api-mas
+Implement masClient.getInflationData(dateRange?) returning monthly CPI and YoY inflation stats +api-mas
+Implement masClient.getMonetaryStats(dateRange?) returning M1/M2/M3 money supply stats +api-mas
+Implement MAS API pagination using offset+limit+total pattern, auto-paginate until all rows fetched +api-mas
+Parse MAS YYYY-MM date fields into ISO8601 timestamps for consistent output across all formatters +api-mas
+
+(A) Implement hdbClient.getResalePrices(town?, flatType?, dateRange?) via data.gov.sg HDB resale flat price dataset +api-hdb
+Implement hdbClient.getPropertyInfo(block, street) combining address geocoding with resale transaction history +api-hdb
+Implement hdbClient.getCarparkInfo(carparkNo?) from HDB carpark information dataset +api-hdb
+Implement hdbClient.getHdbBlocks() returning dataset of block numbers, towns, flat types, and coordinates +api-hdb
+Normalize HDB resale price records: parse month as Date, resale_price as Number, add computed price_per_sqm field +api-hdb
+Implement HDB carpark availability merge: join static carpark info dataset with live availability counts from LTA +api-hdb
+
+Implement CorpPass OAuth2 discovery: fetch .well-known/openid-configuration to get auth and token endpoints dynamically +api-corppass
+Implement CorpPass authorization URL builder with PKCE code_challenge, scope, state, and nonce params +api-corppass
+Implement CorpPass token exchange: POST auth code + code_verifier to token endpoint, store tokens in keystore +api-corppass
+Implement CorpPass-authenticated request wrapper: inject Bearer access_token, catch 401 and trigger silent refresh +api-corppass
+Generate CorpPass setup instructions as machine-readable JSON at ~/.sg-apis/corppass-setup.json on first auth attempt +api-corppass
+
+(A) Implement formatJson(data, pretty?) returning minified or 2-space indented JSON string +formatter
+(A) Implement formatMarkdown(data) converting nested API response to markdown with H2 headers, tables, and fenced code blocks +formatter
+(A) Implement formatTable(rows, columns) rendering fixed-width ASCII table for terminal display +formatter
+Implement formatCsv(rows, columns) returning RFC 4180-compliant CSV string with header row +formatter
+Implement formatGeoJson(features) wrapping geo API results in GeoJSON FeatureCollection with properties preserved +formatter
+(A) Implement formatNormalized(apiName, rawData) transforming each API response into: { id, name, value, unit, timestamp, geo?, source } +formatter
+(A) Implement output routing: read --format flag value from {json, md, table, csv, geojson, normalized}, default json +formatter
+Implement streaming output mode: pipe formatter output to stdout chunk-by-chunk for large dataset responses +formatter
+(A) Implement formatError(errors[]) rendering partial failure report: successful APIs list, failed APIs list with reasons +formatter
+Implement formatStats(cacheStats, routerStats) for diagnostic output showing cache hit rate and per-API call counts +formatter
+
+(A) Implement PartialResult<T> type: { results: T[], failures: ApiError[], partialSuccess: boolean } +error
+(A) Implement fan-out executor using Promise.allSettled, collect fulfilled and rejected into PartialResult +error
+(A) Implement failure flag injection: on any ApiError, append [FAIL: <apiName>] <reason> block to all formatter output modes +error
+Implement per-API call timeout: configurable per-API default 10s, hard cap 30s, throw ApiError on exceed +error
+Implement request deduplication: if identical API+params call is in-flight, return shared pending promise +error
+Implement circuit breaker per API: after 3 consecutive failures open circuit, skip API and flag [CIRCUIT_OPEN] for 60s +error
+
+(A) Create .claude/skills/sg-apis.md skill manifest with name, description, and 10+ example NL invocations +skill-claude
+(A) Implement Claude Code skill entry point: parse skill <args> block as NL query string, route to resolveRoute() +skill-claude
+(A) Implement skill output handler: write formatMarkdown or formatJson result as skill response body +skill-claude
+Implement `sg-apis help` invocation: render all supported API domains with 2 example queries each +skill-claude
+(A) Implement `sg-apis keys` invocation: proxy set/get/list/delete to auth keystore commands +skill-claude
+Implement `sg-apis cache` invocation: proxy stats and invalidate to cache commands +skill-claude
+(A) Implement skill error display: render PartialResult failures as GitHub-flavored markdown warning blockquotes +skill-claude
+Implement skill config command: sg-apis config set <key> <value> for timeout, default format, cache TTL overrides +skill-claude
+Implement skill version command: sg-apis version returning semver and list of supported APIs with auth status +skill-claude
+Test skill invocation end-to-end with mock API responses for: weather query, bus arrival query, forex query +skill-claude
+
+(A) Create Codex skill definition file with tool name, description, and JSON parameter schema +skill-codex
+(A) Implement Codex skill handler: accept tool call input, route to resolveRoute(), execute, return formatted tool result +skill-codex
+(A) Implement Codex skill parameter schema: { query: string, format?: string, useCache?: boolean, apis?: string[] } +skill-codex
+(A) Implement apis[] filter: when provided, restrict fan-out to named subset of APIs only +skill-codex
+(A) Implement Codex skill error response: return { isError: true, content: [{ type: text, text: formatError(failures) }] } +skill-codex
+Implement Codex skill streaming: yield result chunks if runtime supports streaming tool results +skill-codex
+Register Codex skill in project codex-skills.json manifest with input schema and handler path +skill-codex
+Test Codex skill end-to-end: simulate tool call input → router → API mock → formatter → assert tool result schema +skill-codex
+
+(A) Initialize MCP server using @modelcontextprotocol/sdk with server name sg-apis-mcp and version from package +mcp
+(A) Define MCP tool sg_query with input schema: { query: string, format?: string, useCache?: boolean, apis?: string[] } +mcp
+(A) Define MCP tool sg_key_set with input schema: { apiName: string, key: string } and masked confirmation output +mcp
+(A) Define MCP tool sg_key_list with no required inputs, returning array of { apiName, hasKey, lastUsed? } +mcp
+Define MCP tool sg_cache_stats returning { hits, misses, entries, diskBytes } +mcp
+Define MCP tool sg_cache_invalidate with optional input { pattern?: string }, default to full cache wipe +mcp
+(A) Implement MCP handler for sg_query: call resolveRoute(), execute fan-out, format, return as MCP content array +mcp
+(A) Implement MCP resource sg://apis listing all API names, domains, endpoint count, and auth requirements +mcp
+Implement MCP resource sg://cache returning count of cached entries grouped by API name +mcp
+(A) Implement MCP stdio transport for Claude Desktop and Claude Code local MCP integration +mcp
+Implement MCP SSE transport for remote/networked MCP client integration +mcp
+Generate claude_desktop_config.json snippet via command: sg-apis mcp install, appending server config to user config file +mcp
+Implement MCP server graceful shutdown: flush pending cache writes and close SQLite connection on SIGTERM/SIGINT +mcp
+Test MCP server end-to-end: connect MCP inspector client, invoke sg_query with mocked APIs, assert content schema +mcp
