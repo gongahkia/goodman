@@ -1,0 +1,142 @@
+# TC-Guard: T&C Summarizer Browser Extension
+# FOSS browser extension that auto-detects T&C checkboxes, summarizes legal text via LLM, flags concerning clauses
+# Chrome-first (Manifest V3), Firefox compat, Safari stretch goal
+# BYOK model support: Claude, OpenAI, Gemini, local models (Ollama)
+# Zero telemetry, localStorage caching, TypeScript, popup overlay UI
+
+# ============================================================
+# +scaffold — Project Setup & Build Pipeline
+# ============================================================
+(A) Initialize TypeScript project with pnpm, configure tsconfig with strict mode targeting ES2022 +scaffold
+(A) Set up Vite with crxjs plugin for Chrome extension hot-reload dev builds +scaffold
+(A) Create Manifest V3 manifest.json with permissions: activeTab, storage, scripting, host_permissions for all URLs +scaffold
+(A) Configure build targets: chrome (MV3), firefox (MV2 shim via webextension-polyfill), safari (xcrun converter) +scaffold
+(A) Set up ESLint + Prettier with extension-specific rules, add pre-commit hook via husky +scaffold
+(A) Create folder structure: src/{content, background, popup, sidebar, shared, models, detectors, extractors, ui} +scaffold
+
+# ============================================================
+# +detection — T&C Element Detection Engine
+# ============================================================
+(A) Build MutationObserver wrapper that watches DOM for dynamically inserted checkboxes, modals, and banner elements +detection
+(A) Implement checkbox detector: find <input type="checkbox"> elements adjacent to anchor tags or labels containing T&C keywords (terms, conditions, privacy, policy, agree, consent, EULA, TOS) +detection
+(A) Build keyword dictionary with weighted scoring: exact matches ("terms and conditions") score higher than partial ("terms") +detection
+(A) Implement proximity scorer: walk DOM tree upward/sideways from checkbox to find nearest T&C link/text within 5 ancestor levels +detection
+(A) Handle label-for associations: resolve <label for="id"> to find checkbox-label pairs containing T&C references +detection
+(A) Detect cookie consent banners by matching common class/id patterns (cookie-banner, consent-modal, gdpr) and button text patterns (accept, reject, manage) +detection
+(A) Detect full-page T&C walls: identify pages where >60% visible text is legal boilerplate using keyword density heuristic +detection
+(B) Detect privacy policy links in page footers and signup forms by scanning <a> tags with href containing "privacy" or "terms" +detection
+(B) Detect iframe-embedded T&C content: scan iframes with src containing legal/terms paths, request content via background script +detection
+(B) Implement debounced re-scan: re-run detection 500ms after DOM mutations settle to catch SPA route changes +detection
+(B) Build confidence scoring system: each detected element gets a 0-1 confidence score based on keyword match + proximity + structural heuristics +detection
+(B) Filter false positives: exclude elements inside nav bars, already-checked boxes, and elements with display:none +detection
+(C) Detect T&C modals triggered by checkbox click: intercept click event, detect if a modal appeared within 1s, pause and scan modal content +detection
+
+# ============================================================
+# +extraction — Legal Text Extraction Pipeline
+# ============================================================
+(A) Build inline text extractor: given a detected T&C region, extract all visible text content from the container element and its descendants +extraction
+(A) Implement link follower: for detected <a> tags pointing to T&C pages, fetch the linked page via background script fetch() and extract <main> or <article> or <body> text +extraction
+(A) Build text cleaner: strip HTML tags, normalize whitespace, remove navigation/header/footer boilerplate from extracted legal text +extraction
+(A) Implement character limit check: if extracted text < 200 chars, attempt to follow the nearest T&C hyperlink for full text +extraction
+(B) Build PDF extractor: detect links ending in .pdf, fetch via background script, parse text content using pdf.js +extraction
+(B) Implement chunking strategy: split legal text into ~3000 token chunks at paragraph boundaries for long documents +extraction
+(B) Build text deduplication: hash extracted text sections to avoid re-processing identical T&C blocks across page navigations +extraction
+(B) Handle multi-document T&C: when multiple links detected (Terms + Privacy + Cookie Policy), extract each separately and tag by type +extraction
+(C) Extract T&C from iframe sources by messaging between content script and background script to bypass same-origin restrictions +extraction
+(C) Detect and handle "click to expand" T&C sections: simulate expansion click, wait for content, then extract +extraction
+
+# ============================================================
+# +models — LLM Provider Abstraction Layer
+# ============================================================
+(A) Define TypeScript interface LLMProvider with methods: summarize(text: string, opts: SummarizeOpts): Promise<Summary>, validateKey(): Promise<boolean>, getModelInfo(): ModelInfo +models
+(A) Implement ClaudeProvider: call Anthropic Messages API with user-provided API key, model selection (claude-sonnet-4-20250514 default), handle streaming +models
+(A) Implement OpenAIProvider: call OpenAI Chat Completions API with user key, model selection (gpt-4o default) +models
+(A) Implement GeminiProvider: call Google Generative AI API with user key, model selection (gemini-2.0-flash default) +models
+(A) Implement OllamaProvider: call local Ollama REST API at user-configured host:port, auto-detect available models via /api/tags +models
+(A) Build provider registry: map provider name to implementation, allow runtime switching via settings +models
+(A) Implement API key validation: on key entry, make a minimal test call to verify key works, show success/error in settings UI +models
+(B) Build request retry logic: retry failed LLM calls up to 2 times with exponential backoff (1s, 3s) +models
+(B) Implement token counting utility using tiktoken-lite for OpenAI, character-based estimation for others, to determine single-shot vs chunked path +models
+(B) Handle rate limiting: parse 429 responses, show user-friendly "rate limited, retry in Xs" message in overlay +models
+(B) Implement streaming response handler: pipe partial LLM responses to UI for progressive summary rendering +models
+(C) Add custom endpoint support: allow users to configure arbitrary OpenAI-compatible API endpoints (LM Studio, vLLM, etc.) +models
+
+# ============================================================
+# +summarizer — Summarization & Analysis Engine
+# ============================================================
+(A) Build system prompt for T&C summarization: instruct LLM to output structured JSON with fields {summary, key_points[], red_flags[], data_usage, user_rights, opt_outs[]} +summarizer
+(A) Implement single-shot summarizer: for texts under 3000 tokens, send full text with system prompt in one LLM call +summarizer
+(A) Implement chunked summarizer: for texts over 3000 tokens, summarize each chunk independently then run a merge pass to consolidate into final summary +summarizer
+(A) Define red flag taxonomy with sensible defaults: data_selling, third_party_sharing, arbitration_waiver, class_action_waiver, auto_renewal, unilateral_changes, perpetual_license, location_tracking, biometric_data, no_deletion_right +summarizer
+(A) Build red flag severity classifier: map each detected flag to severity (high/medium/low) based on keyword context from LLM output +summarizer
+(B) Implement summary response validator: parse LLM JSON output, validate against expected schema, fallback to raw text display if malformed +summarizer
+(B) Build summary caching layer: hash extracted text, store summary in chrome.storage.local keyed by hash, serve cached on re-encounter +summarizer
+(B) Implement cache invalidation: expire cached summaries after 30 days or when T&C text hash changes +summarizer
+(B) Add language detection: detect non-English T&C text, prepend "translate and summarize" instruction to prompt +summarizer
+(C) Implement comparison mode: when cached summary exists but text changed, highlight what changed between old and new T&C +summarizer
+
+# ============================================================
+# +ui — Popup Overlay & Settings Interface
+# ============================================================
+(A) Build overlay container: create shadow DOM host element injected near detected T&C checkbox, absolutely positioned with z-index 2147483647 +ui
+(A) Implement overlay trigger icon: small shield icon (SVG, 24x24) positioned at the right edge of the detected checkbox/link, appears on detection +ui
+(A) Build overlay panel: on icon click, expand to 360x480px floating panel with rounded corners, subtle shadow, semi-transparent backdrop +ui
+(A) Design overlay layout sections: header (document title + provider badge), summary body (scrollable), red flags section (colored severity badges), action buttons (dismiss, proceed, view full) +ui
+(A) Implement red flag badges: high=red pill, medium=orange pill, low=yellow pill, each with short label text +ui
+(A) Build loading state: skeleton shimmer animation while LLM processes, with "Analyzing terms..." status text +ui
+(A) Build streaming display: render summary text progressively as LLM streams tokens, with typing cursor effect +ui
+(A) Implement dismiss behavior: clicking outside overlay or pressing Escape closes it, icon remains for re-open +ui
+(B) Build settings page (popup.html): tabbed interface with sections for API Keys, Model Selection, Detection Settings, Cache Management +ui
+(B) Implement API key input UI: per-provider key fields with show/hide toggle, test button, status indicator (valid/invalid/untested) +ui
+(B) Build model selector dropdown: populate with available models per provider, persist selection in storage +ui
+(B) Implement Ollama config panel: host:port input, "detect models" button that queries /api/tags and populates model dropdown +ui
+(B) Add detection sensitivity slider in settings: maps to confidence threshold (0.3 low, 0.5 medium, 0.7 high) for T&C element detection +ui
+(B) Build cache management UI: show cached summaries count + storage used, "clear all" button, per-domain clear +ui
+(B) Style all UI with CSS custom properties for consistent theming: --tc-bg, --tc-text, --tc-accent, --tc-danger, --tc-warning +ui
+(B) Implement dark/light mode: detect prefers-color-scheme, toggle in settings, persist preference +ui
+(B) Add overlay positioning logic: detect if overlay would overflow viewport, reposition to opposite side or above checkbox +ui
+(C) Build "view full text" expandable section in overlay: show raw extracted T&C text in scrollable monospace container +ui
+(C) Add copy-to-clipboard button for summary text +ui
+(C) Implement keyboard navigation: Tab through red flags, Enter to expand details, Escape to close +ui
+
+# ============================================================
+# +background — Service Worker & Message Passing
+# ============================================================
+(A) Set up background service worker (MV3) with message listener for content script communication +background
+(A) Implement fetch proxy: content scripts send URLs to background, background fetches (bypassing CORS), returns text/HTML to content script +background
+(A) Build message protocol: define typed message schemas for DETECT_TC, EXTRACT_TEXT, FETCH_URL, SUMMARIZE, GET_SETTINGS, SAVE_SETTINGS +background
+(A) Implement settings storage: read/write provider config, API keys, preferences to chrome.storage.local with typed getters/setters +background
+(B) Build badge indicator: set extension badge to number of detected T&C elements on current page, update on navigation +background
+(B) Implement tab lifecycle management: track active tab, clean up detection state on tab close/navigate +background
+(B) Handle extension icon click: if no T&C detected, open settings popup; if T&C detected, focus the first detected overlay +background
+(C) Implement context menu: right-click "Scan this page for T&C" option that forces a full page scan +background
+
+# ============================================================
+# +content — Content Script Orchestration
+# ============================================================
+(A) Build content script entry point: on page load (document_idle), initialize detector, start MutationObserver, run initial scan +content
+(A) Wire detection results to UI: when detector finds T&C elements above confidence threshold, inject overlay icon at each element +content
+(A) Implement scan-extract-summarize pipeline: on overlay icon click, extract text from detected element, send to background for LLM summarization, render result in overlay +content
+(B) Handle SPA navigation: listen for popstate, hashchange, and History API pushState/replaceState to re-trigger detection on route changes +content
+(B) Implement page-level state manager: track detected elements, active overlays, pending extractions to prevent duplicate work +content
+(B) Add manual trigger support: listen for message from background (context menu or icon click) to run full page scan regardless of auto-detection +content
+(C) Implement site-specific overrides: maintain a small map of domain-specific selectors for popular sites where generic detection fails (e.g., Google, Apple, Microsoft signup flows) +content
+
+# ============================================================
+# +compat — Cross-Browser Compatibility
+# ============================================================
+(B) Add webextension-polyfill for Firefox compatibility: wrap all chrome.* API calls through the polyfill +compat
+(B) Create Firefox-specific manifest.json (MV2) with browser_specific_settings for gecko ID +compat
+(B) Test and fix popup overlay shadow DOM rendering across Chrome and Firefox (different shadow DOM CSS isolation behavior) +compat
+(C) Create Safari conversion build step: use xcrun safari-web-extension-converter on Chrome build output, document manual Xcode steps in build script +compat
+(C) Handle Safari-specific storage API differences: safari.extension.settings fallback for older Safari versions +compat
+
+# ============================================================
+# +testing — Testing & Quality
+# ============================================================
+(B) Write unit tests for detection engine: test checkbox-label proximity scoring, keyword matching, confidence thresholds with jsdom +testing
+(B) Write unit tests for text extraction: test HTML cleaning, chunking at paragraph boundaries, character limit fallback logic +testing
+(B) Write unit tests for LLM provider abstraction: mock API responses, test retry logic, test key validation flow +testing
+(B) Write integration tests for summarization pipeline: mock LLM provider, test single-shot and chunked paths produce valid Summary schema +testing
+(B) Create test fixture HTML pages: page with standard T&C checkbox, cookie banner, full-page T&C wall, SPA with dynamic T&C modal +testing
+(C) Set up Playwright E2E tests: load extension in Chrome, navigate to fixture pages, verify overlay appears and summary renders +testing
