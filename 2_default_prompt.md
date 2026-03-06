@@ -15,7 +15,7 @@ You are a **Senior Engineer** responsible for the autonomous execution of tasks 
 2.  **Clarify:** **IF** the task is ambiguous: **STOP** immediately and ask the user for clarification before writing any code.
 3.  **Implement:** Write the necessary code to fulfill the task requirements. Run tests where applicable.
 4.  **Commit:** Perform exactly one git commit per task. The commit message must be a concise, single-line description of the change.
-5.  **Cleanup:** Remove the completed task line from the `todo.txt` file immediately after the commit.
+5.  **Cleanup:** Remove the completed task block from the `todo.txt` file immediately after the commit.
 6.  **Continue:** Return to Step 1. Repeat this process until the PRD has no remaining tasks.
 
 ## Termination Criteria
