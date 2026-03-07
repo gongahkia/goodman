@@ -1,0 +1,1880 @@
+# Voice-to-Text Dictation App — PRD (todo.md)
+
+> macOS-first, Linux-second, system-wide voice-to-text dictation tool with local Whisper inference, local LLM post-processing, floating overlay, menu bar presence, and transcription history.
+
+---
+
+## Foundation & Project Scaffolding
+
+### Task 1 (A) +scaffold
+
+**PURPOSE** — Establishes the Tauri 2 + React/TypeScript project skeleton with Rust backend. Every subsequent task depends on this structure existing.
+
+**WHAT TO DO**
+1. Initialize a new Tauri 2 project using `bun create tauri-app` with React + TypeScript template in a new directory `whisperflow/`.
+2. Configure `src-tauri/Cargo.toml` with these initial dependencies: `tauri 2.x`, `serde`, `serde_json`, `tokio` (full features), `anyhow`, `log`, `env_logger`.
+3. Configure `package.json` with: `react 18`, `react-dom 18`, `tailwindcss 3`, `@tailwindcss/forms`, `vite`.
+4. Set up Tailwind CSS in `src/index.css` with base, components, and utilities layers.
+5. Create the following empty Rust module files under `src-tauri/src/`: `managers/mod.rs`, `managers/model.rs`, `managers/audio.rs`, `managers/transcription.rs`, `managers/history.rs`, `commands/mod.rs`, `clipboard.rs`, `overlay.rs`, `settings.rs`, `tray.rs`, `llm_client.rs`, `shortcut.rs`, `actions.rs`.
+6. Create corresponding frontend directories: `src/components/`, `src/hooks/`, `src/stores/`, `src/components/ui/`, `src/components/settings/`, `src/components/onboarding/`, `src/overlay/`.
+7. In `src-tauri/src/lib.rs`, declare all modules and set up the Tauri builder with an empty `invoke_handler` and `setup` closure.
+
+**DONE WHEN**
+- [ ] `bun run tauri dev` launches a blank Tauri window on macOS without errors.
+- [ ] All listed Rust modules compile (even if empty with just `// TODO` placeholder).
+- [ ] Tailwind classes render correctly in the React frontend (verify by placing a styled `<div>` in `App.tsx`).
+
+---
+
+### Task 2 (A) +scaffold
+
+**PURPOSE** — Defines the persistent settings schema that nearly every feature reads from. Must exist before audio, model, or shortcut managers.
+
+**WHAT TO DO**
+1. In `src-tauri/src/settings.rs`, define a `Settings` struct with `serde::Serialize` and `serde::Deserialize`:
+   ```rust
+   pub struct Settings {
+       pub model_id: Option<String>,
+       pub language: String,                    // default "en"
+       pub shortcut_transcribe: String,         // default "Option+Space" on mac
+       pub shortcut_cancel: String,             // default "Escape"
+       pub shortcut_post_process: String,       // default "Option+Shift+Space"
+       pub push_to_talk: bool,                  // default false
+       pub overlay_enabled: bool,               // default true
+       pub overlay_position: OverlayPosition,   // enum Top | Bottom, default Bottom
+       pub paste_method: PasteMethod,           // enum Clipboard | Typing, default Clipboard
+       pub preserve_clipboard: bool,            // default true
+       pub append_trailing_space: bool,         // default true
+       pub auto_start: bool,                    // default false
+       pub start_hidden: bool,                  // default false
+       pub history_retention: HistoryRetention, // enum Count(u32) | Days(u32), default Count(100)
+       pub audio_input_device: Option<String>,
+       pub feedback_volume: f32,                // default 0.5
+       pub custom_words: Vec<CustomWordEntry>,  // Vec<{from: String, to: String}>
+       pub llm_provider: LlmProvider,           // enum Ollama | LlamaCpp, default Ollama
+       pub llm_model: Option<String>,
+       pub llm_base_url: String,               // default "http://localhost:11434"
+       pub post_process_mode: PostProcessMode,  // enum Dictation | Proofread | Rewrite | Command
+       pub translate_to_english: bool,          // default false
+       pub model_unload_timeout_secs: u64,      // default 300
+   }
+   ```
+2. Define enums: `OverlayPosition`, `PasteMethod`, `HistoryRetention`, `LlmProvider`, `PostProcessMode` with serde support.
+3. Implement `Default` for `Settings` with the defaults noted above.
+4. Implement `Settings::load(app_data_dir: &Path) -> Result<Self>` that reads `settings.json` from the app data directory, falling back to `Default::default()` if the file doesn't exist.
+5. Implement `Settings::save(&self, app_data_dir: &Path) -> Result<()>` that atomically writes to `settings.json` (write to `.tmp`, then rename).
+6. Wrap settings in `pub type SharedSettings = Arc<Mutex<Settings>>` for thread-safe access.
+7. Register Tauri commands `get_settings` and `update_settings` in `src-tauri/src/commands/mod.rs` that read/write via the `SharedSettings` managed state.
+
+**DONE WHEN**
+- [ ] `get_settings` Tauri command returns the full default settings JSON when no `settings.json` file exists.
+- [ ] `update_settings` persists changes to disk and a subsequent `get_settings` returns the updated values.
+- [ ] Concurrent access from two threads does not deadlock (test with a Rust unit test that spawns two threads calling `save` simultaneously).
+
+---
+
+### Task 3 (A) +scaffold
+
+**PURPOSE** — Provides the SQLite-backed history database that transcription results are stored in. Required before any transcription can be persisted.
+
+**WHAT TO DO**
+1. Add `rusqlite = { version = "0.37", features = ["bundled"] }` to `Cargo.toml`.
+2. In `src-tauri/src/managers/history.rs`, define `HistoryEntry`:
+   ```rust
+   pub struct HistoryEntry {
+       pub id: i64,
+       pub timestamp: String,       // ISO 8601
+       pub transcription: String,
+       pub post_processed: Option<String>,
+       pub audio_file: Option<String>, // relative path to WAV
+       pub saved: bool,              // user-bookmarked
+   }
+   ```
+3. Implement `HistoryManager::new(db_path: &Path) -> Result<Self>` that opens/creates the SQLite DB and runs the schema migration:
+   ```sql
+   CREATE TABLE IF NOT EXISTS history (
+       id INTEGER PRIMARY KEY AUTOINCREMENT,
+       timestamp TEXT NOT NULL,
+       transcription TEXT NOT NULL,
+       post_processed TEXT,
+       audio_file TEXT,
+       saved INTEGER NOT NULL DEFAULT 0
+   );
+   CREATE INDEX IF NOT EXISTS idx_history_timestamp ON history(timestamp DESC);
+   ```
+4. Implement methods:
+   - `insert(&self, entry: &NewHistoryEntry) -> Result<i64>` — returns inserted ID.
+   - `get_all(&self, limit: u32, offset: u32) -> Result<Vec<HistoryEntry>>` — ordered by timestamp DESC.
+   - `get_by_id(&self, id: i64) -> Result<Option<HistoryEntry>>`.
+   - `delete(&self, id: i64) -> Result<()>`.
+   - `toggle_saved(&self, id: i64) -> Result<()>` — flips the `saved` flag.
+   - `cleanup(&self, retention: &HistoryRetention) -> Result<u32>` — deletes unsaved entries exceeding retention policy, returns count deleted.
+   - `get_latest(&self) -> Result<Option<HistoryEntry>>`.
+5. Wrap in `Arc<Mutex<HistoryManager>>` and register as Tauri managed state.
+6. Register Tauri commands: `get_history`, `get_history_entry`, `delete_history_entry`, `toggle_saved_entry`.
+
+**DONE WHEN**
+- [ ] Rust unit test inserts 5 entries, retrieves them with `get_all(10, 0)`, and verifies order is newest-first.
+- [ ] `cleanup` with `HistoryRetention::Count(3)` on 5 unsaved entries deletes the 2 oldest and returns `2`.
+- [ ] `toggle_saved` flips an entry's saved flag and a subsequent `get_by_id` confirms the new value.
+
+---
+
+## Audio Capture
+
+### Task 4 (A) +audio
+
+**PURPOSE** — Provides the cross-platform audio recording foundation. Without mic capture, no transcription can occur.
+
+**WHAT TO DO**
+1. Add `cpal = "0.16"` to `Cargo.toml`.
+2. In `src-tauri/src/managers/audio.rs`, implement `AudioRecorder`:
+   ```rust
+   pub struct AudioRecorder {
+       stream: Option<cpal::Stream>,
+       samples: Arc<Mutex<Vec<f32>>>,
+       is_recording: Arc<AtomicBool>,
+       sample_rate: u32,
+   }
+   ```
+3. Implement `AudioRecorder::new() -> Self` with empty state.
+4. Implement `list_input_devices() -> Result<Vec<AudioDevice>>` where `AudioDevice { id: String, name: String, is_default: bool }`.
+5. Implement `start(&mut self, device_id: Option<&str>) -> Result<()>`:
+   - Resolve device from `device_id` or use default input.
+   - Get the device's preferred config (prefer f32, mono, ≥16kHz).
+   - Build an input stream with a callback that converts samples to mono f32 (handle i16/f32/u8 formats via match) and appends to `self.samples`.
+   - Set `is_recording` to true.
+   - Call `stream.play()`.
+6. Implement `stop(&mut self) -> Result<Vec<f32>>`:
+   - Drop the stream.
+   - Set `is_recording` to false.
+   - Drain and return the samples buffer.
+   - Return the `sample_rate` alongside samples (as a tuple or struct `RecordedAudio { samples: Vec<f32>, sample_rate: u32 }`).
+7. Implement `is_recording(&self) -> bool`.
+
+**DONE WHEN**
+- [ ] `list_input_devices()` returns at least one device on a system with a microphone.
+- [ ] Calling `start` then `stop` after 2 seconds returns a `RecordedAudio` with a non-empty `samples` vec and a valid `sample_rate` (≥8000).
+- [ ] Calling `stop` without `start` returns an empty samples vec without panicking.
+
+---
+
+### Task 5 (A) +audio
+
+**PURPOSE** — Resamples recorded audio to 16kHz mono, the exact format Whisper expects. Without this, model inference produces garbage.
+
+**WHAT TO DO**
+1. Add `rubato = "0.16"` to `Cargo.toml`.
+2. In `src-tauri/src/managers/audio.rs`, implement `resample_to_16khz(samples: &[f32], source_rate: u32) -> Result<Vec<f32>>`:
+   - If `source_rate == 16000`, return a clone.
+   - Otherwise, use `rubato::SincFixedIn` with:
+     - `resample_ratio`: `16000.0 / source_rate as f64`
+     - `sinc_len`: 256
+     - `f_cutoff`: 0.95
+     - `interpolation`: `SincInterpolationType::Linear`
+     - `oversampling_factor`: 256
+     - `num_channels`: 1
+   - Process the samples in chunks matching `input_frames_max()`.
+   - Concatenate output chunks into a single `Vec<f32>`.
+3. Implement `save_wav(samples: &[f32], sample_rate: u32, path: &Path) -> Result<()>`:
+   - Add `hound = "3.5"` to `Cargo.toml`.
+   - Write a 16-bit PCM WAV file using `hound::WavWriter` with the given sample rate and 1 channel.
+   - Convert f32 samples to i16 by multiplying by `i16::MAX as f32` and clamping.
+
+**DONE WHEN**
+- [ ] Resampling a 1-second 44100Hz sine wave (440Hz) to 16kHz produces a Vec of length ~16000 (±100).
+- [ ] The resampled signal's dominant frequency is still ~440Hz (verify via zero-crossing count: expect ~880 zero crossings ±50 in 16000 samples).
+- [ ] `save_wav` produces a valid WAV file readable by `hound::WavReader`.
+
+---
+
+### Task 6 (B) +audio
+
+**PURPOSE** — Voice Activity Detection filters silence so only speech segments are transcribed, reducing latency and improving accuracy.
+
+**WHAT TO DO**
+1. Add `silero-vad = "0.1"` (or the latest Silero VAD Rust binding) to `Cargo.toml`. If no suitable crate exists, implement a simple energy-based VAD.
+2. In `src-tauri/src/managers/audio.rs`, implement `VoiceActivityDetector`:
+   ```rust
+   pub struct VoiceActivityDetector {
+       // internal state for Silero or energy-based
+       speech_threshold: f32,   // default 0.5
+       silence_duration_ms: u32, // how long silence before stopping, default 1500
+   }
+   ```
+3. Implement `VoiceActivityDetector::new(speech_threshold: f32, silence_duration_ms: u32) -> Self`.
+4. Implement `process_frame(&mut self, frame: &[f32], sample_rate: u32) -> VadResult` where `VadResult` is `Speech | Silence | SilenceTimeout`. Process in 30ms frames (480 samples at 16kHz).
+5. Track consecutive silence duration internally. Return `SilenceTimeout` when `silence_duration_ms` is exceeded.
+6. Implement `reset(&mut self)` to clear internal state between recordings.
+
+**DONE WHEN**
+- [ ] A 30ms frame of zeros (silence) returns `VadResult::Silence`.
+- [ ] A 30ms frame of a loud sine wave returns `VadResult::Speech`.
+- [ ] After feeding 50 consecutive silence frames (1500ms at 30ms/frame), `process_frame` returns `VadResult::SilenceTimeout`.
+
+---
+
+## Whisper Model Management
+
+### Task 7 (A) +model
+
+**PURPOSE** — Defines the model registry: what models are available, their download URLs, sizes, and capabilities. Without this metadata, users can't browse or download models.
+
+**WHAT TO DO**
+1. In `src-tauri/src/managers/model.rs`, define:
+   ```rust
+   pub struct ModelInfo {
+       pub id: String,              // e.g. "whisper-small", "whisper-large-v3"
+       pub name: String,            // display name
+       pub engine: ModelEngine,     // enum Whisper
+       pub size_bytes: u64,
+       pub download_url: String,
+       pub file_name: String,       // e.g. "ggml-small.bin"
+       pub languages: Vec<String>,  // supported language codes
+       pub description: String,
+   }
+
+   pub enum ModelEngine {
+       Whisper,
+   }
+
+   pub enum ModelStatus {
+       NotDownloaded,
+       Downloading { progress: f32 },
+       Downloaded,
+       Loaded,
+   }
+   ```
+2. Implement `get_available_models() -> Vec<ModelInfo>` returning a hardcoded registry of Whisper GGML models:
+   - `whisper-tiny` (~75MB) — fastest, lowest accuracy
+   - `whisper-base` (~142MB)
+   - `whisper-small` (~466MB) — good balance
+   - `whisper-medium` (~1.5GB)
+   - `whisper-large-v3` (~3.1GB) — best accuracy
+   - `whisper-large-v3-turbo` (~1.6GB) — fast + accurate
+   Use Hugging Face GGML model URLs (e.g., `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin`).
+3. Each model entry must include accurate `languages` arrays. Tiny/base/small support `["en"]` variants plus multilingual. Large models support all target languages: `["en", "zh", "ta", "ms", "ja", "ko"]`.
+4. Register Tauri command `get_available_models` that returns the full list with current status for each.
+
+**DONE WHEN**
+- [ ] `get_available_models` returns at least 6 model entries.
+- [ ] Every entry has a non-empty `download_url`, valid `size_bytes` > 0, and at least `"en"` in `languages`.
+- [ ] The frontend can call the command and render a list of model names and sizes.
+
+---
+
+### Task 8 (A) +model
+
+**PURPOSE** — Implements model downloading with progress reporting and resume capability. Users must be able to download multi-GB models reliably.
+
+**WHAT TO DO**
+1. Add `reqwest = { version = "0.12", features = ["stream"] }` and `futures-util = "0.3"` to `Cargo.toml`.
+2. In `src-tauri/src/managers/model.rs`, implement `ModelManager`:
+   ```rust
+   pub struct ModelManager {
+       models_dir: PathBuf,
+       download_states: Arc<Mutex<HashMap<String, ModelStatus>>>,
+   }
+   ```
+3. Implement `ModelManager::new(models_dir: PathBuf) -> Self` that creates the directory if it doesn't exist.
+4. Implement `download_model(&self, model_id: &str, app_handle: &AppHandle) -> Result<()>`:
+   - Look up `ModelInfo` from registry by `model_id`.
+   - Determine target path: `{models_dir}/{file_name}` and partial path: `{target}.partial`.
+   - If target already exists and size matches `size_bytes`, return early (already downloaded).
+   - If `.partial` exists, send a range request (`Range: bytes={partial_size}-`) to resume.
+   - Otherwise, start a fresh download.
+   - Stream response body in chunks, appending to the `.partial` file.
+   - Every 100ms (throttled), emit a Tauri event `model-download-progress` with `{ model_id, downloaded_bytes, total_bytes, progress_pct }`.
+   - Update `download_states` to `Downloading { progress }`.
+   - On completion, verify file size matches `size_bytes`, then rename `.partial` to target.
+   - Update `download_states` to `Downloaded`.
+5. Implement `cancel_download(&self, model_id: &str)` — sets a cancellation flag, aborts the reqwest stream.
+6. Implement `delete_model(&self, model_id: &str) -> Result<()>` — removes the file and any `.partial` file.
+7. Implement `get_model_path(&self, model_id: &str) -> Result<Option<PathBuf>>` — returns `Some(path)` only if the file exists and is fully downloaded.
+8. Implement `get_model_status(&self, model_id: &str) -> ModelStatus`.
+9. Register Tauri commands: `download_model`, `cancel_download`, `delete_model`, `get_model_status`.
+
+**DONE WHEN**
+- [ ] Downloading `whisper-tiny` (~75MB) completes and the file exists at `{models_dir}/ggml-tiny.bin` with correct size.
+- [ ] Interrupting a download and calling `download_model` again resumes from where it left off (verified by checking the HTTP Range header in the second request).
+- [ ] `model-download-progress` events are emitted to the frontend with increasing `progress_pct` values.
+- [ ] `delete_model` removes the file and `get_model_status` returns `NotDownloaded`.
+
+---
+
+### Task 9 (A) +model
+
+**PURPOSE** — Loads a downloaded Whisper GGML model into memory for inference. This is the bridge between model files on disk and the transcription engine.
+
+**WHAT TO DO**
+1. Add `whisper-rs = "0.12"` (or latest) to `Cargo.toml`. This provides Rust bindings to whisper.cpp.
+2. In `src-tauri/src/managers/model.rs`, extend `ModelManager` with:
+   ```rust
+   loaded_model: Arc<Mutex<Option<LoadedModel>>>,
+   ```
+   where:
+   ```rust
+   struct LoadedModel {
+       model_id: String,
+       ctx: whisper_rs::WhisperContext,
+   }
+   ```
+3. Implement `load_model(&self, model_id: &str) -> Result<()>`:
+   - Get the model path via `get_model_path`. Error if not downloaded.
+   - If a model is already loaded with a different ID, unload it first.
+   - Create `WhisperContext` using `WhisperContext::new_with_params(&path, WhisperContextParameters::default())`.
+   - Store in `loaded_model`.
+   - Update status to `Loaded`.
+4. Implement `unload_model(&self) -> Result<()>`:
+   - Drop the `WhisperContext` by taking the value out of the mutex.
+   - Update status of the previously loaded model to `Downloaded`.
+5. Implement `get_loaded_context(&self) -> Result<Arc<Mutex<Option<LoadedModel>>>>` for the transcription manager to access.
+6. Implement an auto-unload timer: spawn a tokio task that unloads the model after `model_unload_timeout_secs` of inactivity (no transcription requests). Reset the timer on each transcription.
+7. Register Tauri commands: `load_model`, `unload_model`.
+
+**DONE WHEN**
+- [ ] After downloading whisper-tiny and calling `load_model("whisper-tiny")`, `get_model_status("whisper-tiny")` returns `Loaded`.
+- [ ] Calling `load_model("whisper-base")` when whisper-tiny is loaded first unloads whisper-tiny (status becomes `Downloaded`) then loads whisper-base.
+- [ ] `unload_model` frees memory — verify by checking that the `LoadedModel` option is `None`.
+
+---
+
+## Transcription Engine
+
+### Task 10 (A) +transcription
+
+**PURPOSE** — Core transcription: takes recorded audio and produces text using the loaded Whisper model. This is the primary value proposition of the app.
+
+**WHAT TO DO**
+1. In `src-tauri/src/managers/transcription.rs`, implement `TranscriptionManager`:
+   ```rust
+   pub struct TranscriptionManager {
+       model_manager: Arc<ModelManager>,
+   }
+   ```
+2. Implement `transcribe(&self, audio: &RecordedAudio, language: &str, translate: bool) -> Result<TranscriptionResult>`:
+   ```rust
+   pub struct TranscriptionResult {
+       pub text: String,
+       pub segments: Vec<Segment>,
+       pub duration_ms: u64,
+   }
+   pub struct Segment {
+       pub start_ms: u64,
+       pub end_ms: u64,
+       pub text: String,
+   }
+   ```
+   - Get the loaded WhisperContext from model_manager. Error if no model loaded.
+   - Resample audio to 16kHz using `resample_to_16khz`.
+   - Create `WhisperParams` with `FullParams::new(SamplingStrategy::Greedy { best_of: 1 })`.
+   - Set language: `params.set_language(Some(language))` for specific, or `None` for auto-detect.
+   - Set `params.set_translate(translate)` for English translation mode.
+   - Set `params.set_print_progress(false)` and `params.set_print_timestamps(false)`.
+   - Set `params.set_n_threads(num_cpus::get().min(8) as i32)` — add `num_cpus = "1.16"`.
+   - Run `ctx.full(params, &samples_16k)` inside `std::panic::catch_unwind` to prevent model crashes from killing the app.
+   - Extract segments from the result, concatenate text, measure duration.
+3. Implement custom word replacement `apply_custom_words(text: &str, words: &[CustomWordEntry]) -> String` that replaces each `from` pattern with `to` (case-insensitive whole-word matching).
+
+**DONE WHEN**
+- [ ] With whisper-tiny loaded, calling `transcribe` on a 5-second WAV of clear English speech returns a `TranscriptionResult` with non-empty `text`.
+- [ ] Setting `language` to `"en"` and `translate` to `false` transcribes in English.
+- [ ] `apply_custom_words("I use react js", &[CustomWordEntry { from: "react js", to: "ReactJS" }])` returns `"I use ReactJS"`.
+- [ ] If no model is loaded, `transcribe` returns a descriptive error, not a panic.
+
+---
+
+### Task 11 (A) +transcription
+
+**PURPOSE** — Orchestrates the full transcription pipeline from hotkey press to text output. Manages the state machine (Idle → Recording → Processing) and prevents race conditions.
+
+**WHAT TO DO**
+1. In `src-tauri/src/actions.rs`, implement `TranscriptionCoordinator`:
+   ```rust
+   pub enum CoordinatorState {
+       Idle,
+       Recording,
+       Processing,
+   }
+
+   pub struct TranscriptionCoordinator {
+       state: Arc<Mutex<CoordinatorState>>,
+       audio_recorder: Arc<Mutex<AudioRecorder>>,
+       transcription_manager: Arc<TranscriptionManager>,
+       history_manager: Arc<Mutex<HistoryManager>>,
+       settings: SharedSettings,
+       app_handle: AppHandle,
+   }
+   ```
+2. Implement `start_recording(&self) -> Result<()>`:
+   - Check state is `Idle`. If `Recording`, ignore. If `Processing`, ignore.
+   - Read `audio_input_device` from settings.
+   - Call `audio_recorder.start(device)`.
+   - Set state to `Recording`.
+   - Emit Tauri event `transcription-state-changed` with `{ state: "recording" }`.
+3. Implement `stop_and_transcribe(&self) -> Result<()>`:
+   - Check state is `Recording`. If not, ignore.
+   - Call `audio_recorder.stop()` to get samples.
+   - Set state to `Processing`.
+   - Emit `transcription-state-changed` with `{ state: "processing" }`.
+   - Spawn a tokio task:
+     - Resample and transcribe.
+     - Apply custom words from settings.
+     - Save to history (including WAV file if retention allows).
+     - Paste the text into the focused app (Task 14).
+     - Emit `transcription-state-changed` with `{ state: "idle" }` and `transcription-complete` with `{ id, text }`.
+     - Set state back to `Idle`.
+4. Implement `cancel(&self) -> Result<()>`:
+   - If `Recording`, stop the recorder and discard samples.
+   - Set state to `Idle`, emit state change.
+5. Implement push-to-talk logic: if `settings.push_to_talk` is true, `start_recording` triggers on key-down and `stop_and_transcribe` triggers on key-up.
+6. Add 30ms debouncing: ignore `start_recording` / `stop_and_transcribe` calls that arrive within 30ms of the previous call.
+7. Register Tauri commands: `start_recording`, `stop_and_transcribe`, `cancel_recording`, `get_transcription_state`.
+
+**DONE WHEN**
+- [ ] Calling `start_recording` → wait 3s → `stop_and_transcribe` produces a transcription that appears in the history database.
+- [ ] Calling `start_recording` while already recording does not panic or start a second stream.
+- [ ] `cancel_recording` during recording returns state to `Idle` without transcribing.
+- [ ] The frontend receives `transcription-state-changed` events for all state transitions.
+
+---
+
+## Text Injection
+
+### Task 12 (A) +clipboard
+
+**PURPOSE** — Injects transcribed text into the currently focused application. This is the core UX — text appears where the user's cursor is.
+
+**WHAT TO DO**
+1. Add `enigo = "0.6"` to `Cargo.toml`.
+2. In `src-tauri/src/clipboard.rs`, implement `TextInjector`:
+   ```rust
+   pub enum PasteMethod {
+       Clipboard,
+       Typing,
+   }
+   ```
+3. Implement `inject_text(text: &str, method: PasteMethod, preserve_clipboard: bool, append_space: bool) -> Result<()>`:
+   - **Clipboard method (default):**
+     a. If `preserve_clipboard`, read current clipboard contents and store.
+     b. Write `text` (with trailing space if `append_space`) to the system clipboard.
+     c. Simulate Cmd+V on macOS (or Ctrl+V on Linux) using `enigo`.
+     d. Sleep 50ms to allow paste to complete.
+     e. If `preserve_clipboard`, restore the original clipboard contents after a 200ms delay.
+   - **Typing method:**
+     a. Use `enigo.key_sequence(text)` to simulate keystrokes.
+     b. If `append_space`, type an additional space.
+4. For macOS clipboard access, use `arboard = "3"` crate for reading/writing clipboard.
+5. For Linux, detect Wayland vs X11 via `$XDG_SESSION_TYPE` environment variable:
+   - Wayland: use `wl-copy` / `wl-paste` via `std::process::Command`.
+   - X11: use `arboard` (which uses X11 under the hood).
+6. For Linux Wayland typing, implement a fallback chain: `wtype` → `dotool` → `xdotool`.
+
+**DONE WHEN**
+- [ ] On macOS, `inject_text("hello world", Clipboard, true, false)` pastes "hello world" into a focused text editor and the original clipboard content is restored afterward.
+- [ ] On macOS, `inject_text("hello", Typing, false, true)` types "hello " character by character.
+- [ ] If clipboard preservation is enabled, the clipboard contents before injection are identical to the contents 500ms after injection.
+
+---
+
+## Global Shortcuts
+
+### Task 13 (A) +shortcut
+
+**PURPOSE** — Registers system-wide keyboard shortcuts so the user can trigger recording from any application. This is the primary interaction mechanism.
+
+**WHAT TO DO**
+1. Use `tauri-plugin-global-shortcut` (Tauri 2 plugin) — add to `Cargo.toml` and `tauri.conf.json` capabilities.
+2. In `src-tauri/src/shortcut.rs`, implement `ShortcutManager`:
+   ```rust
+   pub struct ShortcutManager {
+       coordinator: Arc<TranscriptionCoordinator>,
+       settings: SharedSettings,
+   }
+   ```
+3. Implement `init_shortcuts(&self, app: &AppHandle) -> Result<()>`:
+   - Read shortcut bindings from settings.
+   - Register `shortcut_transcribe`: on press, if not push-to-talk, toggle recording (start if idle, stop if recording). If push-to-talk, start on press.
+   - Register `shortcut_cancel`: call `coordinator.cancel()`.
+   - Register `shortcut_post_process`: call `coordinator.stop_and_post_process()` (triggers LLM post-processing after transcription, Task 17).
+4. Implement `update_shortcut(&self, shortcut_type: &str, new_binding: &str, app: &AppHandle) -> Result<()>`:
+   - Unregister the old shortcut.
+   - Validate and register the new one.
+   - Persist to settings.
+5. For push-to-talk on macOS, use `rdev = "0.5"` for key-up detection (Tauri's global shortcut plugin only handles key-down). Listen globally for the release of the transcribe shortcut key and call `stop_and_transcribe`.
+6. On Linux, `rdev` works on both X11 and Wayland (Wayland may need `sudo` or input group membership — document this).
+7. Register Tauri command: `update_shortcut`.
+
+**DONE WHEN**
+- [ ] Pressing Option+Space (default) while any app is focused starts recording (overlay shows "Recording").
+- [ ] Pressing Option+Space again stops recording and triggers transcription.
+- [ ] Pressing Escape during recording cancels without transcribing.
+- [ ] Changing the shortcut to `Cmd+Shift+R` via `update_shortcut` correctly re-registers and the new shortcut works.
+
+---
+
+## Overlay Widget
+
+### Task 14 (A) +overlay
+
+**PURPOSE** — The floating overlay provides visual feedback during recording and transcription. Without it, users have no indication the app is listening.
+
+**WHAT TO DO**
+1. In `src-tauri/src/overlay.rs`, implement overlay window creation:
+   - On macOS, create a Tauri `WebviewWindow` with these properties:
+     - Title: empty string.
+     - Size: 172×36 logical pixels.
+     - Decorations: false (no title bar).
+     - Always on top: true.
+     - Transparent: true.
+     - Skip taskbar: true.
+     - Focused: false (do not steal focus from the user's active window).
+     - Resizable: false.
+   - Position: centered horizontally on the primary monitor, offset from bottom (or top, per settings).
+   - URL: `tauri://localhost/overlay.html` (a separate HTML entry point).
+2. Create `src/overlay/index.html` and `src/overlay/Overlay.tsx`:
+   - A minimal React app that listens for Tauri events.
+   - Three visual states:
+     - **Recording**: pulsing red dot with "Recording..." text, dark rounded-rectangle background with `backdrop-filter: blur(10px)`.
+     - **Processing**: spinning indicator with "Transcribing..." text.
+     - **Post-processing**: spinning indicator with "Processing..." text.
+   - 300ms fade-out animation on hide.
+   - Total height: 36px, border-radius: 18px, font-size: 13px, font-weight: 500.
+3. In the Rust overlay module, implement:
+   - `show_overlay(state: &str)` — shows the window and emits event to set visual state.
+   - `hide_overlay()` — emits hide event, waits 300ms for animation, then hides the window.
+   - `update_overlay_position(position: OverlayPosition)` — recalculates and moves the window.
+4. Wire the overlay to `TranscriptionCoordinator`: show on recording start, update on transcription start, hide on completion/cancel.
+5. Configure Vite to produce a separate `overlay.html` entry point (multi-page app configuration in `vite.config.ts`).
+
+**DONE WHEN**
+- [ ] Starting a recording shows a floating pill-shaped widget at the bottom-center of the screen with a pulsing red dot.
+- [ ] The overlay does not steal focus from the currently active application.
+- [ ] When transcription begins, the overlay switches to "Transcribing..." with a spinner.
+- [ ] The overlay fades out over 300ms when transcription completes.
+- [ ] Changing overlay position to `Top` moves the widget to the top-center of the screen.
+
+---
+
+## Menu Bar / System Tray
+
+### Task 15 (A) +tray
+
+**PURPOSE** — The tray icon provides persistent app presence and quick access to common actions without opening the full window.
+
+**WHAT TO DO**
+1. Use `tauri-plugin-tray` (built into Tauri 2) — configure in `tauri.conf.json`.
+2. In `src-tauri/src/tray.rs`, implement `setup_tray(app: &AppHandle) -> Result<()>`:
+   - Create a tray icon using a template image (for macOS menu bar auto-theming). Provide `icon-dark.png` and `icon-light.png` in `src-tauri/icons/tray/`.
+   - Build a context menu with:
+     - "Settings" — opens/focuses the main window. Shortcut: `Cmd+,` (mac) / `Ctrl+,` (linux).
+     - "Copy Last Transcript" — copies the most recent transcription (prefer post-processed if available) to clipboard.
+     - Separator.
+     - "Unload Model" — calls `model_manager.unload_model()`.
+     - Separator.
+     - "Quit" — exits the application.
+3. Implement dynamic tray icon states:
+   - **Idle**: default icon.
+   - **Recording**: red-tinted icon variant.
+   - **Transcribing**: icon with activity indicator (or different tint).
+   - Listen for `transcription-state-changed` events to update the icon.
+4. Handle tray icon click (left click on macOS): toggle main window visibility.
+5. Add tray icon assets: create simple 22×22 PNG template images (single color, alpha-masked for macOS).
+
+**DONE WHEN**
+- [ ] A tray icon appears in the macOS menu bar when the app launches.
+- [ ] Right-clicking the tray icon shows the context menu with all listed items.
+- [ ] "Copy Last Transcript" copies the most recent history entry's text to the clipboard.
+- [ ] The tray icon visual changes when recording starts and reverts when idle.
+- [ ] Left-clicking the tray icon toggles the main window.
+
+---
+
+## Main Application Window
+
+### Task 16 (A) +frontend
+
+**PURPOSE** — Creates the main application window shell with sidebar navigation. This is the container for settings, history, and model management views.
+
+**WHAT TO DO**
+1. In `src/App.tsx`, implement the main layout:
+   ```tsx
+   // Three-section layout:
+   // [Sidebar 200px] | [Content flex-1]
+   // Sidebar has navigation items, content area renders selected page
+   ```
+2. Define navigation sections in a config array:
+   ```typescript
+   const SECTIONS = [
+     { id: 'general', label: 'General', icon: Settings },
+     { id: 'audio', label: 'Audio', icon: Mic },
+     { id: 'shortcuts', label: 'Shortcuts', icon: Keyboard },
+     { id: 'models', label: 'Models', icon: Download },
+     { id: 'text', label: 'Text Processing', icon: Type },
+     { id: 'llm', label: 'AI Processing', icon: Brain },
+     { id: 'history', label: 'History', icon: Clock },
+   ] as const;
+   ```
+3. Implement `Sidebar` component:
+   - Fixed width 200px, full height, dark background (`bg-gray-900`).
+   - App name and version at top.
+   - Vertical list of nav items, highlight active item with `bg-gray-800` and a left border accent.
+   - Smooth transition on selection.
+4. Implement `Content` component:
+   - `flex-1` width, scrollable, `bg-gray-950` background.
+   - Renders the selected section's settings page (placeholder `<div>` for now, real components in later tasks).
+   - Section title at top of content area.
+5. Use React state to track the active section. Default to `'general'`.
+6. Add `lucide-react` for icons (`bun add lucide-react`).
+7. Style the window with a dark theme throughout: `bg-gray-950` base, `text-gray-100` text, `text-gray-400` secondary text.
+
+**DONE WHEN**
+- [ ] The main window shows a sidebar with all 7 navigation items.
+- [ ] Clicking a navigation item highlights it and changes the content area heading.
+- [ ] The layout is responsive — content area fills remaining space.
+- [ ] The app uses a consistent dark theme with no unstyled elements.
+
+---
+
+## LLM Post-Processing
+
+### Task 17 (A) +llm
+
+**PURPOSE** — Enables AI-powered text refinement of raw transcriptions using a local LLM. Supports multiple modes: dictation cleanup, proofreading, formal rewriting, and command extraction.
+
+**WHAT TO DO**
+1. In `src-tauri/src/llm_client.rs`, implement `LlmClient`:
+   ```rust
+   pub struct LlmClient {
+       http_client: reqwest::Client,
+       settings: SharedSettings,
+   }
+   ```
+2. Implement `post_process(&self, raw_text: &str, mode: PostProcessMode) -> Result<String>`:
+   - Read `llm_base_url`, `llm_model`, and `llm_provider` from settings.
+   - Build the system prompt based on `mode`:
+     - **Dictation**: "You are a dictation assistant. Clean up the following speech transcription: fix obvious speech-to-text errors, remove filler words (um, uh, like), fix punctuation and capitalization. Do NOT change the meaning or rephrase. Output only the corrected text."
+     - **Proofread**: "You are a proofreading assistant. Fix grammar, spelling, and punctuation errors in the following transcription. Maintain the original tone and intent. Output only the corrected text."
+     - **Rewrite**: "You are a writing assistant. Rewrite the following transcription in clear, professional prose. Maintain the original meaning but improve clarity and formality. Output only the rewritten text."
+     - **Command**: "You are a command parser. Extract the actionable intent from the following voice command. Output a structured, concise command. If unclear, output the closest interpretation."
+   - For `LlmProvider::Ollama`:
+     - POST to `{base_url}/api/chat` with body:
+       ```json
+       {
+         "model": "{llm_model}",
+         "messages": [
+           {"role": "system", "content": "{system_prompt}"},
+           {"role": "user", "content": "{raw_text}"}
+         ],
+         "stream": false
+       }
+       ```
+     - Parse response: `response.message.content`.
+   - For `LlmProvider::LlamaCpp`:
+     - POST to `{base_url}/v1/chat/completions` with OpenAI-compatible body.
+     - Parse response: `response.choices[0].message.content`.
+3. Implement timeout: 30 second request timeout. On timeout or error, return the original `raw_text` with a warning logged.
+4. Wire into `TranscriptionCoordinator`: add `stop_and_post_process(&self)` method that runs transcription then LLM post-processing, stores both `transcription` and `post_processed` in history.
+5. Register Tauri commands: `post_process_text` (for manual re-processing of history entries), `test_llm_connection` (verifies the LLM endpoint is reachable).
+
+**DONE WHEN**
+- [ ] With Ollama running locally with a model loaded, `post_process("um so like I think we should uh go with option A", Dictation)` returns cleaned text without filler words.
+- [ ] `test_llm_connection` returns `{ ok: true }` when Ollama is running and `{ ok: false, error: "..." }` when it's not.
+- [ ] If the LLM server is unreachable, `post_process` returns the original text after timeout instead of failing.
+- [ ] History entries created via `stop_and_post_process` have both `transcription` and `post_processed` fields populated.
+
+---
+
+## Settings UI Pages
+
+### Task 18 (B) +frontend
+
+**PURPOSE** — General settings page for app-wide configuration: autostart, start hidden, overlay preferences.
+
+**WHAT TO DO**
+1. Create `src/components/settings/GeneralSettings.tsx`.
+2. Create a reusable `SettingRow` component in `src/components/ui/SettingRow.tsx`:
+   ```tsx
+   // Horizontal layout: [Label + Description on left] [Control on right]
+   // Label: text-gray-100, font-medium
+   // Description: text-gray-400, text-sm
+   // Separated by border-b border-gray-800
+   ```
+3. Create reusable control components in `src/components/ui/`:
+   - `Toggle.tsx` — on/off switch (44×24px, bg-blue-500 when on, bg-gray-600 when off).
+   - `Select.tsx` — dropdown select with dark styling.
+   - `Slider.tsx` — range input with value display.
+4. GeneralSettings layout:
+   - **Auto-start**: Toggle. "Launch app on system startup."
+   - **Start hidden**: Toggle. "Start minimized to tray."
+   - **Overlay enabled**: Toggle. "Show floating widget during recording."
+   - **Overlay position**: Select [Top, Bottom]. "Position of the overlay widget."
+   - **Language**: Select from supported UI languages (English only for now).
+   - **Model unload timeout**: Slider (60-600 seconds). "Unload model from memory after inactivity."
+5. Use a `useSettings` custom hook in `src/hooks/useSettings.ts`:
+   ```typescript
+   function useSettings() {
+     // Calls get_settings on mount
+     // Returns { settings, updateSetting, loading }
+     // updateSetting(key, value) calls update_settings and refreshes local state
+   }
+   ```
+6. Each control change immediately calls `updateSetting`.
+
+**DONE WHEN**
+- [ ] The General settings page renders all 6 settings with correct controls and current values from the backend.
+- [ ] Toggling "Auto-start" calls `update_settings` and the change persists after app restart.
+- [ ] The `Toggle`, `Select`, and `Slider` components are reusable and styled consistently.
+
+---
+
+### Task 19 (B) +frontend
+
+**PURPOSE** — Audio settings page for microphone selection and audio feedback configuration.
+
+**WHAT TO DO**
+1. Create `src/components/settings/AudioSettings.tsx`.
+2. Add a Tauri command `list_audio_devices` that calls `AudioRecorder::list_input_devices()` and returns the device list.
+3. AudioSettings layout:
+   - **Input device**: Select dropdown populated from `list_audio_devices`. Show device names, highlight the default. "Microphone to use for recording."
+   - **Feedback volume**: Slider (0-100). "Volume of start/stop audio cues."
+   - **Test microphone**: Button that records 3 seconds and displays the audio level as a simple bar chart to verify the mic works.
+4. The mic test should:
+   - Call `start_recording` with the selected device.
+   - Listen for audio level events (implement a simple `audio-level` Tauri event in the audio recorder that emits RMS every 100ms during recording).
+   - Display a real-time horizontal bar that fluctuates with the mic level.
+   - Auto-stop after 3 seconds.
+5. Add the `audio-level` event emission to `AudioRecorder::start` — compute RMS of each 100ms chunk and emit `{ level: f32 }` (0.0 to 1.0).
+
+**DONE WHEN**
+- [ ] The audio settings page shows a dropdown with all available input devices.
+- [ ] Selecting a different device persists the choice via settings.
+- [ ] The "Test Microphone" button shows a live audio level bar that responds to voice input.
+- [ ] The feedback volume slider updates the setting.
+
+---
+
+### Task 20 (B) +frontend
+
+**PURPOSE** — Shortcuts settings page for viewing and customizing global keyboard shortcuts.
+
+**WHAT TO DO**
+1. Create `src/components/settings/ShortcutSettings.tsx`.
+2. For each shortcut (transcribe, cancel, post-process), display:
+   - Label and current binding (e.g., "Option + Space").
+   - An "Edit" button that enters recording mode.
+   - In recording mode: show "Press new shortcut..." text, listen for the next key combination, display it, and provide "Save" / "Cancel" buttons.
+3. Implement shortcut capture in the frontend:
+   - On "Edit" click, add a `keydown` listener to the document.
+   - Capture modifier keys (Cmd/Ctrl/Alt/Shift) + the main key.
+   - Display the combo in a styled key-cap format (e.g., rounded boxes for each key).
+   - On "Save", call `update_shortcut` Tauri command.
+4. Display the key combination using styled `<kbd>` elements:
+   ```css
+   /* Each key in a rounded pill: */
+   .keycap {
+     @apply px-2 py-1 rounded bg-gray-700 text-gray-200 text-sm font-mono border border-gray-600;
+   }
+   ```
+5. Add a **Push-to-talk** toggle below the transcribe shortcut: "Hold the transcribe shortcut to record, release to transcribe."
+6. Show a warning if a shortcut conflicts with a common system shortcut.
+
+**DONE WHEN**
+- [ ] All three shortcuts display their current bindings in styled key-cap format.
+- [ ] Clicking "Edit" on the transcribe shortcut and pressing `Cmd+Shift+R` captures and displays the new binding.
+- [ ] Saving the new binding calls `update_shortcut` and the shortcut works immediately without restarting.
+- [ ] The push-to-talk toggle updates the setting.
+
+---
+
+### Task 21 (B) +frontend
+
+**PURPOSE** — Model management page where users browse, download, and select Whisper models.
+
+**WHAT TO DO**
+1. Create `src/components/settings/ModelSettings.tsx`.
+2. Fetch model list from `get_available_models` on mount.
+3. For each model, display a card:
+   ```
+   [Model Name]          [Size]     [Status Badge]    [Action Button]
+   [Description - one line]
+   [Supported languages as small pills]
+   [Download progress bar - only shown during download]
+   ```
+4. Status badges:
+   - **Not Downloaded**: gray badge "Not Downloaded", button "Download".
+   - **Downloading**: blue badge with percentage, progress bar below, button "Cancel".
+   - **Downloaded**: green badge "Ready", button "Load" (or "Delete" secondary).
+   - **Loaded**: blue badge "Active", button "Unload".
+5. Listen for `model-download-progress` Tauri events to update the progress bar in real time.
+6. The currently selected model (from settings) should be visually highlighted with a border accent.
+7. Clicking "Load" calls `load_model`, which also updates `settings.model_id`.
+8. Add a section at the bottom: "Custom Model" with a file picker to load a local `.bin` GGML model not in the registry.
+9. The progress bar should show downloaded MB / total MB and a percentage.
+
+**DONE WHEN**
+- [ ] The page lists all available models with correct sizes and descriptions.
+- [ ] Clicking "Download" on whisper-tiny starts a download with a real-time progress bar.
+- [ ] After download, clicking "Load" loads the model and the badge changes to "Active".
+- [ ] The progress bar shows accurate MB downloaded and percentage.
+- [ ] Cancelling a download stops it and the model shows "Not Downloaded" with a partial file preserved for resume.
+
+---
+
+### Task 22 (B) +frontend
+
+**PURPOSE** — Text processing settings for configuring how transcriptions are cleaned and formatted.
+
+**WHAT TO DO**
+1. Create `src/components/settings/TextSettings.tsx`.
+2. Layout:
+   - **Append trailing space**: Toggle. "Add a space after pasted text so you can continue typing."
+   - **Paste method**: Select [Clipboard, Typing]. "How text is inserted into the active app."
+   - **Preserve clipboard**: Toggle (only enabled when paste method is Clipboard). "Restore clipboard contents after pasting."
+   - **Translate to English**: Toggle. "Translate non-English speech to English using Whisper."
+   - **Custom words**: A dynamic list editor:
+     - Each row: [From input] → [To input] [Delete button].
+     - "Add" button at bottom to add a new row.
+     - Persists as `Vec<CustomWordEntry>` in settings.
+     - Example placeholder: "react js" → "ReactJS".
+3. The custom words editor should:
+   - Show existing entries loaded from settings.
+   - Allow inline editing of both fields.
+   - Auto-save on blur (debounced 500ms).
+   - Prevent empty `from` fields.
+
+**DONE WHEN**
+- [ ] All text settings render with correct current values.
+- [ ] Adding a custom word entry "pytorch" → "PyTorch" persists to settings and is applied during next transcription.
+- [ ] Deleting a custom word entry removes it from settings.
+- [ ] The "Preserve clipboard" toggle is disabled/grayed when paste method is "Typing".
+
+---
+
+### Task 23 (B) +frontend
+
+**PURPOSE** — LLM/AI processing settings for configuring local LLM post-processing.
+
+**WHAT TO DO**
+1. Create `src/components/settings/LlmSettings.tsx`.
+2. Layout:
+   - **LLM Provider**: Select [Ollama, llama.cpp]. "Local LLM backend for text processing."
+   - **Base URL**: Text input. Default "http://localhost:11434" for Ollama. "API endpoint for the LLM server."
+   - **Model name**: Text input (or dropdown if we can fetch available models). "Name of the model to use (e.g., llama3, mistral)."
+   - **Post-process mode**: Select [Dictation, Proofread, Rewrite, Command] with descriptions:
+     - Dictation: "Clean up speech-to-text artifacts and filler words."
+     - Proofread: "Fix grammar, spelling, and punctuation."
+     - Rewrite: "Rewrite in clear, professional prose."
+     - Command: "Extract actionable intent from voice commands."
+   - **Test connection**: Button that calls `test_llm_connection` and shows success/failure.
+   - **Try it**: Text area where user can type sample text and click "Process" to see the LLM output. Shows before/after side by side.
+3. When provider is Ollama, add a "Fetch Models" button that calls `GET {base_url}/api/tags` and populates the model name dropdown with available models.
+4. Show a note: "Requires a local LLM server running. Install Ollama from ollama.ai or use llama.cpp."
+
+**DONE WHEN**
+- [ ] Selecting "Ollama" shows the correct default URL and the "Fetch Models" button.
+- [ ] "Test Connection" shows a green checkmark when Ollama is running and a red X with error message when not.
+- [ ] "Fetch Models" populates the model dropdown with models from the local Ollama instance.
+- [ ] The "Try it" feature sends text to the LLM and displays the processed result.
+
+---
+
+### Task 24 (B) +frontend
+
+**PURPOSE** — History view showing all past transcriptions with playback and management controls.
+
+**WHAT TO DO**
+1. Create `src/components/settings/HistoryView.tsx`.
+2. Fetch history from `get_history` command with pagination (50 entries per page).
+3. Display as a vertical list of cards:
+   ```
+   [Timestamp - relative, e.g. "2 min ago"]    [Bookmark icon] [Copy icon] [Delete icon]
+   [Transcription text - truncated to 3 lines with "Show more"]
+   [Post-processed text if different - shown below in a lighter style with "AI" badge]
+   [Audio playback bar if audio file exists]
+   ```
+4. Implement:
+   - **Copy**: copies the post-processed text (or transcription if no post-processing) to clipboard.
+   - **Bookmark**: toggles `saved` flag via `toggle_saved_entry`. Filled star icon when saved.
+   - **Delete**: calls `delete_history_entry` with confirmation dialog.
+   - **Show more/less**: expands the full text.
+   - **Audio playback**: HTML5 `<audio>` element with play/pause button and progress bar, loading the WAV from the app data directory.
+5. Add a search/filter bar at the top:
+   - Text search that filters entries client-side by transcription content.
+   - Toggle: "Bookmarked only" to show only saved entries.
+6. Listen for `transcription-complete` Tauri events to prepend new entries without re-fetching.
+7. Implement infinite scroll: load next 50 entries when scrolled to bottom.
+
+**DONE WHEN**
+- [ ] History page displays transcription entries in reverse chronological order.
+- [ ] Copying an entry places its text in the clipboard.
+- [ ] Bookmarking an entry toggles the star icon and persists across page reloads.
+- [ ] Deleting an entry removes it from the list after confirmation.
+- [ ] The search bar filters entries by text content in real time.
+- [ ] New transcriptions appear at the top of the list without manual refresh.
+
+---
+
+## Audio Feedback
+
+### Task 25 (B) +audio
+
+**PURPOSE** — Plays audio cues when recording starts and stops, giving the user audible confirmation that the app responded to their shortcut.
+
+**WHAT TO DO**
+1. Add `rodio = "0.19"` to `Cargo.toml`.
+2. In `src-tauri/src/managers/audio.rs`, implement `AudioFeedback`:
+   ```rust
+   pub struct AudioFeedback {
+       volume: f32,
+   }
+   ```
+3. Implement `play_sound(&self, sound: FeedbackSound) -> Result<()>` where `FeedbackSound` is `StartRecording | StopRecording | Cancel`:
+   - Load the appropriate WAV file from bundled resources (`src-tauri/resources/sounds/start.wav`, `stop.wav`, `cancel.wav`).
+   - Play using `rodio::Sink` with the configured volume.
+   - Use the default output device.
+   - Play asynchronously (don't block the caller).
+4. Create or source 3 short audio cue WAV files (< 100ms each):
+   - `start.wav`: short ascending two-tone beep.
+   - `stop.wav`: short descending two-tone beep.
+   - `cancel.wav`: single low tone.
+   - These can be generated programmatically as sine waves during build, or bundled as static assets.
+5. Wire into `TranscriptionCoordinator`:
+   - Play `StartRecording` at the beginning of `start_recording` (with 100ms delay in non-push-to-talk mode to avoid capturing the beep).
+   - Play `StopRecording` when `stop_and_transcribe` is called.
+   - Play `Cancel` when `cancel` is called.
+6. Respect `feedback_volume` from settings (0.0 = muted, 1.0 = full volume).
+
+**DONE WHEN**
+- [ ] Starting a recording plays a short beep sound.
+- [ ] Stopping a recording plays a different beep sound.
+- [ ] Cancelling plays a distinct cancellation sound.
+- [ ] Setting `feedback_volume` to 0.0 plays no sound.
+- [ ] The sound does not get captured by the microphone (verified by the 100ms delay in start).
+
+---
+
+## Onboarding Flow
+
+### Task 26 (B) +frontend
+
+**PURPOSE** — First-run experience that guides the user through permissions, model download, and initial configuration. Without this, new users face a broken app with no model loaded.
+
+**WHAT TO DO**
+1. Create `src/components/onboarding/Onboarding.tsx` with a stepped wizard.
+2. Track onboarding completion in settings: `onboarding_complete: bool`.
+3. If `onboarding_complete` is false, show the onboarding flow instead of the main app.
+4. **Step 1 — Permissions** (`src/components/onboarding/PermissionsStep.tsx`):
+   - On macOS: explain that accessibility permissions and microphone access are needed.
+   - Show a "Grant Microphone Access" button that triggers a mic recording (which prompts the macOS permission dialog).
+   - Show a "Grant Accessibility Access" button that opens System Settings > Privacy > Accessibility.
+   - Display green checkmarks when permissions are detected as granted.
+   - "Next" button enabled only when both permissions are confirmed.
+5. **Step 2 — Model Download** (`src/components/onboarding/ModelStep.tsx`):
+   - Show a curated selection of 3 models: whisper-tiny ("Fast, less accurate"), whisper-small ("Balanced"), whisper-large-v3-turbo ("Best quality, slower").
+   - User selects one and clicks "Download".
+   - Show download progress bar.
+   - "Next" button enabled when download completes.
+6. **Step 3 — Ready** (`src/components/onboarding/ReadyStep.tsx`):
+   - Show the default transcribe shortcut (Option+Space).
+   - Brief instruction: "Press Option+Space anywhere to start dictating."
+   - "Get Started" button that sets `onboarding_complete: true` and transitions to main app.
+7. Use a step indicator (dots or numbered steps) at the top of the wizard.
+8. Style consistently with the dark theme. Each step centered in the window with max-width 500px.
+
+**DONE WHEN**
+- [ ] On first launch (no settings file), the onboarding flow is shown instead of the main app.
+- [ ] Step 1 correctly detects microphone permission status on macOS.
+- [ ] Step 2 allows downloading a model with progress, and "Next" is disabled until complete.
+- [ ] Completing Step 3 sets `onboarding_complete: true` and the main app loads.
+- [ ] On subsequent launches, the onboarding is skipped.
+
+---
+
+## macOS Platform Integration
+
+### Task 27 (A) +platform
+
+**PURPOSE** — macOS-specific overlay behavior using NSPanel for proper always-on-top, no-focus-steal behavior. Standard Tauri windows activate the app when shown, which would steal focus from the user's active app.
+
+**WHAT TO DO**
+1. Add `cocoa = "0.26"` and `objc = "0.2"` to `Cargo.toml` (behind `#[cfg(target_os = "macos")]`).
+2. In `src-tauri/src/overlay.rs`, under `#[cfg(target_os = "macos")]`, after the Tauri WebviewWindow is created, access the underlying NSWindow and convert it to an NSPanel:
+   ```rust
+   use cocoa::appkit::{NSWindow, NSWindowCollectionBehavior};
+   use cocoa::base::id;
+
+   // Get the NSWindow from the Tauri window
+   let ns_window: id = window.ns_window().unwrap() as id;
+
+   unsafe {
+       // Set window level to status level (above normal windows)
+       ns_window.setLevel_(cocoa::appkit::NSStatusWindowLevel as i64);
+
+       // Set collection behavior to join all spaces and be transient
+       ns_window.setCollectionBehavior_(
+           NSWindowCollectionBehavior::NSWindowCollectionBehaviorCanJoinAllSpaces
+           | NSWindowCollectionBehavior::NSWindowCollectionBehaviorTransient
+       );
+
+       // Prevent the panel from becoming key window (stealing focus)
+       // Use NSPanel's setBecomesKeyOnlyIfNeeded
+       let _: () = msg_send![ns_window, setBecomesKeyOnlyIfNeeded: true];
+       let _: () = msg_send![ns_window, setFloatingPanel: true];
+   }
+   ```
+3. Ensure the overlay window uses `NSWindowStyleMaskNonactivatingPanel` so clicking it doesn't activate the app.
+4. Set the window's `ignoresMouseEvents` to true since the overlay is display-only.
+5. Test that the overlay appears above full-screen applications by setting the appropriate collection behavior.
+
+**DONE WHEN**
+- [ ] The overlay widget appears above all other windows including full-screen apps.
+- [ ] Showing the overlay does NOT steal focus from the currently active application.
+- [ ] The overlay appears on all macOS Spaces/desktops.
+- [ ] Mouse clicks pass through the overlay to the window below.
+
+---
+
+### Task 28 (B) +platform
+
+**PURPOSE** — macOS autostart support so the app launches on login, a common user expectation for utility apps.
+
+**WHAT TO DO**
+1. Use `tauri-plugin-autostart` — add to `Cargo.toml` and configure in `tauri.conf.json`.
+2. In the Tauri setup closure (in `lib.rs`), initialize the autostart plugin:
+   ```rust
+   use tauri_plugin_autostart::MacOSLauncher;
+   app.plugin(tauri_plugin_autostart::init(
+       MacOSLauncher::LaunchAgent,
+       None,
+   ))?;
+   ```
+3. Register Tauri commands `enable_autostart` and `disable_autostart` that toggle the launch agent.
+4. Wire the "Auto-start" toggle in General settings to call these commands.
+5. On Linux, the same plugin creates a `.desktop` file in `~/.config/autostart/`.
+
+**DONE WHEN**
+- [ ] Enabling auto-start creates a LaunchAgent plist on macOS.
+- [ ] After enabling, the app launches automatically on next login.
+- [ ] Disabling removes the LaunchAgent.
+- [ ] The setting UI reflects the current autostart state.
+
+---
+
+## Linux Platform Support
+
+### Task 29 (B) +platform
+
+**PURPOSE** — Linux-specific text injection using wtype/xdotool depending on display server. Without this, text can't be pasted on Linux.
+
+**WHAT TO DO**
+1. In `src-tauri/src/clipboard.rs`, add `#[cfg(target_os = "linux")]` implementations:
+2. Implement `detect_display_server() -> DisplayServer` where `DisplayServer` is `Wayland | X11`:
+   - Check `$XDG_SESSION_TYPE` environment variable.
+   - Fallback: check if `$WAYLAND_DISPLAY` is set (Wayland) or `$DISPLAY` is set (X11).
+3. For clipboard operations on Linux:
+   - **Wayland**: use `wl-copy` / `wl-paste` via `std::process::Command`.
+   - **X11**: use `arboard` crate (already a dependency).
+4. For text injection on Linux:
+   - **Clipboard + paste** (preferred): write to clipboard, then simulate Ctrl+V.
+   - **Wayland typing fallback chain**:
+     a. Try `wtype` — `Command::new("wtype").arg("--").arg(text)`.
+     b. If not found, try `dotool` — pipe `type {text}` to stdin.
+     c. If not found, try `ydotool` — `Command::new("ydotool").arg("type").arg("--").arg(text)`.
+   - **X11 typing**: use `xdotool type -- "{text}"`.
+5. For simulating Ctrl+V on Linux:
+   - **Wayland**: `wtype -M ctrl -k v -m ctrl`.
+   - **X11**: `xdotool key ctrl+v`.
+6. Check for tool availability at startup and log which tools are available.
+
+**DONE WHEN**
+- [ ] On Wayland, `inject_text("hello", Clipboard, true, false)` copies to clipboard via `wl-copy` and pastes via `wtype`.
+- [ ] On X11, `inject_text("hello", Clipboard, true, false)` uses `arboard` and `xdotool`.
+- [ ] If `wtype` is not installed on Wayland, falls back to `dotool` or `ydotool`.
+- [ ] `detect_display_server()` correctly identifies Wayland vs X11.
+
+---
+
+### Task 30 (B) +platform
+
+**PURPOSE** — Linux system tray support, which behaves differently from macOS (uses different APIs and conventions).
+
+**WHAT TO DO**
+1. In `src-tauri/src/tray.rs`, add Linux-specific handling under `#[cfg(target_os = "linux")]`:
+   - Use a standard PNG icon instead of macOS template images.
+   - Ensure the icon is visible on common Linux desktop environments (GNOME, KDE, XFCE).
+2. Create a Linux-specific tray icon: `src-tauri/icons/tray/icon-linux.png` — a 22×22 full-color PNG (white icon on transparent background works across most themes).
+3. Handle the case where the system tray is not available (some GNOME configurations):
+   - If tray creation fails, log a warning and continue without tray functionality.
+   - The app should still be fully functional via the main window.
+4. Linux context menu should use `Ctrl+,` for Settings shortcut instead of `Cmd+,`.
+5. Ensure the tray icon's dynamic states (recording, transcribing) work on Linux — use full icon swaps rather than template tinting.
+
+**DONE WHEN**
+- [ ] On Linux with a system tray (KDE, XFCE), the tray icon appears and the context menu works.
+- [ ] On GNOME without AppIndicator extension, the app launches without crashing (tray gracefully fails).
+- [ ] The tray icon changes to a red variant during recording on Linux.
+- [ ] The Settings shortcut in the context menu shows `Ctrl+,`.
+
+---
+
+## Language Support
+
+### Task 31 (B) +transcription
+
+**PURPOSE** — Configures Whisper for multi-language transcription covering the target languages: English, Chinese (Mandarin), Tamil, Malay, Japanese, Korean.
+
+**WHAT TO DO**
+1. In `src-tauri/src/managers/transcription.rs`, extend the `transcribe` method to accept a `language` parameter:
+   - Map user-friendly language codes to Whisper language tokens:
+     - `"en"` → `"en"` (English)
+     - `"zh"` → `"zh"` (Chinese/Mandarin)
+     - `"ta"` → `"ta"` (Tamil)
+     - `"ms"` → `"ms"` (Malay)
+     - `"ja"` → `"ja"` (Japanese)
+     - `"ko"` → `"ko"` (Korean)
+     - `"auto"` → `None` (auto-detect)
+   - Pass to `params.set_language()`.
+2. In the Settings UI (General or a new Language section), add a language selector:
+   - Dropdown with options: "Auto-detect", "English", "Chinese (Mandarin)", "Tamil", "Malay", "Japanese", "Korean".
+   - Store the selected code in `settings.language`.
+3. Update the model registry (Task 7) to clearly indicate which models support which languages:
+   - English-only models (`.en` variants) should be flagged and disabled when a non-English language is selected.
+   - Multilingual models support all 6 languages.
+4. Show a warning in the UI if the selected model doesn't support the selected language.
+5. For Chinese output, add an option for Simplified vs Traditional Chinese using the `opencc` crate (add `ferrous-opencc = "0.2"` to `Cargo.toml`):
+   - Setting: `chinese_variant: ChineseVariant` (Simplified | Traditional | None).
+   - Apply conversion after transcription.
+
+**DONE WHEN**
+- [ ] Setting language to `"ja"` and transcribing Japanese speech produces Japanese text output.
+- [ ] Setting language to `"auto"` correctly auto-detects the spoken language.
+- [ ] Selecting an English-only model while language is set to Japanese shows a warning.
+- [ ] Chinese transcription with `chinese_variant: Traditional` outputs Traditional Chinese characters.
+
+---
+
+## Recordings Storage
+
+### Task 32 (B) +audio
+
+**PURPOSE** — Persists audio recordings alongside transcriptions so users can replay and verify what they said.
+
+**WHAT TO DO**
+1. In `src-tauri/src/managers/history.rs`, add recording file management:
+   - Define a `recordings_dir: PathBuf` in `HistoryManager` (e.g., `{app_data_dir}/recordings/`).
+   - Create the directory on init.
+2. In `TranscriptionCoordinator::stop_and_transcribe`, after getting the audio samples:
+   - Generate a filename: `{timestamp_iso}.wav` (e.g., `2026-03-07T14-30-00.wav`).
+   - Call `save_wav(samples, sample_rate, recordings_dir.join(&filename))`.
+   - Store the filename in the history entry's `audio_file` field.
+3. Implement cleanup in `HistoryManager::cleanup`:
+   - When deleting old history entries, also delete their associated WAV files.
+   - Only delete WAV files for entries that are not `saved` (bookmarked).
+4. Register Tauri command `get_recording_path(id: i64) -> Option<String>`:
+   - Returns the full filesystem path to the WAV file for a history entry.
+   - The frontend uses this with `convertFileSrc` from `@tauri-apps/api/core` to create a playable URL.
+5. Handle the case where the WAV file is missing (deleted externally): return `None` gracefully.
+
+**DONE WHEN**
+- [ ] After a transcription, a WAV file exists in the recordings directory with a timestamp-based name.
+- [ ] The history entry's `audio_file` field contains the correct filename.
+- [ ] Cleanup deletes WAV files for removed unsaved entries but preserves bookmarked entries' files.
+- [ ] `get_recording_path` returns a valid path for existing recordings and `None` for missing ones.
+
+---
+
+## Application Lifecycle
+
+### Task 33 (B) +scaffold
+
+**PURPOSE** — Manages app startup, window visibility, and clean shutdown. Ensures the app behaves as a proper menu-bar utility that can be hidden and revealed.
+
+**WHAT TO DO**
+1. In `src-tauri/src/lib.rs`, configure the Tauri builder's `setup` closure:
+   - Initialize all managers (model, audio, transcription, history) and register as managed state.
+   - Initialize settings.
+   - Initialize shortcuts.
+   - Set up the tray icon.
+   - If `settings.start_hidden`, hide the main window after creation.
+   - Run `history.cleanup(&settings.history_retention)` on startup.
+   - If `settings.model_id` is set and the model is downloaded, auto-load it.
+2. Handle the window close event:
+   - On macOS, closing the main window should hide it (not quit the app) — the app lives in the menu bar.
+   - Override the close event: `window.on_window_event(|event| { if let WindowEvent::CloseRequested { api, .. } = event { api.prevent_close(); window.hide(); } })`.
+   - The "Quit" tray menu item or Cmd+Q should actually exit.
+3. On actual quit:
+   - Unload the current model.
+   - Save settings.
+   - Run history cleanup.
+4. Implement `show_main_window` and `hide_main_window` Tauri commands.
+5. On macOS, clicking the dock icon while the app is running should show the main window.
+
+**DONE WHEN**
+- [ ] Closing the main window hides it instead of quitting the app.
+- [ ] The app continues running in the tray after the window is hidden.
+- [ ] Clicking the tray icon or dock icon (macOS) re-shows the main window.
+- [ ] "Quit" from the tray menu fully exits the app.
+- [ ] On startup with `start_hidden: true`, only the tray icon is visible.
+- [ ] The previously selected model auto-loads on startup.
+
+---
+
+## Accessibility & Permissions
+
+### Task 34 (B) +platform
+
+**PURPOSE** — Checks and requests macOS permissions required for the app to function: microphone access (for recording) and accessibility access (for keyboard simulation / text injection).
+
+**WHAT TO DO**
+1. In `src-tauri/src/commands/mod.rs`, implement macOS permission checks:
+   ```rust
+   #[cfg(target_os = "macos")]
+   #[tauri::command]
+   fn check_microphone_permission() -> String {
+       // Use AVFoundation's AVCaptureDevice::authorizationStatus
+       // Return "granted", "denied", "not_determined", or "restricted"
+   }
+
+   #[cfg(target_os = "macos")]
+   #[tauri::command]
+   fn request_microphone_permission() -> bool {
+       // Trigger the permission dialog by briefly opening an audio stream
+       // Return whether permission was granted
+   }
+
+   #[cfg(target_os = "macos")]
+   #[tauri::command]
+   fn check_accessibility_permission() -> bool {
+       // Use AXIsProcessTrusted() from ApplicationServices
+   }
+
+   #[cfg(target_os = "macos")]
+   #[tauri::command]
+   fn open_accessibility_settings() {
+       // Open System Settings > Privacy > Accessibility
+       // Command::new("open").arg("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+   }
+   ```
+2. Add macOS framework linking in `build.rs` or `Cargo.toml`:
+   - Link `AVFoundation` for microphone permission.
+   - Link `ApplicationServices` for accessibility check.
+3. For Linux, these commands should return "granted" / `true` as Linux doesn't require the same permission model (but note the user may need to be in the `input` group for global shortcuts on Wayland).
+4. Wire these commands into the onboarding flow (Task 26) and show a persistent warning banner in the main app if permissions are missing.
+
+**DONE WHEN**
+- [ ] `check_microphone_permission` correctly returns the current macOS permission state.
+- [ ] `request_microphone_permission` triggers the macOS permission dialog.
+- [ ] `check_accessibility_permission` returns `true` when the app is in the Accessibility list and `false` otherwise.
+- [ ] `open_accessibility_settings` opens the correct System Settings pane.
+- [ ] On Linux, all permission checks return the "granted" state.
+
+---
+
+## Tauri Configuration
+
+### Task 35 (A) +scaffold
+
+**PURPOSE** — Configures `tauri.conf.json` with the correct permissions, capabilities, and build settings for the app to function properly on both platforms.
+
+**WHAT TO DO**
+1. Edit `src-tauri/tauri.conf.json`:
+   ```json
+   {
+     "productName": "WhisperFlow",
+     "version": "0.1.0",
+     "identifier": "com.whisperflow.app",
+     "build": {
+       "frontendDist": "../dist",
+       "devUrl": "http://localhost:1420",
+       "beforeBuildCommand": "bun run build",
+       "beforeDevCommand": "bun run dev"
+     },
+     "app": {
+       "windows": [
+         {
+           "title": "WhisperFlow",
+           "width": 900,
+           "height": 650,
+           "minWidth": 700,
+           "minHeight": 500,
+           "resizable": true,
+           "fullscreen": false,
+           "decorations": true
+         }
+       ],
+       "security": {
+         "csp": "default-src 'self'; connect-src 'self' http://localhost:*"
+       },
+       "trayIcon": {
+         "iconPath": "icons/tray/icon.png",
+         "iconAsTemplate": true
+       }
+     },
+     "bundle": {
+       "active": true,
+       "targets": ["dmg", "app"],
+       "icon": ["icons/icon.icns", "icons/icon.png"],
+       "macOS": {
+         "entitlements": "Entitlements.plist",
+         "minimumSystemVersion": "13.0"
+       },
+       "linux": {
+         "targets": ["appimage", "deb"]
+       }
+     }
+   }
+   ```
+2. Create `src-tauri/Entitlements.plist` with:
+   - `com.apple.security.device.audio-input` (microphone).
+   - `com.apple.security.automation.apple-events` (accessibility).
+3. Create `src-tauri/Info.plist` additions:
+   - `NSMicrophoneUsageDescription`: "WhisperFlow needs microphone access for voice transcription."
+4. Configure capabilities in `src-tauri/capabilities/default.json`:
+   - `core:window:allow-create`, `core:window:allow-show`, `core:window:allow-hide`.
+   - `core:event:allow-listen`, `core:event:allow-emit`.
+   - `tray:default`.
+   - `global-shortcut:allow-register`, `global-shortcut:allow-unregister`.
+   - `clipboard-manager:allow-read`, `clipboard-manager:allow-write`.
+   - All custom command permissions.
+5. Add the overlay window to `tauri.conf.json` windows array as a second entry (hidden by default, no decorations, transparent).
+
+**DONE WHEN**
+- [ ] `bun run tauri build` produces a `.app` bundle on macOS and an AppImage on Linux.
+- [ ] The macOS bundle includes the correct entitlements for microphone and accessibility.
+- [ ] All Tauri IPC commands are callable from the frontend without permission errors.
+- [ ] The CSP allows connections to localhost (for LLM API calls).
+
+---
+
+## End-to-End Integration
+
+### Task 36 (A) +integration
+
+**PURPOSE** — Wires all backend managers together in the Tauri setup so the app functions as a complete system on startup.
+
+**WHAT TO DO**
+1. In `src-tauri/src/lib.rs`, implement the full `setup` closure:
+   ```rust
+   .setup(|app| {
+       let app_data_dir = app.path().app_data_dir()?;
+       std::fs::create_dir_all(&app_data_dir)?;
+
+       // 1. Initialize settings
+       let settings = Arc::new(Mutex::new(Settings::load(&app_data_dir)?));
+
+       // 2. Initialize history manager
+       let history = Arc::new(Mutex::new(
+           HistoryManager::new(&app_data_dir.join("history.db"))?
+       ));
+
+       // 3. Initialize model manager
+       let model_manager = Arc::new(
+           ModelManager::new(app_data_dir.join("models"))
+       );
+
+       // 4. Initialize transcription manager
+       let transcription_manager = Arc::new(
+           TranscriptionManager::new(model_manager.clone())
+       );
+
+       // 5. Initialize audio recorder
+       let audio_recorder = Arc::new(Mutex::new(AudioRecorder::new()));
+
+       // 6. Initialize audio feedback
+       let audio_feedback = Arc::new(AudioFeedback::new(
+           settings.lock().unwrap().feedback_volume
+       ));
+
+       // 7. Initialize LLM client
+       let llm_client = Arc::new(LlmClient::new(settings.clone()));
+
+       // 8. Initialize transcription coordinator
+       let coordinator = Arc::new(TranscriptionCoordinator::new(
+           audio_recorder.clone(),
+           transcription_manager.clone(),
+           history.clone(),
+           settings.clone(),
+           llm_client.clone(),
+           audio_feedback.clone(),
+           app.handle().clone(),
+       ));
+
+       // 9. Initialize shortcuts
+       let shortcut_manager = ShortcutManager::new(
+           coordinator.clone(), settings.clone()
+       );
+       shortcut_manager.init_shortcuts(app.handle())?;
+
+       // 10. Setup tray
+       setup_tray(app.handle(), coordinator.clone(), history.clone())?;
+
+       // 11. Setup overlay
+       create_overlay_window(app.handle(), &settings.lock().unwrap())?;
+
+       // 12. Register all managed state
+       app.manage(settings);
+       app.manage(history);
+       app.manage(model_manager);
+       app.manage(transcription_manager);
+       app.manage(coordinator);
+       app.manage(audio_feedback);
+       app.manage(llm_client);
+
+       // 13. Auto-load model if configured
+       // (spawned as async task to not block startup)
+
+       // 14. Run history cleanup
+       // (spawned as async task)
+
+       Ok(())
+   })
+   ```
+2. Register ALL Tauri commands in the `invoke_handler`:
+   ```rust
+   .invoke_handler(tauri::generate_handler![
+       // Settings
+       get_settings, update_settings,
+       // Models
+       get_available_models, download_model, cancel_download,
+       delete_model, get_model_status, load_model, unload_model,
+       // Audio
+       list_audio_devices, start_recording, stop_and_transcribe,
+       cancel_recording, get_transcription_state,
+       // History
+       get_history, get_history_entry, delete_history_entry,
+       toggle_saved_entry, get_recording_path,
+       // LLM
+       post_process_text, test_llm_connection,
+       // Permissions (macOS)
+       check_microphone_permission, request_microphone_permission,
+       check_accessibility_permission, open_accessibility_settings,
+       // Window
+       show_main_window, hide_main_window,
+       // Shortcuts
+       update_shortcut,
+       // Autostart
+       enable_autostart, disable_autostart,
+   ])
+   ```
+3. Ensure all managed state types are `Send + Sync` (wrap non-Send types in `Mutex`).
+4. Add error handling: if any manager fails to initialize, show a dialog with the error and exit gracefully.
+
+**DONE WHEN**
+- [ ] The app starts without panics with all managers initialized.
+- [ ] Every registered Tauri command is callable from the frontend (test with `invoke()` in browser console during dev mode).
+- [ ] The full flow works: press shortcut → record → transcribe → text appears in clipboard and focused app.
+- [ ] Restarting the app loads previous settings and model selection correctly.
+
+---
+
+## Frontend State & Event Wiring
+
+### Task 37 (A) +frontend
+
+**PURPOSE** — Connects the React frontend to all backend events so the UI stays in sync with the transcription state, model downloads, and settings changes.
+
+**WHAT TO DO**
+1. Create `src/hooks/useTranscriptionState.ts`:
+   ```typescript
+   // Listens for 'transcription-state-changed' Tauri event
+   // Returns { state: 'idle' | 'recording' | 'processing' | 'post-processing' }
+   // Uses @tauri-apps/api/event listen()
+   ```
+2. Create `src/hooks/useModelDownload.ts`:
+   ```typescript
+   // Listens for 'model-download-progress' Tauri event
+   // Returns Map<string, { downloaded: number, total: number, pct: number }>
+   // Updates in real-time as downloads progress
+   ```
+3. Create `src/stores/appState.ts` using React context (or zustand if preferred):
+   ```typescript
+   interface AppState {
+     transcriptionState: TranscriptionState;
+     settings: Settings | null;
+     downloadProgress: Map<string, DownloadProgress>;
+     isOnboarding: boolean;
+   }
+   ```
+4. In `src/App.tsx`:
+   - Wrap with `AppStateProvider`.
+   - On mount, call `get_settings` to load initial state.
+   - If `settings.onboarding_complete` is false, render `Onboarding`.
+   - Otherwise, render the main layout.
+   - Set up all event listeners in a single `useEffect`.
+5. Create `src/hooks/useTauriCommand.ts` — a generic hook for calling Tauri commands with loading/error state:
+   ```typescript
+   function useTauriCommand<T>(command: string) {
+     return { execute: (args?) => Promise<T>, loading: boolean, error: string | null }
+   }
+   ```
+6. Ensure all event listeners are cleaned up on unmount.
+
+**DONE WHEN**
+- [ ] The UI reflects real-time transcription state changes (idle/recording/processing) without polling.
+- [ ] Model download progress bars update in real-time from backend events.
+- [ ] Settings changes from the backend (e.g., model auto-load) reflect in the UI.
+- [ ] No event listener leaks (verified by checking listener count doesn't grow on page navigation).
+
+---
+
+## Polish & Edge Cases
+
+### Task 38 (B) +transcription
+
+**PURPOSE** — Handles the edge case where transcription produces empty or garbage output (common with very short recordings or background noise).
+
+**WHAT TO DO**
+1. In `TranscriptionManager::transcribe`, after getting the result:
+   - Trim whitespace from the output.
+   - If the result is empty or only whitespace, return `TranscriptionResult` with `text: ""`.
+   - Filter common Whisper hallucination patterns: "[BLANK_AUDIO]", "(silence)", "Thank you for watching", repeated phrases. Maintain a list of known hallucination strings.
+   - If the recording is less than 0.5 seconds of audio (8000 samples at 16kHz), skip transcription and return empty.
+2. In `TranscriptionCoordinator::stop_and_transcribe`:
+   - If transcription result is empty, emit `transcription-state-changed` with `{ state: "idle" }` without pasting or saving.
+   - Optionally play the cancel sound to indicate nothing was transcribed.
+   - Log the empty result for debugging.
+3. Emit a Tauri event `transcription-empty` that the frontend can use to show a brief toast notification: "No speech detected."
+
+**DONE WHEN**
+- [ ] A 0.3-second recording does not trigger transcription.
+- [ ] A recording of silence does not paste anything or create a history entry.
+- [ ] "[BLANK_AUDIO]" from Whisper is filtered out and treated as empty.
+- [ ] The frontend displays a brief "No speech detected" notification when `transcription-empty` is received.
+
+---
+
+### Task 39 (B) +frontend
+
+**PURPOSE** — Toast notification system for transient messages (errors, empty transcription, copy confirmation, etc.).
+
+**WHAT TO DO**
+1. Create `src/components/ui/Toast.tsx`:
+   ```typescript
+   interface Toast {
+     id: string;
+     message: string;
+     type: 'info' | 'success' | 'warning' | 'error';
+     duration?: number; // ms, default 3000
+   }
+   ```
+2. Create `src/hooks/useToast.ts`:
+   ```typescript
+   // Returns { toasts, addToast, removeToast }
+   // Auto-removes toasts after their duration
+   ```
+3. Create `ToastContainer` component:
+   - Fixed position bottom-right of the main window.
+   - Toasts stack vertically with 8px gap.
+   - Enter animation: slide in from right (200ms).
+   - Exit animation: fade out (200ms).
+   - Styling per type:
+     - info: `bg-gray-800 border-blue-500`
+     - success: `bg-gray-800 border-green-500`
+     - warning: `bg-gray-800 border-yellow-500`
+     - error: `bg-gray-800 border-red-500`
+   - Left border accent (3px) with the type color.
+   - Dismiss on click.
+4. Wire toast to events:
+   - `transcription-empty` → info toast "No speech detected"
+   - `transcription-complete` → success toast "Transcription complete" (auto-dismiss 2s)
+   - Download complete → success toast "Model downloaded"
+   - LLM error → error toast with message
+
+**DONE WHEN**
+- [ ] Toasts appear at bottom-right and auto-dismiss after the configured duration.
+- [ ] Error toasts have a red accent, success toasts have a green accent.
+- [ ] Clicking a toast dismisses it immediately.
+- [ ] Multiple toasts stack without overlapping.
+
+---
+
+### Task 40 (C) +frontend
+
+**PURPOSE** — Keyboard navigation and accessibility for the settings UI, ensuring the app is usable without a mouse.
+
+**WHAT TO DO**
+1. Add `tabIndex` to all interactive elements in settings pages.
+2. Implement keyboard navigation for the sidebar:
+   - Arrow Up/Down to navigate between sections.
+   - Enter to select a section.
+   - Tab to move focus into the content area.
+3. For the shortcut editor (Task 20), ensure:
+   - Escape cancels the recording mode.
+   - The "Edit" button is focusable and activatable via Enter.
+4. For the model cards (Task 21):
+   - Tab navigates between model cards.
+   - Enter activates the primary action (Download/Load/Unload).
+5. Add visible focus indicators: `ring-2 ring-blue-500` on all focusable elements.
+6. Ensure all toggles are keyboard-operable (Space to toggle).
+
+**DONE WHEN**
+- [ ] The entire settings UI is navigable using only Tab, Arrow keys, Enter, and Escape.
+- [ ] Focus indicators are visible on every interactive element.
+- [ ] Toggles respond to Space key.
+- [ ] The shortcut editor can be fully operated via keyboard.
+
+---
+
+### Task 41 (C) +audio
+
+**PURPOSE** — Real-time audio level visualization in the overlay during recording, giving visual feedback that the mic is picking up sound.
+
+**WHAT TO DO**
+1. In `AudioRecorder::start`, extend the audio callback:
+   - Every 100ms (accumulate samples and compute when enough), calculate RMS level:
+     ```rust
+     let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
+     let level = (rms * 5.0).min(1.0); // scale up for visibility
+     ```
+   - Emit Tauri event `audio-level` with `{ level: f32 }`.
+2. In `src/overlay/Overlay.tsx`, add a level indicator:
+   - 5 small dots/bars next to the recording indicator.
+   - Animate their height based on the `audio-level` event value.
+   - Use CSS transitions for smooth animation (50ms transition).
+   - Color: white at low levels, transitioning to red at high levels.
+3. Throttle the frontend updates to 10fps (100ms) to avoid excessive re-renders.
+
+**DONE WHEN**
+- [ ] During recording, the overlay shows animated bars that respond to voice volume.
+- [ ] Silence shows minimal bar height, loud speech shows full height.
+- [ ] The animation is smooth without visual jitter.
+- [ ] The level indicator does not appear when not recording.
+
+---
+
+### Task 42 (C) +frontend
+
+**PURPOSE** — About section showing app version, credits, and links.
+
+**WHAT TO DO**
+1. Add an "About" section to the sidebar navigation (after History).
+2. Create `src/components/settings/AboutView.tsx`:
+   - App name: "WhisperFlow" in larger text.
+   - Version: read from Tauri's `app.getVersion()`.
+   - One-line description: "Local voice-to-text dictation."
+   - Technologies: "Built with Tauri, whisper.cpp, React."
+   - Keyboard shortcut reference table:
+     | Action | Shortcut |
+     |--------|----------|
+     | Transcribe | Option+Space |
+     | Cancel | Escape |
+     | Post-process | Option+Shift+Space |
+     | Settings | Cmd+, |
+   - Read shortcuts from current settings to display the actual configured values.
+3. Style minimally — centered content, muted text, `max-width: 400px`.
+
+**DONE WHEN**
+- [ ] The About page shows the correct version number.
+- [ ] Shortcut references reflect the user's actual configured shortcuts, not hardcoded defaults.
+- [ ] The page is visually clean and consistent with the dark theme.
+
+---
+
+## Build & Distribution
+
+### Task 43 (B) +build
+
+**PURPOSE** — Configures the build pipeline to produce distributable binaries for macOS and Linux.
+
+**WHAT TO DO**
+1. Create a GitHub Actions workflow at `.github/workflows/build.yml`:
+   ```yaml
+   name: Build
+   on:
+     push:
+       tags: ['v*']
+   jobs:
+     build-macos:
+       runs-on: macos-latest
+       steps:
+         - uses: actions/checkout@v4
+         - uses: oven-sh/setup-bun@v2
+         - uses: dtolnay/rust-toolchain@stable
+         - run: bun install
+         - run: bun run tauri build
+         - uses: actions/upload-artifact@v4
+           with:
+             name: macos-dmg
+             path: src-tauri/target/release/bundle/dmg/*.dmg
+
+     build-linux:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+         - uses: oven-sh/setup-bun@v2
+         - uses: dtolnay/rust-toolchain@stable
+         - run: sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libssl-dev libasound2-dev
+         - run: bun install
+         - run: bun run tauri build
+         - uses: actions/upload-artifact@v4
+           with:
+             name: linux-appimage
+             path: src-tauri/target/release/bundle/appimage/*.AppImage
+   ```
+2. Add build scripts to `package.json`:
+   ```json
+   {
+     "scripts": {
+       "dev": "vite",
+       "build": "tsc && vite build",
+       "tauri": "tauri"
+     }
+   }
+   ```
+3. Ensure the Vite config produces the multi-page build (main app + overlay).
+4. For macOS, ensure `whisper-rs` compiles with CoreML support by setting the appropriate feature flags and ensuring `WHISPER_COREML=1` during build (significant performance boost on Apple Silicon).
+5. For Linux, document required system dependencies in the README.
+
+**DONE WHEN**
+- [ ] `bun run tauri build` succeeds on macOS and produces a `.dmg`.
+- [ ] `bun run tauri build` succeeds on Linux and produces an `.AppImage`.
+- [ ] The macOS build includes CoreML support for Apple Silicon acceleration.
+- [ ] The GitHub Actions workflow builds artifacts for both platforms on tag push.
+
+---
+
+### Task 44 (C) +build
+
+**PURPOSE** — Code signing for macOS distribution so users don't get Gatekeeper warnings.
+
+**WHAT TO DO**
+1. In the GitHub Actions macOS build job, add code signing steps:
+   - Import the Developer ID certificate from a GitHub secret (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`).
+   - Set `APPLE_SIGNING_IDENTITY` environment variable.
+   - Tauri's bundler handles codesigning automatically when the identity is available.
+2. Add notarization:
+   - Set `APPLE_ID`, `APPLE_PASSWORD` (app-specific password), `APPLE_TEAM_ID` as GitHub secrets.
+   - Add notarization config to `tauri.conf.json`:
+     ```json
+     "macOS": {
+       "signingIdentity": "-",
+       "providerShortName": "TEAM_ID"
+     }
+     ```
+3. Document the manual signing process for local builds in the README:
+   - `codesign --deep --force --sign "Developer ID Application: ..." target/release/bundle/macos/WhisperFlow.app`
+   - `xcrun notarytool submit ... --apple-id ... --team-id ... --password ...`
+4. For users building from source without a certificate, ensure the app still runs via right-click > Open to bypass Gatekeeper.
+
+**DONE WHEN**
+- [ ] The CI-produced `.dmg` installs on macOS without Gatekeeper warnings.
+- [ ] The app is notarized (verify with `spctl --assess -v WhisperFlow.app`).
+- [ ] The README documents the self-signing process for contributors.
+
+---
+
+## Performance Optimization
+
+### Task 45 (B) +performance
+
+**PURPOSE** — Enables CoreML acceleration on Apple Silicon Macs for significantly faster Whisper inference (3-5x speedup).
+
+**WHAT TO DO**
+1. In `Cargo.toml`, configure `whisper-rs` with CoreML feature:
+   ```toml
+   [target.'cfg(target_os = "macos")'.dependencies]
+   whisper-rs = { version = "0.12", features = ["coreml"] }
+   ```
+2. In `TranscriptionManager::transcribe`, when on macOS ARM64:
+   - Generate CoreML model on first use: `whisper-rs` can generate `.mlmodelc` files.
+   - Store generated CoreML models in `{models_dir}/coreml/`.
+   - Set `WhisperContextParameters` to enable CoreML:
+     ```rust
+     let mut params = WhisperContextParameters::default();
+     params.use_gpu(true);
+     ```
+3. Add a setting `use_gpu: bool` (default true on macOS ARM64, false elsewhere).
+4. Handle the case where CoreML generation fails (fall back to CPU gracefully).
+5. Log transcription timing: measure and emit `transcription-timing` event with `{ model_id, audio_duration_ms, transcription_duration_ms, used_gpu }`.
+6. Show timing in the history entry detail view.
+
+**DONE WHEN**
+- [ ] On Apple Silicon, Whisper inference uses CoreML (verified by checking the timing log shows GPU usage).
+- [ ] CoreML model files are generated once and reused.
+- [ ] If CoreML is unavailable, transcription falls back to CPU without error.
+- [ ] Transcription timing is logged and visible in history entries.
+
+---
+
+### Task 46 (C) +performance
+
+**PURPOSE** — Reduces memory usage by lazy-loading the model and releasing it after inactivity, since Whisper models can consume 100MB–3GB of RAM.
+
+**WHAT TO DO**
+1. In `ModelManager`, implement the auto-unload timer (referenced in Task 9):
+   ```rust
+   // Track last_used: Arc<Mutex<Instant>>
+   // On each transcription, update last_used to Instant::now()
+   // Spawn a periodic check (every 30s) that:
+   //   if Instant::now() - last_used > model_unload_timeout_secs:
+   //     unload_model()
+   ```
+2. Implement lazy loading in `TranscriptionCoordinator::stop_and_transcribe`:
+   - Before transcribing, check if a model is loaded.
+   - If not, auto-load `settings.model_id` (block until loaded).
+   - If load fails, emit error event.
+3. Emit `model-state-changed` event with `{ model_id, state: "loading" | "loaded" | "unloaded" }` for UI feedback.
+4. Show model state in the tray icon tooltip: "WhisperFlow — Model: whisper-small (loaded)" or "WhisperFlow — No model loaded".
+
+**DONE WHEN**
+- [ ] After 5 minutes (default) of no transcription, the model is automatically unloaded.
+- [ ] Transcribing after auto-unload transparently re-loads the model and completes the transcription.
+- [ ] The tray tooltip shows the current model state.
+- [ ] Memory usage drops after unloading (verify with Activity Monitor / htop).
+
+---
+
+## Error Handling & Resilience
+
+### Task 47 (B) +scaffold
+
+**PURPOSE** — Comprehensive error handling so the app never crashes silently and users understand what went wrong.
+
+**WHAT TO DO**
+1. Define a unified error type in `src-tauri/src/error.rs`:
+   ```rust
+   #[derive(Debug, thiserror::Error)]
+   pub enum AppError {
+       #[error("No model loaded. Download and load a model in Settings > Models.")]
+       NoModelLoaded,
+       #[error("Model not found: {0}")]
+       ModelNotFound(String),
+       #[error("Microphone error: {0}")]
+       AudioError(String),
+       #[error("Transcription failed: {0}")]
+       TranscriptionError(String),
+       #[error("LLM connection failed: {0}")]
+       LlmError(String),
+       #[error("Download failed: {0}")]
+       DownloadError(String),
+       #[error("Permission denied: {0}")]
+       PermissionError(String),
+       #[error("{0}")]
+       Other(String),
+   }
+
+   impl serde::Serialize for AppError {
+       fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+           serializer.serialize_str(&self.to_string())
+       }
+   }
+   ```
+2. Add `thiserror = "2"` to `Cargo.toml`.
+3. Use `AppError` as the error type for all Tauri commands: `Result<T, AppError>`.
+4. In the frontend, handle errors from `invoke()`:
+   ```typescript
+   try {
+     await invoke('start_recording');
+   } catch (error) {
+     addToast({ message: error as string, type: 'error' });
+   }
+   ```
+5. For panics in the transcription thread (`catch_unwind` in Task 10), convert to `AppError::TranscriptionError` with a message suggesting to try a different model.
+6. Log all errors using `log::error!` for debugging.
+
+**DONE WHEN**
+- [ ] Every Tauri command returns a typed error with a user-friendly message.
+- [ ] The frontend displays error messages as toast notifications.
+- [ ] A transcription panic (simulated by corrupting model input) is caught and displayed as an error, not a crash.
+- [ ] Errors are logged to the Tauri log file.
