@@ -1,4 +1,5 @@
-/* eslint-disable */
+import type { Theme } from './storage';
+
 let shadowRoot: ShadowRoot | null = null;
 let popupElement: HTMLElement | null = null;
 let hostElement: HTMLElement | null = null;
@@ -124,12 +125,13 @@ export function initPopup() {
     document.body.appendChild(hostElement);
 }
 
-export function showPopup(x: number, y: number, data: { rows: PopupRow[], theme?: string }) {
+export function showPopup(x: number, y: number, data: { rows: PopupRow[], theme?: Theme }) {
     if (!hostElement) initPopup();
     if (!popupElement || !shadowRoot) return;
     popupElement.classList.remove('light', 'dark');
-    if (data.theme === 'light') popupElement.classList.add('light');
-    popupElement.innerHTML = '';
+    const resolvedTheme = resolveTheme(data.theme);
+    if (resolvedTheme === 'light') popupElement.classList.add('light');
+    popupElement.replaceChildren();
     for (const row of data.rows) {
         const rowEl = document.createElement('div');
         rowEl.classList.add('row');
@@ -143,7 +145,9 @@ export function showPopup(x: number, y: number, data: { rows: PopupRow[], theme?
         timeEl.classList.add('time');
         timeEl.title = 'Click to copy';
         timeEl.textContent = row.time;
-        timeEl.addEventListener('click', () => handleCopy(row.copyText, timeEl));
+        timeEl.addEventListener('click', () => {
+            handleCopy(row.copyText, timeEl);
+        });
         const metaEl = document.createElement('div');
         metaEl.classList.add('meta');
         const zoneEl = document.createElement('span');
@@ -160,23 +164,53 @@ export function showPopup(x: number, y: number, data: { rows: PopupRow[], theme?
         rowEl.appendChild(metaEl);
         popupElement.appendChild(rowEl);
     }
-    popupElement.style.left = `${x}px`;
-    popupElement.style.top = `${y}px`;
+    popupElement.style.left = `${String(x)}px`;
+    popupElement.style.top = `${String(y)}px`;
     popupElement.classList.add('visible');
 }
 
 export function hidePopup() {
-    if (popupElement) {
+    if (popupElement && shadowRoot) {
         popupElement.classList.remove('visible');
-        shadowRoot?.querySelectorAll('.time').forEach(el => el.classList.remove('copied'));
+        shadowRoot.querySelectorAll('.time').forEach((element) => {
+            element.classList.remove('copied');
+        });
     }
 }
 
 function handleCopy(timeText: string, el: HTMLElement) {
-    navigator.clipboard.writeText(timeText).then(() => {
-        el.classList.add('copied');
-        setTimeout(() => el.classList.remove('copied'), 1500);
-    }).catch(err => {
-        console.error('Failed to copy time:', err);
-    });
+    void copyText(timeText)
+        .then(() => {
+            el.classList.add('copied');
+            setTimeout(() => {
+                el.classList.remove('copied');
+            }, 1500);
+        })
+        .catch((error: unknown) => {
+            console.error('Failed to copy time:', error);
+        });
+}
+
+export function isPopupEvent(event: Event): boolean {
+    if (!hostElement) {
+        return false;
+    }
+
+    return event.composedPath().includes(hostElement);
+}
+
+function resolveTheme(theme: Theme | undefined): 'light' | 'dark' {
+    if (theme === 'light') {
+        return 'light';
+    }
+
+    if (theme === 'dark') {
+        return 'dark';
+    }
+
+    return window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+}
+
+async function copyText(timeText: string): Promise<void> {
+    await navigator.clipboard.writeText(timeText);
 }

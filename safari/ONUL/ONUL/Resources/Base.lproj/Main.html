@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'">
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <link rel="stylesheet" href="../Style.css">
+    <script src="../Script.js" defer></script>
+</head>
+<body>
+    <main class="page">
+        <section class="panel hero">
+            <p class="eyebrow">Safari Host App</p>
+            <img src="../Icon.png" width="96" height="96" alt="ONUL Icon">
+            <h1>Inline timezone conversion with explicit site access.</h1>
+            <p class="lead">
+                ONUL converts selected times and dates directly in the page. It defaults to manual conversion and only enables live inline conversion on websites you approve.
+            </p>
+
+            <div class="hero-grid">
+                <article class="card">
+                    <h2>How it works</h2>
+                    <p>Use the extension popup or context menu to convert the current selection. Enable live conversion only for sites where you want instant inline results.</p>
+                </article>
+                <article class="card">
+                    <h2>Privacy</h2>
+                    <p>ONUL does not transmit browsing data, selection text, or analytics off-device. Parsing and timezone conversion happen locally.</p>
+                </article>
+            </div>
+
+            <div class="card">
+                <h2>Safari setup</h2>
+                <ol>
+                    <li>Open Safari Settings from the button on the right.</li>
+                    <li>Enable ONUL in the Extensions section.</li>
+                    <li>Choose website access for the sites where you want live conversion.</li>
+                    <li>Use ONUL’s popup to convert a selection or enable live mode for the current site.</li>
+                </ol>
+            </div>
+        </section>
+
+        <aside class="panel status-card">
+            <span class="status-badge">Extension Status</span>
+            <p class="status-copy state-unknown">Turn on ONUL in Safari Settings, then grant website access for the sites you approve.</p>
+            <p class="status-copy state-on">The ONUL extension is on. Review website access in Safari Settings if live conversion is not running on a site.</p>
+            <p class="status-copy state-off">The ONUL extension is off. Turn it on in Safari Settings, then allow website access for the sites you want to use.</p>
+            <button class="open-preferences">Quit and Open Safari Settings…</button>
+
+            <div class="meta-grid">
+                <article class="card">
+                    <h2>Support</h2>
+                    <ul class="support-list">
+                        <li><a href="https://github.com/gongahkia/onul/issues">GitHub Issues</a></li>
+                        <li><a href="mailto:extensions@gongahkia.dev">extensions@gongahkia.dev</a></li>
+                    </ul>
+                </article>
+                <article class="card">
+                    <h2>Version</h2>
+                    <p class="version" data-version>Version</p>
+                </article>
+            </div>
+        </aside>
+    </main>
+</body>
+</html>

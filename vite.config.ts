@@ -11,6 +11,7 @@ export default defineConfig({
     environment: 'node',
   },
   build: {
+    outDir: process.env.EXTENSION_OUT_DIR ?? 'dist/common',
     rollupOptions: {
       input: {
         popup: resolve(__dirname, 'index.html'),

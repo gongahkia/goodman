@@ -16,7 +16,11 @@
 
   --btn-bg: #1a1a1a;
   --input-bg: #1a1a1a;
+  --panel-bg: rgba(255, 255, 255, 0.04);
   --border-color: #333;
+  --muted-text: rgba(255, 255, 255, 0.7);
+  --badge-bg: rgba(255, 255, 255, 0.08);
+  --badge-text: rgba(255, 255, 255, 0.86);
 
   --link-color: #646cff;
   --link-hover: #535bf2;
@@ -32,7 +36,11 @@
 
   --btn-bg: #f9f9f9;
   --input-bg: #ffffff;
+  --panel-bg: #f5f7fb;
   --border-color: #ccc;
+  --muted-text: #5f6b7a;
+  --badge-bg: #edf2f7;
+  --badge-text: #334155;
 
   --link-color: #646cff;
   --link-hover: #747bff;
@@ -43,8 +51,8 @@ body {
   margin: 0;
   display: flex;
   place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  min-width: 360px;
+  min-height: 640px;
   background-color: var(--bg-color);
   color: var(--text-color);
 }

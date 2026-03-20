@@ -4,7 +4,7 @@ import { resolve } from 'path';
 export default defineConfig({
     build: {
         emptyOutDir: false,
-        outDir: 'dist',
+        outDir: process.env.EXTENSION_OUT_DIR ?? 'dist/common',
         minify: false,
         rollupOptions: {
             input: resolve(__dirname, 'src/content.ts'),

@@ -5,6 +5,7 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
+  min-width: 360px;
 }
 
 header h1 {
@@ -66,12 +67,12 @@ input[type="checkbox"] {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 button.primary {
   background-color: var(--primary-color);
   color: white;
-  /* Keep white text for primary button usually, or check contrast? Primary blue on white text is fine. */
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -85,9 +86,19 @@ button.primary:hover {
 }
 
 .status {
-  color: #4ade80;
   font-size: 0.85rem;
-  animation: fadeOut 2s forwards;
+}
+
+.status.success {
+  color: #4ade80;
+}
+
+.status.error {
+  color: #f87171;
+}
+
+.status.info {
+  color: #fbbf24;
 }
 
 @keyframes fadeOut {
@@ -121,3 +132,59 @@ button.primary:hover {
   opacity: 0.6;
 }
 .pinned-zone-tag .remove-btn:hover { opacity: 1; }
+
+.site-actions {
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+}
+
+.site-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.site-summary strong {
+  font-size: 0.95rem;
+}
+
+.site-state {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--badge-bg);
+  color: var(--badge-text);
+  font-size: 0.8rem;
+}
+
+.site-state.enabled {
+  background: rgba(74, 222, 128, 0.14);
+  color: #4ade80;
+}
+
+.action-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+button.secondary {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-color);
+  padding: 8px 16px;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.muted {
+  color: var(--muted-text);
+  line-height: 1.4;
+}

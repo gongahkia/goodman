@@ -1,26 +1,30 @@
 {
   "name": "onul",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build && vite build -c vite.content.config.ts && vite build -c vite.background.config.ts",
+    "build": "node scripts/build.mjs",
+    "build:safari-app": "node scripts/build-safari-app.mjs",
     "lint": "eslint .",
     "test": "vitest",
     "release": "./release.sh",
+    "release:firefox": "node scripts/release-firefox.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
     "chrono-node": "^2.9.0",
     "luxon": "^3.7.2",
-    "preact": "^10.27.2"
+    "preact": "^10.27.2",
+    "webextension-polyfill": "^0.12.0"
   },
   "devDependencies": {
     "@preact/preset-vite": "^2.10.2",
     "@types/chrome": "^0.1.36",
     "@types/luxon": "^3.7.1",
     "@types/node": "^24.10.1",
+    "@types/webextension-polyfill": "^0.12.5",
     "eslint": "^9.39.2",
     "eslint-config-prettier": "^10.1.8",
     "globals": "^17.3.0",

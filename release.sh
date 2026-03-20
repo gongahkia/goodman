@@ -1,15 +1,22 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
-# Build the project
 npm run build
 
-# Create a zip file
-OUTPUT_ZIP="extension.zip"
-rm -f $OUTPUT_ZIP
+OUTPUT_DIR="release"
+rm -rf "$OUTPUT_DIR"
+mkdir -p "$OUTPUT_DIR"
 
-cd dist
-zip -r ../$OUTPUT_ZIP .
-cd ..
+(
+  cd dist/chrome
+  zip -Xqr "../../$OUTPUT_DIR/onul-chrome.zip" .
+)
 
-echo "Created $OUTPUT_ZIP"
+(
+  cd dist/firefox
+  zip -Xqr "../../$OUTPUT_DIR/onul-firefox.xpi" .
+)
+
+echo "Created release/onul-chrome.zip"
+echo "Created release/onul-firefox.xpi"
+echo "Run 'npm run build:safari-app' on macOS to rebuild the Safari containing app project."
