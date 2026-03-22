@@ -50,10 +50,10 @@ blockedBy: [0]
 7. Add placeholder icons at `public/icons/` (16, 48, 128 px).
 
 **DONE WHEN**
-- [ ] Extension loads in `chrome://extensions` with no manifest errors
-- [ ] Clicking the extension icon opens the popup
-- [ ] Content script executes on any webpage (verified via `console.log`)
-- [ ] Service worker registers and stays alive on message receipt
+- [x] Extension loads in `chrome://extensions` with no manifest errors
+- [x] Clicking the extension icon opens the popup
+- [x] Content script executes on any webpage (verified via `console.log`)
+- [x] Service worker registers and stays alive on message receipt
 
 ### Task 2 (A) +scaffold
 blockedBy: [1]
