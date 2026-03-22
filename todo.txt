@@ -240,9 +240,9 @@ blockedBy: [5, 6]
 6. Strip duplicate whitespace, trim leading/trailing whitespace.
 
 **DONE WHEN**
-- [ ] Extracts full T&C text from a checkbox's parent `<form>` containing 3 paragraphs of legal text
-- [ ] Returns at least 200 characters when legal text is present in a grandparent container
-- [ ] Does not include navigation, header, or footer text from outside the container
+- [x] Extracts full T&C text from a checkbox's parent `<form>` containing 3 paragraphs of legal text
+- [x] Returns at least 200 characters when legal text is present in a grandparent container
+- [x] Does not include navigation, header, or footer text from outside the container
 
 ### Task 10 (A) +extraction
 blockedBy: [2]
