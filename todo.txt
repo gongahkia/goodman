@@ -555,10 +555,10 @@ blockedBy: [14]
    ```
 
 **DONE WHEN**
-- [ ] System prompt is a single importable constant
-- [ ] All 12 red flag categories are documented with severity levels
-- [ ] `buildUserPrompt()` wraps text with clear delimiters
-- [ ] Prompt explicitly requests JSON output format
+- [x] System prompt is a single importable constant
+- [x] All 12 red flag categories are documented with severity levels
+- [x] `buildUserPrompt()` wraps text with clear delimiters
+- [x] Prompt explicitly requests JSON output format
 
 # ============================================================
 # SUMMARIZATION PIPELINE
