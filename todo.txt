@@ -376,9 +376,9 @@ blockedBy: [3]
 6. Define `RedFlagCategory` as a union of all known categories (see Task 21 for the full taxonomy).
 
 **DONE WHEN**
-- [ ] All types compile with no errors
-- [ ] `LLMProvider` interface is importable from any module in the project
-- [ ] Types enforce that `Summary.redFlags` contains correctly shaped `RedFlag` objects
+- [x] All types compile with no errors
+- [x] `LLMProvider` interface is importable from any module in the project
+- [x] Types enforce that `Summary.redFlags` contains correctly shaped `RedFlag` objects
 
 ### Task 15 (A) +providers
 blockedBy: [14]
