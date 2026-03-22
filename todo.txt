@@ -1012,10 +1012,10 @@ blockedBy: [36, 25]
 5. After clearing, update the displayed statistics immediately.
 
 **DONE WHEN**
-- [ ] Cache stats display accurate count and approximate size
-- [ ] "Clear All" removes all cached summaries after confirmation
-- [ ] Per-domain clear removes only that domain's entries
-- [ ] Stats update immediately after clearing
+- [x] Cache stats display accurate count and approximate size
+- [x] "Clear All" removes all cached summaries after confirmation
+- [x] Per-domain clear removes only that domain's entries
+- [x] Stats update immediately after clearing
 
 ### Task 41 (C) +popup
 blockedBy: [36, 31]
