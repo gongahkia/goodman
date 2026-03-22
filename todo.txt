@@ -579,9 +579,9 @@ blockedBy: [12, 20, 21]
 7. Return the `Summary`.
 
 **DONE WHEN**
-- [ ] A 2000-token T&C document returns a valid `Summary` in a single API call
-- [ ] Malformed JSON from the LLM is handled gracefully (partial data extracted or user-friendly error)
-- [ ] Works with any configured provider
+- [x] A 2000-token T&C document returns a valid `Summary` in a single API call
+- [x] Malformed JSON from the LLM is handled gracefully (partial data extracted or user-friendly error)
+- [x] Works with any configured provider
 
 ### Task 23 (A) +summarizer
 blockedBy: [22]
