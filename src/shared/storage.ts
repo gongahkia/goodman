@@ -84,6 +84,10 @@ const STORAGE_DEFAULTS: StorageSchema = {
   storageVersion: STORAGE_VERSION,
 };
 
+const PAGE_ANALYSIS_TTL_MS = 1000 * 60 * 60 * 24 * 14;
+const MAX_PAGE_ANALYSIS_RECORDS = 100;
+const MAX_PAGE_ANALYSIS_RECORDS_PER_DOMAIN = 10;
+
 export async function getStorage<K extends keyof StorageSchema>(
   key: K
 ): Promise<Result<StorageSchema[K], Error>> {
@@ -134,17 +138,21 @@ export async function setPageAnalysisRecord(
   if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
 
   const pageKey = getPageAnalysisKey(record.url);
-  const pageAnalysis = {
+  const nextPageAnalysis = {
     ...pageAnalysisResult.data,
     [pageKey]: record,
   };
-  const pageAnalysisTabs =
+  const nextPageAnalysisTabs =
     record.tabId >= 0
       ? {
           ...pageAnalysisTabsResult.data,
           [String(record.tabId)]: pageKey,
         }
       : pageAnalysisTabsResult.data;
+  const { pageAnalysis, pageAnalysisTabs } = prunePageAnalysisMaps(
+    nextPageAnalysis,
+    nextPageAnalysisTabs
+  );
 
   try {
     await browser.storage.local.set({
@@ -179,11 +187,12 @@ export async function removePageAnalysis(
   ) {
     delete pageAnalysis[pageKey];
   }
+  const prunedState = prunePageAnalysisMaps(pageAnalysis, pageAnalysisTabs);
 
   try {
     await browser.storage.local.set({
-      pageAnalysis,
-      pageAnalysisTabs,
+      pageAnalysis: prunedState.pageAnalysis,
+      pageAnalysisTabs: prunedState.pageAnalysisTabs,
     });
     return ok(undefined);
   } catch (e) {
@@ -208,6 +217,30 @@ export async function setPageAnalysisByUrl(
     ...record,
     url,
   });
+}
+
+export async function prunePageAnalysisState(): Promise<Result<void, Error>> {
+  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
+    getStorage('pageAnalysis'),
+    getStorage('pageAnalysisTabs'),
+  ]);
+  if (!pageAnalysisResult.ok) return pageAnalysisResult;
+  if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
+
+  const prunedState = prunePageAnalysisMaps(
+    pageAnalysisResult.data,
+    pageAnalysisTabsResult.data
+  );
+
+  try {
+    await browser.storage.local.set({
+      pageAnalysis: prunedState.pageAnalysis,
+      pageAnalysisTabs: prunedState.pageAnalysisTabs,
+    });
+    return ok(undefined);
+  } catch (e) {
+    return err(e instanceof Error ? e : new Error(String(e)));
+  }
 }
 
 export async function getDomainNotificationPreference(
@@ -236,4 +269,65 @@ export async function setDomainNotificationPreference(
 
 function getPageAnalysisKey(url: string): string {
   return url;
+}
+
+function prunePageAnalysisMaps(
+  pageAnalysis: Record<string, PageAnalysisRecord>,
+  pageAnalysisTabs: Record<string, string>,
+  now = Date.now()
+): {
+  pageAnalysis: Record<string, PageAnalysisRecord>;
+  pageAnalysisTabs: Record<string, string>;
+} {
+  const referencedKeys = new Set(Object.values(pageAnalysisTabs));
+  const entries = Object.entries(pageAnalysis).filter(([, record]) => {
+    return referencedKeys.has(getPageAnalysisKey(record.url)) || !isPageAnalysisStale(record, now);
+  });
+
+  const keptEntries = enforcePageAnalysisLimits(entries, referencedKeys);
+  const keptKeys = new Set(keptEntries.map(([key]) => key));
+  const prunedTabs = Object.fromEntries(
+    Object.entries(pageAnalysisTabs).filter(([, pageKey]) => keptKeys.has(pageKey))
+  );
+
+  return {
+    pageAnalysis: Object.fromEntries(keptEntries),
+    pageAnalysisTabs: prunedTabs,
+  };
+}
+
+function enforcePageAnalysisLimits(
+  entries: Array<[string, PageAnalysisRecord]>,
+  referencedKeys: Set<string>
+): Array<[string, PageAnalysisRecord]> {
+  const referencedEntries = entries.filter(([key]) => referencedKeys.has(key));
+  const unreferencedEntries = entries
+    .filter(([key]) => !referencedKeys.has(key))
+    .sort((left, right) => right[1].updatedAt - left[1].updatedAt);
+
+  const keptUnreferencedEntries: Array<[string, PageAnalysisRecord]> = [];
+  const perDomainCounts = new Map<string, number>();
+
+  for (const entry of unreferencedEntries) {
+    const domainCount = perDomainCounts.get(entry[1].domain) ?? 0;
+    if (domainCount >= MAX_PAGE_ANALYSIS_RECORDS_PER_DOMAIN) {
+      continue;
+    }
+
+    keptUnreferencedEntries.push(entry);
+    perDomainCounts.set(entry[1].domain, domainCount + 1);
+
+    if (keptUnreferencedEntries.length >= MAX_PAGE_ANALYSIS_RECORDS) {
+      break;
+    }
+  }
+
+  return [...referencedEntries, ...keptUnreferencedEntries];
+}
+
+function isPageAnalysisStale(
+  record: PageAnalysisRecord,
+  now = Date.now()
+): boolean {
+  return now - record.updatedAt > PAGE_ANALYSIS_TTL_MS;
 }

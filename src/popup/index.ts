@@ -1,6 +1,6 @@
 import type { Summary } from '@providers/types';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
-import { getPageAnalysisByUrl } from '@shared/storage';
+import { getPageAnalysisByUrl, prunePageAnalysisState } from '@shared/storage';
 import type { PendingNotification } from '@shared/storage';
 import { renderHistoryPanel } from '@popup/history';
 import { renderCacheSettings } from '@popup/settings/cache';
@@ -550,6 +550,7 @@ function createBackButton(): HTMLButtonElement {
 }
 
 async function refreshPopupState(): Promise<void> {
+  await prunePageAnalysisState();
   await refreshPageAnalysis();
   await refreshNotifications();
 }

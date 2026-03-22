@@ -9,6 +9,7 @@ import type { PageAnalysisRecord } from '@shared/page-analysis';
 import {
   getPageAnalysis,
   getStorage,
+  prunePageAnalysisState,
   removePageAnalysis,
   setPageAnalysisRecord,
   setStorage,
@@ -18,6 +19,7 @@ import { processPageAnalysis } from './process-analysis';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 
 registerTabCleanup();
+void prunePageAnalysisState();
 
 onMessage(
   (msg: Message, sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {

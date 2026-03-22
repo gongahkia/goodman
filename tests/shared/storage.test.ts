@@ -5,8 +5,10 @@ import {
   getPageAnalysis,
   getPageAnalysisByUrl,
   getStorage,
+  prunePageAnalysisState,
   setDomainNotificationPreference,
   setPageAnalysisRecord,
+  setStorage,
 } from '@shared/storage';
 
 function makePageAnalysisRecord(
@@ -65,6 +67,42 @@ describe('shared storage', () => {
 
     const storedRecord = await getPageAnalysisByUrl(record.url);
     expect(storedRecord).toEqual(record);
+  });
+
+  it('prunes stale unreferenced page analysis records', async () => {
+    const staleRecord = makePageAnalysisRecord({
+      updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 30,
+    });
+
+    await setStorage('pageAnalysis', {
+      [staleRecord.url]: staleRecord,
+    });
+    await setStorage('pageAnalysisTabs', {});
+
+    const pruneResult = await prunePageAnalysisState();
+    expect(pruneResult.ok).toBe(true);
+
+    const storedRecord = await getPageAnalysisByUrl(staleRecord.url);
+    expect(storedRecord).toBeNull();
+  });
+
+  it('keeps stale page analysis records that are still referenced by an active tab', async () => {
+    const staleRecord = makePageAnalysisRecord({
+      updatedAt: Date.now() - 1000 * 60 * 60 * 24 * 30,
+    });
+
+    await setStorage('pageAnalysis', {
+      [staleRecord.url]: staleRecord,
+    });
+    await setStorage('pageAnalysisTabs', {
+      [String(staleRecord.tabId)]: staleRecord.url,
+    });
+
+    const pruneResult = await prunePageAnalysisState();
+    expect(pruneResult.ok).toBe(true);
+
+    const storedRecord = await getPageAnalysis(staleRecord.tabId);
+    expect(storedRecord).toEqual(staleRecord);
   });
 
   it('defaults domain notification preferences to enabled', async () => {
