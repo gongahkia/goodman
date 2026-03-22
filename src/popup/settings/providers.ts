@@ -3,6 +3,7 @@ import type { Settings, ProviderConfig } from '@shared/messages';
 import { validateProvider } from '@providers/factory';
 
 const PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as const;
+type ProviderName = (typeof PROVIDERS)[number];
 const PROVIDER_LABELS: Record<string, string> = {
   openai: 'OpenAI',
   claude: 'Claude',
@@ -14,49 +15,16 @@ const PROVIDER_LABELS: Record<string, string> = {
 export async function renderProviderSettings(container: HTMLElement): Promise<void> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return;
-  const settings = settingsResult.data;
-
-  container.textContent = '';
-
-  const heading = document.createElement('h3');
-  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
-  heading.textContent = 'LLM Provider Settings';
-  container.appendChild(heading);
-
-  const radioGroup = document.createElement('div');
-  radioGroup.style.cssText = 'margin-bottom:16px';
-  for (const name of PROVIDERS) {
-    const label = document.createElement('label');
-    label.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:14px';
-    const radio = document.createElement('input');
-    radio.type = 'radio';
-    radio.name = 'activeProvider';
-    radio.value = name;
-    radio.checked = settings.activeProvider === name;
-    radio.addEventListener('change', async () => {
-      const s = await getStorage('settings');
-      if (!s.ok) return;
-      await setStorage('settings', { ...s.data, activeProvider: name });
-    });
-    label.appendChild(radio);
-    label.appendChild(document.createTextNode(PROVIDER_LABELS[name] ?? name));
-    radioGroup.appendChild(label);
-  }
-  container.appendChild(radioGroup);
-
-  const configSection = document.createElement('div');
-  const activeConfig = settings.providers[settings.activeProvider];
-  renderProviderConfig(configSection, settings.activeProvider, activeConfig ?? { apiKey: '', model: '' }, settings);
-  container.appendChild(configSection);
+  renderProviderSettingsView(container, settingsResult.data);
 }
 
 function renderProviderConfig(
   container: HTMLElement,
-  name: string,
-  config: ProviderConfig,
-  settings: Settings
+  name: ProviderName,
+  config: ProviderConfig
 ): void {
   container.textContent = '';
+  const draftConfig: ProviderConfig = { ...config };
 
   const title = document.createElement('h4');
   title.style.cssText = 'font-size:14px;font-weight:600;margin-bottom:12px;padding-top:12px;border-top:1px solid #e5e7eb';
@@ -76,7 +44,10 @@ function renderProviderConfig(
     keyInput.value = config.apiKey;
     keyInput.placeholder = name === 'custom' ? 'Optional' : 'Enter API key';
     keyInput.style.cssText = 'flex:1;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:13px';
-    keyInput.addEventListener('change', () => saveProviderConfig(name, { ...config, apiKey: keyInput.value }, settings));
+    keyInput.addEventListener('input', () => {
+      draftConfig.apiKey = keyInput.value;
+      void saveProviderConfig(name, draftConfig);
+    });
 
     const showBtn = document.createElement('button');
     showBtn.style.cssText = 'border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:12px;background:white';
@@ -124,7 +95,10 @@ function renderProviderConfig(
     urlInput.value = config.baseUrl ?? '';
     urlInput.placeholder = name === 'ollama' ? 'http://localhost:11434' : 'https://your-endpoint.com';
     urlInput.style.cssText = 'width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px;box-sizing:border-box';
-    urlInput.addEventListener('change', () => saveProviderConfig(name, { ...config, baseUrl: urlInput.value }, settings));
+    urlInput.addEventListener('input', () => {
+      draftConfig.baseUrl = urlInput.value;
+      void saveProviderConfig(name, draftConfig);
+    });
     container.appendChild(urlInput);
   }
 
@@ -138,15 +112,90 @@ function renderProviderConfig(
   modelInput.value = config.model;
   modelInput.placeholder = 'Model name';
   modelInput.style.cssText = 'width:100%;border:1px solid #e5e7eb;border-radius:8px;padding:8px 12px;font-size:13px;box-sizing:border-box';
-  modelInput.addEventListener('change', () => saveProviderConfig(name, { ...config, model: modelInput.value }, settings));
+  modelInput.addEventListener('input', () => {
+    draftConfig.model = modelInput.value;
+    void saveProviderConfig(name, draftConfig);
+  });
   container.appendChild(modelInput);
 }
 
-async function saveProviderConfig(
-  name: string,
-  config: ProviderConfig,
+function renderProviderSettingsView(
+  container: HTMLElement,
   settings: Settings
+): void {
+  container.textContent = '';
+
+  const heading = document.createElement('h3');
+  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
+  heading.textContent = 'LLM Provider Settings';
+  container.appendChild(heading);
+
+  const radioGroup = document.createElement('div');
+  radioGroup.style.cssText = 'margin-bottom:16px';
+
+  const configSection = document.createElement('div');
+
+  for (const name of PROVIDERS) {
+    const label = document.createElement('label');
+    label.style.cssText =
+      'display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:14px';
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'activeProvider';
+    radio.value = name;
+    radio.checked = settings.activeProvider === name;
+    radio.addEventListener('change', async () => {
+      const updatedSettings = await saveActiveProvider(name);
+      if (!updatedSettings) return;
+      renderProviderConfigSection(configSection, updatedSettings.activeProvider, updatedSettings);
+    });
+    label.appendChild(radio);
+    label.appendChild(document.createTextNode(PROVIDER_LABELS[name] ?? name));
+    radioGroup.appendChild(label);
+  }
+
+  container.appendChild(radioGroup);
+  renderProviderConfigSection(configSection, settings.activeProvider, settings);
+  container.appendChild(configSection);
+}
+
+function renderProviderConfigSection(
+  container: HTMLElement,
+  providerName: ProviderName,
+  settings: Settings
+): void {
+  const activeConfig = settings.providers[providerName];
+  renderProviderConfig(
+    container,
+    providerName,
+    activeConfig ?? { apiKey: '', model: '' }
+  );
+}
+
+async function saveActiveProvider(name: ProviderName): Promise<Settings | null> {
+  const settingsResult = await getStorage('settings');
+  if (!settingsResult.ok) return null;
+
+  const nextSettings = {
+    ...settingsResult.data,
+    activeProvider: name,
+  };
+  const saveResult = await setStorage('settings', nextSettings);
+  if (!saveResult.ok) return null;
+
+  return nextSettings;
+}
+
+async function saveProviderConfig(
+  name: ProviderName,
+  config: ProviderConfig
 ): Promise<void> {
-  const providers = { ...settings.providers, [name]: config };
-  await setStorage('settings', { ...settings, providers });
+  const settingsResult = await getStorage('settings');
+  if (!settingsResult.ok) return;
+  const providers = {
+    ...settingsResult.data.providers,
+    [name]: config,
+  };
+
+  await setStorage('settings', { ...settingsResult.data, providers });
 }
