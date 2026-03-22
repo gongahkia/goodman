@@ -600,10 +600,10 @@ blockedBy: [22]
 5. Return the merged `Summary`.
 
 **DONE WHEN**
-- [ ] A 20,000-word T&C document split into 5 chunks produces a single coherent `Summary`
-- [ ] Red flags from different chunks are deduplicated (same category + similar quote = one flag)
-- [ ] Concurrent chunk processing stays at or below 3 simultaneous API calls
-- [ ] Overall severity reflects the merged set of red flags, not just the last chunk
+- [x] A 20,000-word T&C document split into 5 chunks produces a single coherent `Summary`
+- [x] Red flags from different chunks are deduplicated (same category + similar quote = one flag)
+- [x] Concurrent chunk processing stays at or below 3 simultaneous API calls
+- [x] Overall severity reflects the merged set of red flags, not just the last chunk
 
 ### Task 24 (A) +summarizer
 blockedBy: [22]
@@ -623,11 +623,11 @@ blockedBy: [22]
 5. Override: if any red flag has category `data_selling` or `biometric_data` with severity `high`, minimum overall severity is `high` — WHY: these categories represent immediate privacy risks that should never be shown as merely "medium".
 
 **DONE WHEN**
-- [ ] Zero red flags returns `low`
-- [ ] One medium flag returns `medium`
-- [ ] Two high flags returns `high`
-- [ ] Three high flags returns `critical`
-- [ ] A single `data_selling` high flag returns at least `high`, never `medium`
+- [x] Zero red flags returns `low`
+- [x] One medium flag returns `medium`
+- [x] Two high flags returns `high`
+- [x] Three high flags returns `critical`
+- [x] A single `data_selling` high flag returns at least `high`, never `medium`
 
 ### Task 25 (B) +summarizer
 blockedBy: [22, 3]
@@ -646,10 +646,10 @@ blockedBy: [22, 3]
 9. Compute text hash using `SHA-256` via `crypto.subtle.digest` — WHY: SHA-256 is available natively in the browser, fast, and collision-resistant.
 
 **DONE WHEN**
-- [ ] Second request for identical T&C text returns cached summary instantly (no API call)
-- [ ] Cache entry older than 30 days is ignored and re-fetched
-- [ ] `clearCache('example.com')` removes only that domain's entries
-- [ ] `getCacheStats()` returns accurate count and domain list
+- [x] Second request for identical T&C text returns cached summary instantly (no API call)
+- [x] Cache entry older than 30 days is ignored and re-fetched
+- [x] `clearCache('example.com')` removes only that domain's entries
+- [x] `getCacheStats()` returns accurate count and domain list
 
 # ============================================================
 # T&C VERSION TRACKING (NEW FEATURE)
