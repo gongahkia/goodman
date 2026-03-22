@@ -504,9 +504,9 @@ blockedBy: [15, 16, 17, 18, 19]
 4. Export `validateProvider(name: string): Promise<boolean>` to test a specific provider's API key.
 
 **DONE WHEN**
-- [ ] `getActiveProvider()` returns the correct provider based on stored settings
-- [ ] Switching `activeProvider` in settings immediately changes the provider used
-- [ ] Missing provider config throws a user-friendly error
+- [x] `getActiveProvider()` returns the correct provider based on stored settings
+- [x] Switching `activeProvider` in settings immediately changes the provider used
+- [x] Missing provider config throws a user-friendly error
 
 ### Task 21 (A) +providers
 blockedBy: [14]
