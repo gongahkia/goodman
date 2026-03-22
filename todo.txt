@@ -399,10 +399,10 @@ blockedBy: [14]
 6. Read the API key from `chrome.storage.local` via `getStorage('settings')`.
 
 **DONE WHEN**
-- [ ] Sending a T&C text to OpenAI returns a valid `Summary` JSON object
-- [ ] `validateApiKey()` returns `true` for a valid key and `false` for an invalid one
-- [ ] A 429 response triggers a retry after 1s, then 3s
-- [ ] Invalid JSON responses from the API surface as a user-friendly error
+- [x] Sending a T&C text to OpenAI returns a valid `Summary` JSON object
+- [x] `validateApiKey()` returns `true` for a valid key and `false` for an invalid one
+- [x] A 429 response triggers a retry after 1s, then 3s
+- [x] Invalid JSON responses from the API surface as a user-friendly error
 
 ### Task 16 (A) +providers
 blockedBy: [14]
