@@ -1072,10 +1072,10 @@ blockedBy: [3]
 5. Set Content Security Policy in the manifest: `"content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }` — WHY: prevents XSS in the popup and settings pages by disallowing inline scripts and external script sources.
 
 **DONE WHEN**
-- [ ] API keys are masked in the settings UI by default
-- [ ] Keys are stored in `chrome.storage.local` (not `localStorage` or plaintext files)
-- [ ] CSP header is set in the manifest
-- [ ] Console.log output never contains API key values
+- [x] API keys are masked in the settings UI by default
+- [x] Keys are stored in `chrome.storage.local` (not `localStorage` or plaintext files)
+- [x] CSP header is set in the manifest
+- [x] Console.log output never contains API key values
 
 ### Task 44 (A) +security
 blockedBy: [32]
