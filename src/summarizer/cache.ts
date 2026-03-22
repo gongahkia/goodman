@@ -1,5 +1,3 @@
-import { ok, err } from '@shared/result';
-import type { Result } from '@shared/result';
 import { getStorage, setStorage } from '@shared/storage';
 import type { CachedSummary } from '@shared/storage';
 import type { Summary } from '@providers/types';

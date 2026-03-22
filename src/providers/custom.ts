@@ -1,7 +1,6 @@
-import { ok, err } from '@shared/result';
+import { err } from '@shared/result';
 import type { Result } from '@shared/result';
-import { NetworkError, ProviderError, RateLimitError } from '@shared/errors';
-import type { TCGuardError } from '@shared/errors';
+import { NetworkError, ProviderError, RateLimitError, TCGuardError } from '@shared/errors';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
 

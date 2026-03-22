@@ -3,17 +3,17 @@ import { defineManifest } from '@crxjs/vite-plugin';
 const isFirefox = process.env.BUILD_TARGET === 'firefox';
 
 const baseManifest = {
-  manifest_version: 3 as const,
+  manifest_version: 3,
   name: 'TC Guard',
   description: 'Automatically detect, summarize, and track Terms & Conditions changes',
   version: '1.0.0',
-  permissions: ['activeTab', 'storage', 'scripting'] as const,
-  host_permissions: ['<all_urls>'] as const,
+  permissions: ['activeTab', 'storage', 'scripting'],
+  host_permissions: ['<all_urls>'],
   content_scripts: [
     {
-      matches: ['<all_urls>'] as const,
+      matches: ['<all_urls>'],
       js: ['src/content/index.ts'],
-      run_at: 'document_idle' as const,
+      run_at: 'document_idle',
     },
   ],
   action: {
@@ -35,7 +35,7 @@ const baseManifest = {
   },
 };
 
-function getChromeManifest(): typeof baseManifest & { background: { service_worker: string; type: string } } {
+function getChromeManifest() {
   return {
     ...baseManifest,
     background: {
@@ -45,7 +45,7 @@ function getChromeManifest(): typeof baseManifest & { background: { service_work
   };
 }
 
-function getFirefoxManifest(): typeof baseManifest & { background: { service_worker: string }; browser_specific_settings: { gecko: { id: string; strict_min_version: string } } } {
+function getFirefoxManifest() {
   return {
     ...baseManifest,
     background: {

@@ -1,4 +1,3 @@
-import { sendToBackground } from '@shared/messaging';
 import type { Summary } from '@providers/types';
 import { renderProviderSettings } from '@popup/settings/providers';
 import { renderDetectionSettings } from '@popup/settings/detection';

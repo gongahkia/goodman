@@ -1,5 +1,5 @@
 import { onMessage } from '@shared/messaging';
-import type { Message, MessageResponse } from '@shared/messages';
+import type { Message, MessageResponse, Settings } from '@shared/messages';
 import type { Runtime } from 'webextension-polyfill';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 
@@ -36,7 +36,7 @@ async function handleGetSettings(): Promise<MessageResponse> {
 }
 
 async function handleSaveSettings(
-  settings: Record<string, unknown>
+  settings: Settings
 ): Promise<MessageResponse> {
   await chrome.storage.local.set({ settings });
   return { ok: true, data: null };

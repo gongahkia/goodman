@@ -1,7 +1,6 @@
-import { ok, err } from '@shared/result';
+import { ok } from '@shared/result';
 import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
-import { ProviderError } from '@shared/errors';
 import type { Summary } from '@providers/types';
 import { getActiveProvider, getProviderByName } from '@providers/factory';
 import { SYSTEM_PROMPT, buildUserPrompt } from '@providers/prompts';
