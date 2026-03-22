@@ -1304,9 +1304,9 @@ blockedBy: [2]
 4. Test that all message passing and storage operations work with the polyfill in Chrome (it is backwards-compatible).
 
 **DONE WHEN**
-- [ ] All `chrome.*` API calls use the polyfill wrapper instead
-- [ ] Extension still works correctly in Chrome after the change
-- [ ] TypeScript types from `@types/webextension-polyfill` are used
+- [x] All `chrome.*` API calls use the polyfill wrapper instead
+- [x] Extension still works correctly in Chrome after the change
+- [x] TypeScript types from `@types/webextension-polyfill` are used
 
 ### Task 54 (B) +compat
 blockedBy: [53, 1]
