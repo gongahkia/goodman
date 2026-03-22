@@ -933,10 +933,10 @@ blockedBy: [20, 3]
 5. If no T&C detected on current page, show "No T&C detected on this page" with the manual analyze button.
 
 **DONE WHEN**
-- [ ] Popup shows current page's summary when T&C was detected
-- [ ] Popup shows "No T&C detected" with analyze button when no detection occurred
-- [ ] "Analyze This Page" triggers a scan and updates the popup with results
-- [ ] Red flags are expandable with the same UX as the overlay
+- [x] Popup shows current page's summary when T&C was detected
+- [x] Popup shows "No T&C detected" with analyze button when no detection occurred
+- [x] "Analyze This Page" triggers a scan and updates the popup with results
+- [x] Red flags are expandable with the same UX as the overlay
 
 ### Task 37 (B) +popup
 blockedBy: [36, 30]
