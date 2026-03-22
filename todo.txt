@@ -1374,9 +1374,9 @@ blockedBy: [21]
 2. Export a `RED_FLAG_DESCRIPTIONS: Record<RedFlagCategory, string>` map for use in the UI.
 
 **DONE WHEN**
-- [ ] Every red flag category has a plain-English description
-- [ ] Descriptions are accessible as a runtime map for UI display
-- [ ] JSDoc comment block serves as contributor documentation
+- [x] Every red flag category has a plain-English description
+- [x] Descriptions are accessible as a runtime map for UI display
+- [x] JSDoc comment block serves as contributor documentation
 
 ### Task 57 (C) +docs
 blockedBy: [14, 20]
