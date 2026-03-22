@@ -1217,11 +1217,11 @@ blockedBy: [45, 46, 47, 48]
 5. Use a mock LLM provider that returns canned responses (avoid real API calls in tests).
 
 **DONE WHEN**
-- [ ] E2E test loads the extension in Chrome
-- [ ] Test verifies overlay appears on the fixture page
-- [ ] Test verifies summary content renders correctly
-- [ ] Tests complete in under 60 seconds
-- [ ] No real LLM API calls are made during tests
+- [x] E2E test loads the extension in Chrome
+- [x] Test verifies overlay appears on the fixture page
+- [x] Test verifies summary content renders correctly
+- [x] Tests complete in under 60 seconds
+- [x] No real LLM API calls are made during tests
 
 # ============================================================
 # CI/CD & DISTRIBUTION
