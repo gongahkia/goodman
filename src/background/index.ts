@@ -1,6 +1,7 @@
 import { onMessage } from '@shared/messaging';
 import type { Message, MessageResponse } from '@shared/messages';
 import type { Runtime } from 'webextension-polyfill';
+import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 
 onMessage(
   (msg: Message, _sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
@@ -42,7 +43,11 @@ async function handleSaveSettings(
 }
 
 async function handleSummarize(
-  _payload: { text: string; provider: string }
+  payload: { text: string; provider: string }
 ): Promise<MessageResponse> {
-  return { ok: false, error: 'Summarization not yet implemented' };
+  const result = await singleShotSummarizeWithProvider(payload.text, payload.provider);
+  if (!result.ok) {
+    return { ok: false, error: result.error.userMessage ?? result.error.message };
+  }
+  return { ok: true, data: result.data };
 }
