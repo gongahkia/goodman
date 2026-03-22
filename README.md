@@ -1,66 +1,86 @@
 # TC Guard
 
-A browser extension that automatically detects Terms & Conditions on any webpage, summarizes them using AI, highlights legally concerning "red flag" clauses, and tracks T&C changes over time per domain.
+TC Guard is a Manifest V3 browser extension for understanding Terms and Conditions at the moment a page asks for consent. It detects likely legal surfaces, extracts the relevant text, summarizes it with a user-configured LLM provider, stores the result as shared page state for the overlay and popup, and tracks version changes per domain over time.
 
-## Features
+## Product Position
 
-- **T&C Detection** — Automatically detects checkboxes, consent banners, modals, and full-page legal text
-- **AI Summarization** — Summarizes legal text into plain English using your choice of LLM provider
-- **Red Flag Analysis** — Identifies concerning clauses like data selling, arbitration, and class action waivers
-- **Version Tracking** — Tracks T&C changes over time per domain with visual timeline and diff comparison
-- **Multi-Provider Support** — OpenAI, Claude, Gemini, Ollama (local), and custom OpenAI-compatible endpoints
-- **Dark/Light Theme** — Matches your system preference or manual override
+TC Guard is currently a privacy-first, bring-your-own-provider product. It is not a zero-config consumer app yet.
+
+- It does automatic detection and shared popup/history state out of the box.
+- It requires provider configuration before remote summarization can succeed.
+- Its clearest differentiator is version tracking: first-seen terms are stored silently, and later meaningful changes can trigger notifications.
+
+## What Ships Today
+
+- Automatic detection on page load and relevant DOM changes.
+- Consent surface detection for checkboxes, banners/modals, and full-page legal text.
+- Extraction routing for inline text, linked legal pages, and PDFs.
+- Background analysis pipeline with cache lookup, single-shot summarization, and chunked summarization for long text.
+- Persisted `PageAnalysisRecord` state keyed by tab so the popup can reopen into the latest known result.
+- Popup states for `idle`, `analyzing`, `no_detection`, `extraction_failed`, `needs_provider`, `error`, and `ready`.
+- Per-domain version history, summary diffs, text diffs, and notification gating.
+- Per-domain notification preferences plus global notification enable/disable.
+- Multiple providers: OpenAI, Claude, Gemini, Ollama, and OpenAI-compatible custom endpoints.
+
+## Runtime Flow
+
+1. The content script auto-runs on page load and after relevant DOM mutations.
+2. Detection candidates are scored, then the best candidate is resolved to inline, linked, or PDF text.
+3. The background worker normalizes the text, computes a hash, checks cache, and either reuses a cached summary or calls the configured provider.
+4. The background worker persists `PageAnalysisRecord`, updates version history, computes summary/text diffs, and decides whether a notification should fire.
+5. The page overlay renders when a usable summary exists. The popup reads the persisted page-analysis record for the active tab instead of relying on popup-local memory.
+
+More detail lives in [docs/ARCHITECTURE.md](/Users/gongahkia/Desktop/coding/projects/goodman/docs/ARCHITECTURE.md).
 
 ## Installation
 
-### Chrome Web Store
-
-*(Coming soon)*
-
-### Firefox Add-ons
-
-*(Coming soon)*
-
-### Manual Build
+TC Guard is pinned to Node 20.x and `pnpm@10.32.1`.
 
 ```bash
-git clone https://github.com/your-username/tc-guard.git
-cd tc-guard
+nvm use
+corepack enable
+corepack use pnpm@10.32.1
 pnpm install
-pnpm build          # Chrome
-pnpm build:firefox  # Firefox
+pnpm build
 ```
 
-Then load the `dist/` directory as an unpacked extension in Chrome (`chrome://extensions` > Developer mode > Load unpacked) or Firefox (`about:debugging` > Load Temporary Add-on).
+Load the built `dist/` directory as an unpacked extension in Chrome or Chromium.
 
 ## Configuration
 
-1. Click the TC Guard extension icon
-2. Go to **Settings**
-3. Select your LLM provider (OpenAI, Claude, Gemini, Ollama, or Custom)
-4. Enter your API key
-5. Click **Test** to verify the connection
-6. Select your preferred model
+1. Open the extension popup.
+2. Go to `Settings`.
+3. Choose a provider.
+4. Enter the provider credentials and model settings.
+5. Return to the page and re-run analysis if the page was already open.
 
-For **Ollama** (local inference), no API key is needed — just ensure Ollama is running on `localhost:11434`.
+For Ollama, the extension expects a reachable local endpoint, defaulting to `http://localhost:11434`.
 
-## Privacy
+## Privacy And Tradeoffs
 
-- **No telemetry** — Zero analytics, tracking, or crash reporting
-- **All data stays local** — Summaries, version history, and settings are stored in browser storage
-- **API keys stored securely** — Encrypted at rest via `chrome.storage.local`
-- **You control the AI** — Choose a local model via Ollama for complete privacy
+- No app telemetry or analytics are built into the extension.
+- Summaries, page-analysis state, version history, notification state, and settings live in browser local storage.
+- Extracted legal text is sent only to the provider you configure. Remote providers receive the text you ask them to summarize.
+- API keys are stored in browser-managed local extension storage. TC Guard does not add its own encryption layer on top of that storage.
+
+## Interview Notes
+
+If you need to explain this project in an interview, the strongest framing is:
+
+- The product goal is informed consent at the point of agreement, not generic legal research.
+- MV3 boundaries are deliberate: content script for detection and extraction, background worker for provider calls and persistent orchestration, popup for reconstructed state and controls.
+- The key tradeoff is privacy versus onboarding friction: no hosted backend means users keep control, but they must configure a provider.
+- Version tracking is the differentiator because it turns one-off summarization into an ongoing monitoring workflow for domains the user revisits.
 
 ## Development
 
 ```bash
-pnpm dev           # Development with HMR
-pnpm build         # Production build (Chrome)
-pnpm build:firefox # Production build (Firefox)
-pnpm test          # Unit tests
-pnpm test:e2e      # E2E tests
-pnpm lint          # ESLint
-pnpm typecheck     # TypeScript check
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+pnpm exec playwright install chromium
+pnpm test:e2e
 ```
 
 ## License
