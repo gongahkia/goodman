@@ -77,7 +77,13 @@ export type Message =
 export type MessageType = Message['type'];
 
 export interface Settings {
-  activeProvider: 'openai' | 'claude' | 'gemini' | 'ollama' | 'custom';
+  activeProvider:
+    | 'openai'
+    | 'claude'
+    | 'gemini'
+    | 'ollama'
+    | 'custom'
+    | 'fixture';
   providers: Record<string, ProviderConfig>;
   detectionSensitivity: 'aggressive' | 'normal' | 'conservative';
   darkMode: 'auto' | 'light' | 'dark';

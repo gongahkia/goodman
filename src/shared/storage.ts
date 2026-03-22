@@ -66,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
     gemini: { apiKey: '', model: 'gemini-1.5-pro' },
     ollama: { apiKey: '', model: '', baseUrl: 'http://localhost:11434' },
     custom: { apiKey: '', model: '', baseUrl: '' },
+    fixture: { apiKey: '', model: 'fixture-v1' },
   },
   detectionSensitivity: 'normal',
   darkMode: 'auto',

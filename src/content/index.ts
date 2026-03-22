@@ -8,7 +8,10 @@ import { startObserver } from '@content/detectors/observer';
 import { scoreDetections } from '@content/detectors/scoring';
 import { resolveDetectionTextSource } from '@content/extractors/source';
 import { normalizeText } from '@content/extractors/normalizer';
+import { chunkText } from '@content/extractors/chunker';
 import { computeTextHash } from '@summarizer/cache';
+import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
+import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { createOverlay, removeOverlay } from '@content/ui/overlay';
 import { getStorage, setPageAnalysisByUrl } from '@shared/storage';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
@@ -141,6 +144,41 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
     };
   }
 
+  if (providerName === 'fixture') {
+    const summaryResult = await summarizeLocally(normalized.text, providerName);
+    if (!summaryResult.ok) {
+      lastRenderedTextHash = null;
+      await persistPageAnalysisState({
+        status: 'error',
+        sourceType: resolvedText.sourceType,
+        detectionType: best.type,
+        confidence: best.weightedConfidence,
+        textHash,
+        summary: null,
+        error: summaryResult.error ?? 'Summarization failed',
+      });
+      return { ok: false, error: summaryResult.error ?? 'Summarization failed' };
+    }
+
+    await persistPageAnalysisState({
+      status: 'ready',
+      sourceType: resolvedText.sourceType,
+      detectionType: best.type,
+      confidence: best.weightedConfidence,
+      textHash,
+      summary: summaryResult.data,
+      error: null,
+    });
+    removeOverlay();
+    createOverlay(best, summaryResult.data, themePreference);
+    lastRenderedTextHash = textHash;
+
+    return {
+      ok: true,
+      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
+    };
+  }
+
   const summaryResponse = await sendToBackground({
     type: 'PROCESS_PAGE_ANALYSIS',
     payload: {
@@ -191,4 +229,24 @@ function hasConfiguredProvider(settings: Settings | null): boolean {
     settings.activeProvider,
     settings.providers[settings.activeProvider]
   );
+}
+
+async function summarizeLocally(
+  text: string,
+  providerName: string
+): Promise<{ ok: true; data: Summary } | { ok: false; error: string }> {
+  const chunks = chunkText(text);
+  const result =
+    chunks.length > 1
+      ? await chunkedSummarizeWithProvider(chunks, providerName)
+      : await singleShotSummarizeWithProvider(text, providerName);
+
+  if (!result.ok) {
+    return {
+      ok: false,
+      error: result.error.userMessage ?? result.error.message,
+    };
+  }
+
+  return { ok: true, data: result.data };
 }

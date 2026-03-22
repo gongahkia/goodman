@@ -95,6 +95,34 @@ test('persists a needs_provider analysis for a consent-like page visit', async (
   await page.close();
 });
 
+test('persists a ready analysis for a consent-like page visit with the fixture provider', async () => {
+  const consentUrl = `${baseUrl}/consent`;
+  await configureFixtureProvider();
+
+  const page = await context.newPage();
+  await page.goto(consentUrl, { waitUntil: 'load' });
+  const record = await waitForUrlAnalysis(consentUrl);
+
+  expect(record).toMatchObject({
+    status: 'ready',
+    sourceType: 'inline',
+    detectionType: 'checkbox',
+    domain: '127.0.0.1',
+    url: consentUrl,
+  });
+
+  const summary = record.summary as Record<string, unknown>;
+  expect(summary.summary).toContain('renewal and dispute provisions');
+  expect(
+    (summary.redFlags as Array<{ category: string }>).map((flag) => flag.category)
+  ).toEqual([
+    'arbitration_clause',
+    'class_action_waiver',
+    'automatic_renewal',
+  ]);
+  await page.close();
+});
+
 test('persists a no_detection analysis for a plain page visit', async () => {
   const page = await context.newPage();
   const plainUrl = `${baseUrl}/plain`;
@@ -127,6 +155,29 @@ async function openExtensionPage(): Promise<Page> {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
   return page;
+}
+
+async function configureFixtureProvider(): Promise<void> {
+  await withWorker(async (worker) => {
+    await worker.evaluate(async () => {
+      await chrome.storage.local.set({
+        settings: {
+          activeProvider: 'fixture',
+          providers: {
+            openai: { apiKey: '', model: 'gpt-4o' },
+            claude: { apiKey: '', model: 'claude-sonnet-4-20250514' },
+            gemini: { apiKey: '', model: 'gemini-1.5-pro' },
+            ollama: { apiKey: '', model: '', baseUrl: 'http://localhost:11434' },
+            custom: { apiKey: '', model: '', baseUrl: '' },
+            fixture: { apiKey: '', model: 'fixture-v1' },
+          },
+          detectionSensitivity: 'normal',
+          darkMode: 'auto',
+          notifyOnChange: true,
+        },
+      });
+    });
+  });
 }
 
 async function waitForUrlAnalysis(url: string): Promise<Record<string, unknown>> {

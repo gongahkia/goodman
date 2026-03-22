@@ -124,6 +124,9 @@ function renderProviderSettingsView(
   settings: Settings
 ): void {
   container.textContent = '';
+  const activeProvider = isVisibleProvider(settings.activeProvider)
+    ? settings.activeProvider
+    : 'openai';
 
   const heading = document.createElement('h3');
   heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
@@ -143,11 +146,11 @@ function renderProviderSettingsView(
     radio.type = 'radio';
     radio.name = 'activeProvider';
     radio.value = name;
-    radio.checked = settings.activeProvider === name;
+    radio.checked = activeProvider === name;
     radio.addEventListener('change', async () => {
       const updatedSettings = await saveActiveProvider(name);
       if (!updatedSettings) return;
-      renderProviderConfigSection(configSection, updatedSettings.activeProvider, updatedSettings);
+      renderProviderConfigSection(configSection, name, updatedSettings);
     });
     label.appendChild(radio);
     label.appendChild(document.createTextNode(PROVIDER_LABELS[name] ?? name));
@@ -155,7 +158,7 @@ function renderProviderSettingsView(
   }
 
   container.appendChild(radioGroup);
-  renderProviderConfigSection(configSection, settings.activeProvider, settings);
+  renderProviderConfigSection(configSection, activeProvider, settings);
   container.appendChild(configSection);
 }
 
@@ -198,4 +201,8 @@ async function saveProviderConfig(
   };
 
   await setStorage('settings', { ...settingsResult.data, providers });
+}
+
+function isVisibleProvider(name: Settings['activeProvider']): name is ProviderName {
+  return PROVIDERS.includes(name as ProviderName);
 }

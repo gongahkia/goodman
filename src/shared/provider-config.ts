@@ -17,6 +17,8 @@ export function isProviderConfigured(
       return (config.baseUrl ?? '').trim().length > 0;
     case 'custom':
       return (config.baseUrl ?? '').trim().length > 0;
+    case 'fixture':
+      return true;
     default:
       return false;
   }

@@ -11,6 +11,7 @@ import { ClaudeProvider } from './claude';
 import { GeminiProvider } from './gemini';
 import { OllamaProvider } from './ollama';
 import { CustomEndpointProvider } from './custom';
+import { FixtureProvider } from './fixture';
 
 export async function getActiveProvider(): Promise<Result<LLMProvider, TCGuardError>> {
   const settingsResult = await getStorage('settings');
@@ -52,6 +53,7 @@ export function getAllProviders(): LLMProvider[] {
     new GeminiProvider(''),
     new OllamaProvider(),
     new CustomEndpointProvider(''),
+    new FixtureProvider(),
   ];
 }
 
@@ -125,6 +127,8 @@ function createProvider(
       return new OllamaProvider(baseUrl, model);
     case 'custom':
       return new CustomEndpointProvider(baseUrl ?? '', apiKey, model);
+    case 'fixture':
+      return new FixtureProvider(model);
     default:
       return null;
   }
