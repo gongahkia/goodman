@@ -682,11 +682,11 @@ blockedBy: [25]
 6. Limit to 20 versions per domain — WHY: 20 versions covers ~2 years of monthly changes, and prevents unbounded storage growth. Oldest versions are dropped first.
 
 **DONE WHEN**
-- [ ] First visit to a domain creates version 1
-- [ ] Revisit with same text does not create a new version
-- [ ] Revisit with changed text creates version 2 with incremented number
-- [ ] 21st version for a domain drops the oldest entry
-- [ ] `getVersionHistory` returns entries sorted by timestamp ascending
+- [x] First visit to a domain creates version 1
+- [x] Revisit with same text does not create a new version
+- [x] Revisit with changed text creates version 2 with incremented number
+- [x] 21st version for a domain drops the oldest entry
+- [x] `getVersionHistory` returns entries sorted by timestamp ascending
 
 ### Task 27 (B) +versioning
 blockedBy: [26]
