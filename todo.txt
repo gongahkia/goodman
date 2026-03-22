@@ -113,9 +113,9 @@ blockedBy: [2]
 4. Add a `STORAGE_VERSION` constant (start at 1) for future migration support.
 
 **DONE WHEN**
-- [ ] `getStorage('settings')` returns defaults on first install
-- [ ] `setStorage('settings', {...})` persists and survives extension reload
-- [ ] TypeScript compiler rejects reads/writes with wrong key or value types
+- [x] `getStorage('settings')` returns defaults on first install
+- [x] `setStorage('settings', {...})` persists and survives extension reload
+- [x] TypeScript compiler rejects reads/writes with wrong key or value types
 
 # ============================================================
 # T&C DETECTION
