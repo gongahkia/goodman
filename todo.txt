@@ -1323,10 +1323,10 @@ blockedBy: [53, 1]
 5. Add `pnpm build:firefox` script that sets the env var and builds.
 
 **DONE WHEN**
-- [ ] `pnpm build` produces a Chrome-compatible extension
-- [ ] `pnpm build:firefox` produces a Firefox-compatible extension
-- [ ] Both builds share the same source code, differing only in the manifest
-- [ ] Firefox build includes `browser_specific_settings`
+- [x] `pnpm build` produces a Chrome-compatible extension
+- [x] `pnpm build:firefox` produces a Firefox-compatible extension
+- [x] Both builds share the same source code, differing only in the manifest
+- [x] Firefox build includes `browser_specific_settings`
 
 # ============================================================
 # DOCUMENTATION
