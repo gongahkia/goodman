@@ -7,6 +7,7 @@
 ## Scaffolding & Infrastructure
 
 ### Task 1 (A) +ext
+blockedBy: none
 
 **PURPOSE** — Establishes the Manifest V3 Chrome extension skeleton. Every other task depends on this structure existing.
 
@@ -50,6 +51,7 @@
 ---
 
 ### Task 2 (A) +ext
+blockedBy: [1]
 
 **PURPOSE** — Message-passing backbone between content script, background worker, and popup. All inter-component communication depends on this.
 
@@ -76,6 +78,7 @@
 ## Screenshot Capture
 
 ### Task 3 (A) +capture
+blockedBy: [1]
 
 **PURPOSE** — Captures quiz content from any web page via screenshot. This is the primary and only capture method.
 
@@ -97,6 +100,7 @@
 ## LLM Integration
 
 ### Task 4 (A) +llm
+blockedBy: [1]
 
 **PURPOSE** — Defines the contract for local vision LLM providers.
 
@@ -126,6 +130,7 @@
 ---
 
 ### Task 5 (A) +llm
+blockedBy: [4]
 
 **PURPOSE** — Integrates with Ollama's native API for vision model inference.
 
@@ -147,6 +152,7 @@
 ---
 
 ### Task 6 (A) +llm
+blockedBy: [4]
 
 **PURPOSE** — Supports any local LLM server that exposes the OpenAI-compatible vision API (LM Studio, LocalAI, llama.cpp server, Jan.ai, vLLM).
 
@@ -167,6 +173,7 @@
      "max_tokens": 1000
    }
    ```
+   <!-- WHY max_tokens: 1000: vision model quiz answers rarely exceed 300 tokens; 1000 provides headroom for detailed reasoning without wasting context -->
 4. Parse response from `choices[0].message.content`.
 5. Configurable base URL with presets: LM Studio (localhost:1234), LocalAI (localhost:8080), llama.cpp (localhost:8080), Jan.ai (localhost:1337), vLLM (localhost:8000).
 6. Configurable model name.
@@ -180,6 +187,7 @@
 ---
 
 ### Task 7 (A) +llm
+blockedBy: [5, 6]
 
 **PURPOSE** — Selects and initializes the active LLM provider.
 
@@ -200,6 +208,7 @@
 ## Platform Detection & Orchestration
 
 ### Task 8 (A) +detect
+blockedBy: [1]
 
 **PURPOSE** — Identifies which quiz platform is being used for prompt optimization.
 
@@ -223,6 +232,7 @@
 ---
 
 ### Task 9 (A) +detect
+blockedBy: [1, 2, 8]
 
 **PURPOSE** — Triggers quiz capture either manually or when a known quiz platform is detected.
 
@@ -241,6 +251,7 @@
 ---
 
 ### Task 10 (A) +core
+blockedBy: [3, 7, 8, 9]
 
 **PURPOSE** — Core pipeline that ties capture, LLM, and display together.
 
@@ -263,6 +274,7 @@
 ---
 
 ### Task 11 (A) +core
+blockedBy: [2, 7, 10]
 
 **PURPOSE** — Background service worker orchestration: receives captured questions from content, routes to LLM, returns answers, manages logging.
 
@@ -291,12 +303,14 @@
 ## User Interface
 
 ### Task 12 (A) +ui
+blockedBy: [1]
 
 **PURPOSE** — Displays the LLM's answer as a floating panel on the page.
 
 **WHAT TO DO**
 1. In `ui/overlay.ts`, inject a floating panel into the page via content script.
 2. Panel shows: question type badge, answer text (large), confidence bar (color-coded: green >0.8, yellow >0.5, red <0.5), reasoning (collapsible).
+   <!-- WHY confidence thresholds >0.8 green, >0.5 yellow, <0.5 red: 80%+ represents high model certainty; below 50% means the model is guessing -->
 3. Panel is draggable and dismissable (X button or Escape key).
 4. Panel auto-positions to not obscure the detected quiz area.
 5. Style with Shadow DOM to avoid CSS conflicts with host page.
@@ -312,6 +326,7 @@
 ---
 
 ### Task 13 (A) +ui
+blockedBy: [1, 2]
 
 **PURPOSE** — Main extension popup showing current state and quick actions.
 
@@ -331,6 +346,7 @@
 ---
 
 ### Task 14 (B) +ui
+blockedBy: [7, 13]
 
 **PURPOSE** — Settings page for configuring LLM providers and behavior.
 
@@ -354,6 +370,7 @@
 ---
 
 ### Task 15 (B) +ui
+blockedBy: [13, 19]
 
 **PURPOSE** — Session log viewer in popup. Users can review all Q&A pairs from the current session.
 
@@ -383,6 +400,7 @@
 ---
 
 ### Task 16 (B) +llm
+blockedBy: [5, 14]
 
 **PURPOSE** — Helps users choose the right vision model for their hardware.
 
@@ -406,6 +424,7 @@
 ## Error Handling & Resilience
 
 ### Task 17 (A) +core
+blockedBy: [2, 10]
 
 **PURPOSE** — Graceful error handling throughout the pipeline. Prevents silent failures and gives users actionable feedback.
 
@@ -419,8 +438,10 @@
    - Log to console with full stack trace.
    - Do not crash the trigger listener — continue listening for next trigger.
 3. `src/background/service-worker.ts`: Wrap LLM call with timeout — if no response in 30s, reject with `LLM_TIMEOUT`. Configurable via `llmTimeoutMs` in config (add to `ExtensionConfig`, default 30000).
+   <!-- WHY 30s LLM timeout: local vision models on consumer hardware (llava 7B) typically respond in 5-15s; 30s accommodates slow machines without hanging forever -->
 4. Add `ERROR` message type to `messages.ts`.
 5. `src/popup/popup.ts`: On `ERROR` message, display red banner with `userMessage` that auto-dismisses after 5s.
+   <!-- WHY 5s auto-dismiss: long enough to read a short error message, short enough not to obscure the quiz -->
 
 **DONE WHEN**
 - [ ] LLM timeout after 30s triggers `LLM_TIMEOUT` error shown in popup.
@@ -431,6 +452,7 @@
 ---
 
 ### Task 18 (B) +core
+blockedBy: [5, 6]
 
 **PURPOSE** — Retry logic for transient LLM failures. Network blips shouldn't require manual intervention.
 
@@ -441,6 +463,7 @@
    - Return the first successful result.
    - On final failure, throw the last error.
 2. `src/background/service-worker.ts`: Wrap the `provider.analyzeImage()` call with `withRetry({ maxRetries: 2, baseDelayMs: 1000, backoffMultiplier: 2 })`.
+   <!-- WHY maxRetries: 2, baseDelayMs: 1000, backoffMultiplier: 2: 3 total attempts (1 + 2 retries) with 1s->2s delays; fast enough for interactive use while covering transient network issues -->
 
 **DONE WHEN**
 - [ ] A transient network error on first attempt succeeds on retry (verify with mock/spy).
@@ -453,6 +476,7 @@
 ## Logging
 
 ### Task 19 (A) +log
+blockedBy: [1, 2]
 
 **PURPOSE** — Session-scoped answer logging. Persists Q&A history for the current browser session for user review and export.
 
@@ -462,6 +486,7 @@
 3. `appendLog` in the background worker: called after every successful `ANSWER_READY` response. Include full `QuizAnswer` and platform name.
 4. `src/lib/storage.ts`: Add `exportSessionLog(): Promise<string>` — returns pretty-printed JSON of `LogEntry[]`.
 5. Enforce max log size: if `session_log` array exceeds 500 entries, trim oldest entries to keep 500.
+   <!-- WHY 500 max log entries: at ~1KB per entry, 500 entries ~ 500KB in chrome.storage.local (limit is 10MB); covers a full exam session -->
 
 **DONE WHEN**
 - [ ] After answering 3 questions, `getSessionLog()` returns 3 `LogEntry` items.
@@ -474,6 +499,7 @@
 ## Security
 
 ### Task 20 (A) +security
+blockedBy: [1, 5, 6]
 
 **PURPOSE** — Endpoint security. Local server URLs and configuration must be stored securely and never leak to content scripts.
 
@@ -492,6 +518,7 @@
 ## Build & Dev Tooling
 
 ### Task 21 (A) +build
+blockedBy: [1]
 
 **PURPOSE** — Hot-reload development workflow. Extension development without hot reload is prohibitively slow.
 
@@ -505,6 +532,7 @@
 
 **DONE WHEN**
 - [ ] `npm run dev` starts a watch process; editing a `.ts` file triggers rebuild within 2s.
+  <!-- WHY 2s rebuild: acceptable developer feedback loop; most esbuild/vite rebuilds complete in <500ms -->
 - [ ] Extension auto-reloads in Chrome after rebuild (verify via console log timestamp).
 - [ ] `npm run build:prod` outputs minified bundle without dev-reload code.
 - [ ] `dist/` is in `.gitignore`.
@@ -512,6 +540,7 @@
 ---
 
 ### Task 22 (B) +build
+blockedBy: [1]
 
 **PURPOSE** — Linting and type checking for code quality. Catches bugs before they reach the browser.
 
@@ -528,7 +557,8 @@
 
 ---
 
-### Task 23 (C) +build
+### Task 23 (B) +build
+blockedBy: [5, 6, 8]
 
 **PURPOSE** — Automated testing setup for critical paths (LLM response parsing, platform detection).
 
@@ -555,9 +585,10 @@
 
 ## Final Integration
 
-### Task 24 (A) +core
+### Task 24a (A) +core
+blockedBy: [2, 9, 12, 17]
 
-**PURPOSE** — End-to-end integration wiring. Ensures all modules are correctly imported and the full pipeline works when the extension loads.
+**PURPOSE** — Content script final wiring. Connects all content-side modules into the running extension.
 
 **WHAT TO DO**
 1. `src/content/index.ts`: Final wiring:
@@ -566,19 +597,51 @@
    - On trigger: capture → send to background → receive answer → display overlay.
    - Listen for `CONFIG_UPDATED` → update behavior without page reload.
    - Listen for `ANSWER_READY` from background → show overlay.
-2. `src/background/service-worker.ts`: Final wiring:
+
+**DONE WHEN**
+- [ ] Content script loads without console errors on any page.
+- [ ] Keyboard shortcut triggers capture → background → overlay display pipeline.
+- [ ] `CONFIG_UPDATED` messages update content script behavior without requiring page reload.
+- [ ] `ANSWER_READY` messages from background are rendered in the overlay.
+
+---
+
+### Task 24b (A) +core
+blockedBy: [7, 11, 17, 18, 19]
+
+**PURPOSE** — Background service worker final wiring. Connects all background-side modules into the running extension.
+
+**WHAT TO DO**
+1. `src/background/service-worker.ts`: Final wiring:
    - Import all providers, factory, retry, storage, error handler.
    - Register all message handlers.
    - On install/activate: `clearSessionLog()`.
-3. `src/popup/popup.ts`: Final wiring:
+
+**DONE WHEN**
+- [ ] Background service worker starts without errors.
+- [ ] All message types are handled (`REQUEST_ANSWER`, `GET_STATUS`, `CONFIG_UPDATED`, `CAPTURE_SCREENSHOT`).
+- [ ] LLM calls are wrapped in retry logic.
+- [ ] Session log is cleared on extension install/activate.
+
+---
+
+### Task 24c (A) +core
+blockedBy: [13, 15, 19]
+
+**PURPOSE** — Popup final wiring. Connects all popup-side modules into the running extension.
+
+**WHAT TO DO**
+1. `src/popup/popup.ts`: Final wiring:
    - Import log-viewer, storage.
    - Initialize UI state from background status.
    - Real-time updates via message listener.
-4. Verify the full flow manually:
+2. Verify the full flow manually:
    - Load extension → navigate to any quiz platform → press Alt+Q → answer appears in overlay and popup.
 
 **DONE WHEN**
-- [ ] Extension loads without console errors.
+- [ ] Popup opens and displays current status from background.
+- [ ] Real-time updates: answering a question while popup is open updates the display.
+- [ ] Log viewer toggle works and shows session history.
 - [ ] On any quiz platform with a local LLM running: shortcut pressed → screenshot captured → answer appears in overlay within 10s.
 - [ ] Switching providers in options takes effect on next capture without page reload.
 - [ ] Session log contains the Q&A entry after the cycle.
@@ -587,6 +650,7 @@
 ---
 
 ### Task 25 (B) +ui
+blockedBy: [2, 10]
 
 **PURPOSE** — Keyboard shortcut for manual trigger. Primary user interaction for triggering quiz analysis.
 
@@ -616,6 +680,7 @@
 ---
 
 ### Task 26 (C) +ui
+blockedBy: [11]
 
 **PURPOSE** — Badge indicator on extension icon. Quick visual feedback without opening popup.
 
@@ -623,6 +688,7 @@
 1. `src/background/service-worker.ts`: After receiving `ANSWER_READY`:
    - Set badge text to the confidence percentage: `chrome.action.setBadgeText({ text: Math.round(answer.confidence * 100) + '%' })`.
    - Set badge color: green (`#00d4aa`) if confidence > 0.7, yellow (`#f0c040`) if 0.4-0.7, red (`#e04040`) if < 0.4. Use `chrome.action.setBadgeBackgroundColor`.
+   <!-- WHY badge thresholds >0.7 green, 0.4-0.7 yellow, <0.4 red: slightly lower than overlay since badge is a quick glance, not detailed view -->
 2. On `ERROR` message: set badge text to `'!'`, color red.
 3. When navigating away from a known quiz platform: clear badge. Listen for `chrome.tabs.onActivated` and `chrome.tabs.onUpdated` to detect tab changes.
 
@@ -634,6 +700,7 @@
 ---
 
 ### Task 27 (C) +ext
+blockedBy: [24a, 24b, 24c]
 
 **PURPOSE** — Firefox compatibility via WebExtension polyfill. Extends reach beyond Chrome.
 
@@ -649,3 +716,69 @@
 - [ ] `npm run build:firefox` produces a `dist/` loadable in Firefox as temporary add-on.
 - [ ] Core flow (capture → LLM → overlay display) works in Firefox.
 - [ ] No direct `chrome.*` API calls remain in source (all go through `browser-api.ts`).
+
+---
+
+## CI, Packaging & Documentation
+
+### Task 28 (B) +build
+blockedBy: [21, 22, 23]
+
+**PURPOSE** — Automated build, lint, and test on every push and PR.
+
+**WHAT TO DO**
+1. Create `.github/workflows/ci.yml`.
+2. Steps: checkout, setup Node 20, `npm ci`, `npm run lint`, `npm run typecheck`, `npm test`, `npm run build:prod`.
+3. Run on push to main and all PRs.
+
+**DONE WHEN**
+- [ ] CI passes on push and PR.
+- [ ] Failing lint/typecheck/test blocks merge.
+
+---
+
+### Task 29 (B) +build
+blockedBy: [21, 27]
+
+**PURPOSE** — Produces installable extension packages for Chrome and Firefox.
+
+**WHAT TO DO**
+1. Add `package` script to package.json: `npm run build:prod && cd dist && zip -r ../quiz-agent-chrome.zip .`
+2. Add `package:firefox` script: `npm run build:firefox && cd dist && zip -r ../quiz-agent-firefox.xpi .`
+3. Include in CI as artifacts.
+
+**DONE WHEN**
+- [ ] `npm run package` produces a valid .zip loadable in Chrome.
+- [ ] `npm run package:firefox` produces a valid .xpi loadable in Firefox.
+
+---
+
+### Task 30 (B) +docs
+blockedBy: [14, 16, 25]
+
+**PURPOSE** — First thing users see; explains what the extension does and how to set it up.
+
+**WHAT TO DO**
+1. Create `README.md` with: project description, feature list, screenshot, installation guide (load from source or install from store), Ollama setup instructions, model recommendations, keyboard shortcuts, contributing guide.
+
+**DONE WHEN**
+- [ ] README renders correctly on GitHub.
+- [ ] Installation instructions work on a clean Chrome + Ollama setup.
+
+---
+
+### Task 31 (B) +test
+blockedBy: [10, 17, 23]
+
+**PURPOSE** — Verifies the capture → LLM → overlay pipeline end-to-end with mocked LLM.
+
+**WHAT TO DO**
+1. Create `src/__tests__/integration.test.ts`.
+2. Mock `chrome.tabs.captureVisibleTab` to return a test screenshot.
+3. Mock Ollama API to return a known `QuizAnswer` JSON.
+4. Verify that the orchestrator produces the correct answer from the mocked inputs.
+5. Verify that errors in the LLM mock produce appropriate error handling.
+
+**DONE WHEN**
+- [ ] Integration test passes with mocked Chrome APIs and LLM.
+- [ ] Error path test verifies error handling works.
