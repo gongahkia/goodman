@@ -1348,9 +1348,9 @@ blockedBy: [52]
 2. Keep it concise — under 200 lines.
 
 **DONE WHEN**
-- [ ] README exists with all listed sections
-- [ ] Installation instructions are accurate
-- [ ] Privacy section clearly states no telemetry
+- [x] README exists with all listed sections
+- [x] Installation instructions are accurate
+- [x] Privacy section clearly states no telemetry
 
 ### Task 56 (C) +docs
 blockedBy: [21]
