@@ -26,6 +26,9 @@ export const chrome = {
   tabs: {
     sendMessage: vi.fn(),
     query: vi.fn(),
+    onRemoved: {
+      addListener: vi.fn(),
+    },
   },
   action: {
     setBadgeText: vi.fn(),

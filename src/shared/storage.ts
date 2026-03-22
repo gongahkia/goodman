@@ -3,6 +3,7 @@ import { ok, err } from './result';
 import type { Result } from './result';
 import type { Settings, ProviderConfig } from './messages';
 import { STORAGE_VERSION } from './constants';
+import type { PageAnalysisRecord } from './page-analysis';
 
 export interface CachedSummary {
   summary: StoredSummary;
@@ -44,7 +45,9 @@ export interface PendingNotification {
 export interface StorageSchema {
   settings: Settings;
   cache: Record<string, CachedSummary>;
+  pageAnalysis: Record<string, PageAnalysisRecord>;
   versionHistory: Record<string, VersionEntry[]>;
+  domainNotificationPreferences: Record<string, boolean>;
   pendingNotifications: PendingNotification[];
   storageVersion: number;
 }
@@ -71,7 +74,9 @@ export const DEFAULT_SETTINGS: Settings = {
 const STORAGE_DEFAULTS: StorageSchema = {
   settings: DEFAULT_SETTINGS,
   cache: {},
+  pageAnalysis: {},
   versionHistory: {},
+  domainNotificationPreferences: {},
   pendingNotifications: [],
   storageVersion: STORAGE_VERSION,
 };
@@ -98,4 +103,67 @@ export async function setStorage<K extends keyof StorageSchema>(
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
   }
+}
+
+export async function getPageAnalysis(
+  tabId: number
+): Promise<PageAnalysisRecord | null> {
+  const result = await getStorage('pageAnalysis');
+  if (!result.ok) return null;
+
+  return result.data[getPageAnalysisKey(tabId)] ?? null;
+}
+
+export async function setPageAnalysisRecord(
+  record: PageAnalysisRecord
+): Promise<Result<void, Error>> {
+  const result = await getStorage('pageAnalysis');
+  if (!result.ok) return result;
+
+  const pageAnalysis = {
+    ...result.data,
+    [getPageAnalysisKey(record.tabId)]: record,
+  };
+
+  return setStorage('pageAnalysis', pageAnalysis);
+}
+
+export async function removePageAnalysis(
+  tabId: number
+): Promise<Result<void, Error>> {
+  const result = await getStorage('pageAnalysis');
+  if (!result.ok) return result;
+
+  const pageAnalysis = { ...result.data };
+  delete pageAnalysis[getPageAnalysisKey(tabId)];
+
+  return setStorage('pageAnalysis', pageAnalysis);
+}
+
+export async function getDomainNotificationPreference(
+  domain: string
+): Promise<boolean> {
+  const result = await getStorage('domainNotificationPreferences');
+  if (!result.ok) return true;
+
+  return result.data[domain] ?? true;
+}
+
+export async function setDomainNotificationPreference(
+  domain: string,
+  enabled: boolean
+): Promise<Result<void, Error>> {
+  const result = await getStorage('domainNotificationPreferences');
+  if (!result.ok) return result;
+
+  const preferences = {
+    ...result.data,
+    [domain]: enabled,
+  };
+
+  return setStorage('domainNotificationPreferences', preferences);
+}
+
+function getPageAnalysisKey(tabId: number): string {
+  return String(tabId);
 }

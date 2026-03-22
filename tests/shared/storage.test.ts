@@ -1,0 +1,63 @@
+import { describe, expect, it } from 'vitest';
+import type { PageAnalysisRecord } from '@shared/page-analysis';
+import {
+  getDomainNotificationPreference,
+  getPageAnalysis,
+  getStorage,
+  setDomainNotificationPreference,
+  setPageAnalysisRecord,
+} from '@shared/storage';
+
+function makePageAnalysisRecord(
+  overrides: Partial<PageAnalysisRecord> = {}
+): PageAnalysisRecord {
+  return {
+    tabId: 12,
+    url: 'https://example.com/signup',
+    domain: 'example.com',
+    status: 'analyzing',
+    sourceType: null,
+    detectionType: 'checkbox',
+    confidence: 0.82,
+    textHash: null,
+    summary: null,
+    error: null,
+    updatedAt: 1_763_648_400_000,
+    ...overrides,
+  };
+}
+
+describe('shared storage', () => {
+  it('returns empty page analysis by default', async () => {
+    const result = await getStorage('pageAnalysis');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual({});
+    }
+  });
+
+  it('persists page analysis records by tab id', async () => {
+    const record = makePageAnalysisRecord();
+
+    const saveResult = await setPageAnalysisRecord(record);
+    expect(saveResult.ok).toBe(true);
+
+    const storedRecord = await getPageAnalysis(record.tabId);
+    expect(storedRecord).toEqual(record);
+  });
+
+  it('defaults domain notification preferences to enabled', async () => {
+    const enabled = await getDomainNotificationPreference('example.com');
+
+    expect(enabled).toBe(true);
+  });
+
+  it('persists domain notification preferences', async () => {
+    const saveResult = await setDomainNotificationPreference('example.com', false);
+    expect(saveResult.ok).toBe(true);
+
+    const enabled = await getDomainNotificationPreference('example.com');
+    expect(enabled).toBe(false);
+  });
+});

@@ -1,4 +1,5 @@
 import type { Result } from './result';
+import type { PageAnalysisRecord } from './page-analysis';
 
 export interface DetectTCMessage {
   type: 'DETECT_TC';
@@ -29,6 +30,16 @@ export interface SaveSettingsMessage {
   payload: Settings;
 }
 
+export interface GetPageAnalysisMessage {
+  type: 'GET_PAGE_ANALYSIS';
+  payload: { tabId: number };
+}
+
+export interface SavePageAnalysisMessage {
+  type: 'SAVE_PAGE_ANALYSIS';
+  payload: PageAnalysisRecord;
+}
+
 export interface TCChangedMessage {
   type: 'TC_CHANGED';
   payload: { domain: string; diff: unknown };
@@ -41,6 +52,8 @@ export type Message =
   | SummarizeMessage
   | GetSettingsMessage
   | SaveSettingsMessage
+  | GetPageAnalysisMessage
+  | SavePageAnalysisMessage
   | TCChangedMessage;
 
 export type MessageType = Message['type'];
