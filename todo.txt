@@ -1246,10 +1246,10 @@ blockedBy: [45, 46, 47]
 4. Add the corresponding scripts to `package.json`: `lint`, `typecheck`, `test`, `build`.
 
 **DONE WHEN**
-- [ ] CI workflow runs on every push to main and on PRs
-- [ ] Workflow fails if linting, type checking, or tests fail
-- [ ] Workflow fails if production build fails
-- [ ] Total CI time is under 5 minutes
+- [x] CI workflow runs on every push to main and on PRs
+- [x] Workflow fails if linting, type checking, or tests fail
+- [x] Workflow fails if production build fails
+- [x] Total CI time is under 5 minutes
 
 ### Task 51 (B) +cicd
 blockedBy: [50]
