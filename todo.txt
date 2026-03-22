@@ -951,10 +951,10 @@ blockedBy: [36, 30]
 5. Show a "No version history yet" message for domains that have not been tracked.
 
 **DONE WHEN**
-- [ ] Version history panel shows the timeline for the current domain
-- [ ] Domain selector lists all tracked domains
-- [ ] Selecting a different domain loads that domain's timeline
-- [ ] Panel shows empty state message for untracked domains
+- [x] Version history panel shows the timeline for the current domain
+- [x] Domain selector lists all tracked domains
+- [x] Selecting a different domain loads that domain's timeline
+- [x] Panel shows empty state message for untracked domains
 
 ### Task 38 (B) +popup
 blockedBy: [36, 3]
@@ -1029,9 +1029,9 @@ blockedBy: [36, 31]
 4. Persist per-domain notification preferences in storage.
 
 **DONE WHEN**
-- [ ] Global toggle enables/disables all notifications
-- [ ] Per-domain toggle overrides the global setting for that domain
-- [ ] Settings persist across browser restarts
+- [x] Global toggle enables/disables all notifications
+- [x] Per-domain toggle overrides the global setting for that domain
+- [x] Settings persist across browser restarts
 
 # ============================================================
 # ERROR HANDLING & SECURITY
