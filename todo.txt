@@ -1284,9 +1284,9 @@ blockedBy: [51]
 3. Add instructions as comments in each script (do NOT create separate documentation files).
 
 **DONE WHEN**
-- [ ] Chrome submission script exists with credential setup instructions in comments
-- [ ] Firefox submission script exists with credential setup instructions in comments
-- [ ] Scripts are executable (`chmod +x`)
+- [x] Chrome submission script exists with credential setup instructions in comments
+- [x] Firefox submission script exists with credential setup instructions in comments
+- [x] Scripts are executable (`chmod +x`)
 
 # ============================================================
 # FIREFOX COMPATIBILITY
