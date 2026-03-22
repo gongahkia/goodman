@@ -1,3 +1,4 @@
+import { clearNotification } from '@versioning/notifications';
 import { renderTimeline } from '@versioning/ui/timeline';
 import { getAllTrackedDomains } from '@versioning/schema';
 
@@ -35,6 +36,7 @@ export async function renderHistoryPanel(
   const timelineContainer = document.createElement('div');
 
   select.addEventListener('change', async () => {
+    await clearNotification(select.value);
     const timeline = await renderTimeline(select.value);
     timelineContainer.textContent = '';
     timelineContainer.appendChild(timeline);
@@ -45,6 +47,7 @@ export async function renderHistoryPanel(
 
   const selectedDomain = domains.includes(currentDomain) ? currentDomain : (domains[0] ?? '');
   if (selectedDomain) {
+    await clearNotification(selectedDomain);
     const timeline = await renderTimeline(selectedDomain);
     timelineContainer.appendChild(timeline);
   }

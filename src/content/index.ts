@@ -104,7 +104,7 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
     removeOverlay();
     lastRenderedTextHash = null;
     await savePageAnalysisState({
-      status: 'no_detection',
+      status: 'extraction_failed',
       sourceType: resolvedText.sourceType,
       detectionType: best.type,
       confidence: best.weightedConfidence,

@@ -1,23 +1,29 @@
 import type { Summary } from '@providers/types';
-import { renderProviderSettings } from '@popup/settings/providers';
+import { sendToBackground } from '@shared/messaging';
+import type { PageAnalysisRecord } from '@shared/page-analysis';
+import { renderHistoryPanel } from '@popup/history';
+import { renderCacheSettings } from '@popup/settings/cache';
 import { renderDetectionSettings } from '@popup/settings/detection';
 import { renderNotificationSettings } from '@popup/settings/notifications';
-import { renderCacheSettings } from '@popup/settings/cache';
-import { renderHistoryPanel } from '@popup/history';
+import { renderProviderSettings } from '@popup/settings/providers';
 
-interface PageState {
+interface PopupState {
+  tabId: number | null;
   domain: string;
-  summary: Summary | null;
+  analysis: PageAnalysisRecord | null;
   loading: boolean;
   error: string | null;
 }
 
-const state: PageState = {
+const state: PopupState = {
+  tabId: null,
   domain: '',
-  summary: null,
+  analysis: null,
   loading: false,
   error: null,
 };
+
+let initialized = false;
 
 async function init(): Promise<void> {
   const app = document.getElementById('app');
@@ -25,6 +31,8 @@ async function init(): Promise<void> {
 
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
+  state.tabId = tab?.id ?? null;
+
   if (tab?.url) {
     try {
       state.domain = new URL(tab.url).hostname;
@@ -33,29 +41,77 @@ async function init(): Promise<void> {
     }
   }
 
+  await refreshPageAnalysis();
   render(app);
 }
 
 function render(container: HTMLElement): void {
   container.textContent = '';
 
-  const header = createHeader();
-  container.appendChild(header);
+  container.appendChild(createHeader());
 
   if (state.loading) {
-    container.appendChild(createLoadingState());
+    container.appendChild(createLoadingState('Analyzing this page...'));
     return;
   }
 
-  if (state.error) {
+  if (state.error && !state.analysis) {
     container.appendChild(createErrorState(state.error));
+    container.appendChild(createFooter());
     return;
   }
 
-  if (state.summary) {
-    container.appendChild(createSummaryView(state.summary));
-  } else {
-    container.appendChild(createEmptyState());
+  if (!state.analysis) {
+    container.appendChild(createIdleState());
+    container.appendChild(createFooter());
+    return;
+  }
+
+  switch (state.analysis.status) {
+    case 'ready':
+      if (state.analysis.summary) {
+        container.appendChild(createSummaryView(state.analysis.summary, state.analysis));
+      } else {
+        container.appendChild(createErrorState('Summary is unavailable for this analysis.'));
+      }
+      break;
+    case 'analyzing':
+      container.appendChild(createLoadingState('Analyzing this page...'));
+      break;
+    case 'needs_provider':
+      container.appendChild(
+        createActionState(
+          'Provider setup required',
+          state.analysis.error ??
+            'Configure an LLM provider before analyzing this page.',
+          'Open Settings',
+          showSettings
+        )
+      );
+      break;
+    case 'extraction_failed':
+      container.appendChild(
+        createActionState(
+          'Could not extract T&C text',
+          state.analysis.error ??
+            'A legal surface was detected, but the text could not be extracted.',
+          'Analyze Again',
+          handleAnalyze
+        )
+      );
+      break;
+    case 'error':
+      container.appendChild(
+        createErrorState(
+          state.analysis.error ?? 'Could not analyze this page.'
+        )
+      );
+      break;
+    case 'no_detection':
+    case 'idle':
+    default:
+      container.appendChild(createIdleState());
+      break;
   }
 
   container.appendChild(createFooter());
@@ -65,50 +121,77 @@ function createHeader(): HTMLElement {
   const header = document.createElement('div');
   header.style.cssText =
     'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--tc-border)';
+
   const title = document.createElement('div');
   title.style.cssText = 'font-size:18px;font-weight:600';
   title.textContent = 'TC Guard';
+
   const domain = document.createElement('div');
   domain.style.cssText = 'font-size:13px;color:var(--tc-text-secondary)';
-  domain.textContent = state.domain;
+  domain.textContent = state.analysis?.domain ?? state.domain;
+
   header.appendChild(title);
   header.appendChild(domain);
   return header;
 }
 
-function createEmptyState(): HTMLElement {
-  const div = document.createElement('div');
-  div.style.cssText = 'text-align:center;padding:32px 16px';
-  const msg = document.createElement('p');
-  msg.style.cssText = 'color:var(--tc-text-secondary);margin-bottom:16px';
-  msg.textContent = 'No T&C detected on this page';
-  const btn = createButton('Analyze This Page', handleAnalyze);
-  div.appendChild(msg);
-  div.appendChild(btn);
-  return div;
+function createIdleState(): HTMLElement {
+  return createActionState(
+    'No T&C detected on this page',
+    'Run a manual analysis if the legal text is hidden behind an interaction or loads late.',
+    'Analyze This Page',
+    handleAnalyze
+  );
 }
 
-function createLoadingState(): HTMLElement {
+function createLoadingState(label: string): HTMLElement {
   const div = document.createElement('div');
-  div.style.cssText = 'text-align:center;padding:32px 16px;color:var(--tc-text-secondary)';
-  div.textContent = 'Analyzing...';
+  div.style.cssText =
+    'text-align:center;padding:32px 16px;color:var(--tc-text-secondary)';
+  div.textContent = label;
   return div;
 }
 
 function createErrorState(error: string): HTMLElement {
   const div = document.createElement('div');
-  div.style.cssText = 'padding:12px;background:#fee2e2;border-radius:var(--tc-radius-md);color:#991b1b;margin-bottom:12px';
+  div.style.cssText =
+    'padding:12px;background:#fee2e2;border-radius:var(--tc-radius-md);color:#991b1b;margin-bottom:12px';
   div.textContent = error;
-  const retryBtn = createButton('Retry', handleAnalyze);
-  div.appendChild(retryBtn);
+  div.appendChild(createButton('Retry', handleAnalyze));
   return div;
 }
 
-function createSummaryView(summary: Summary): HTMLElement {
+function createActionState(
+  title: string,
+  body: string,
+  buttonLabel: string,
+  onClick: () => void
+): HTMLElement {
   const div = document.createElement('div');
+  div.style.cssText = 'text-align:center;padding:32px 16px';
 
-  const badge = createSeverityBadge(summary.severity);
-  div.appendChild(badge);
+  const heading = document.createElement('p');
+  heading.style.cssText = 'font-weight:600;margin-bottom:8px';
+  heading.textContent = title;
+
+  const copy = document.createElement('p');
+  copy.style.cssText =
+    'color:var(--tc-text-secondary);margin-bottom:16px;line-height:1.5';
+  copy.textContent = body;
+
+  div.appendChild(heading);
+  div.appendChild(copy);
+  div.appendChild(createButton(buttonLabel, onClick));
+  return div;
+}
+
+function createSummaryView(
+  summary: Summary,
+  analysis: PageAnalysisRecord
+): HTMLElement {
+  const div = document.createElement('div');
+  div.appendChild(createSeverityBadge(summary.severity));
+  div.appendChild(createMetadataRow(analysis));
 
   const summaryP = document.createElement('p');
   summaryP.style.cssText = 'margin:12px 0;line-height:1.5';
@@ -120,6 +203,7 @@ function createSummaryView(summary: Summary): HTMLElement {
     kpHeader.style.cssText = 'font-size:14px;font-weight:600;margin:12px 0 8px';
     kpHeader.textContent = `Key Points (${summary.keyPoints.length})`;
     div.appendChild(kpHeader);
+
     const ul = document.createElement('ul');
     ul.style.cssText = 'padding-left:20px;margin-bottom:12px';
     for (const point of summary.keyPoints) {
@@ -144,6 +228,28 @@ function createSummaryView(summary: Summary): HTMLElement {
   return div;
 }
 
+function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
+  const row = document.createElement('div');
+  row.style.cssText =
+    'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:4px';
+
+  const chips = [
+    `Source: ${formatToken(analysis.sourceType)}`,
+    `Detection: ${formatToken(analysis.detectionType)}`,
+    `Confidence: ${formatConfidence(analysis.confidence)}`,
+  ];
+
+  for (const chipText of chips) {
+    const chip = document.createElement('span');
+    chip.style.cssText =
+      'font-size:11px;color:var(--tc-text-secondary);background:var(--tc-surface);border-radius:9999px;padding:4px 8px';
+    chip.textContent = chipText;
+    row.appendChild(chip);
+  }
+
+  return row;
+}
+
 function createSeverityBadge(severity: string): HTMLElement {
   const colors: Record<string, string> = {
     low: 'var(--tc-severity-low)',
@@ -151,53 +257,71 @@ function createSeverityBadge(severity: string): HTMLElement {
     high: 'var(--tc-severity-high)',
     critical: 'var(--tc-severity-critical)',
   };
+
   const div = document.createElement('div');
   div.style.cssText = 'display:flex;align-items:center;gap:8px';
+
   const dot = document.createElement('span');
   dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${colors[severity] ?? colors['medium']}`;
+
   const label = document.createElement('span');
   label.style.cssText = 'font-size:11px;font-weight:600;text-transform:uppercase';
   label.textContent = severity;
+
   div.appendChild(dot);
   div.appendChild(label);
   return div;
 }
 
-function createRedFlagCard(flag: { category: string; description: string; severity: string; quote: string }): HTMLElement {
+function createRedFlagCard(flag: {
+  category: string;
+  description: string;
+  severity: string;
+  quote: string;
+}): HTMLElement {
   const card = document.createElement('div');
   const severityColors: Record<string, string> = {
     low: 'var(--tc-severity-low)',
     medium: 'var(--tc-severity-medium)',
     high: 'var(--tc-severity-high)',
   };
+
   card.style.cssText = `border-left:3px solid ${severityColors[flag.severity] ?? severityColors['medium']};background:var(--tc-surface);border-radius:var(--tc-radius-md);padding:12px;margin-bottom:8px;cursor:pointer`;
 
   const header = document.createElement('div');
   header.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
+
   const catName = document.createElement('span');
   catName.style.cssText = 'font-weight:500;font-size:13px';
   catName.textContent = flag.category.replace(/_/g, ' ');
+
   const sevPill = document.createElement('span');
   sevPill.style.cssText = 'font-size:11px;font-weight:600;text-transform:uppercase';
   sevPill.textContent = flag.severity;
+
   header.appendChild(catName);
   header.appendChild(sevPill);
   card.appendChild(header);
 
   const details = document.createElement('div');
-  details.style.cssText = 'max-height:0;overflow:hidden;transition:max-height 200ms cubic-bezier(0.16,1,0.3,1)';
+  details.style.cssText =
+    'max-height:0;overflow:hidden;transition:max-height 200ms cubic-bezier(0.16,1,0.3,1)';
+
   const desc = document.createElement('p');
-  desc.style.cssText = 'margin:8px 0;font-size:13px;color:var(--tc-text-secondary);line-height:1.4';
+  desc.style.cssText =
+    'margin:8px 0;font-size:13px;color:var(--tc-text-secondary);line-height:1.4';
   desc.textContent = flag.description;
   details.appendChild(desc);
+
   if (flag.quote) {
     const quote = document.createElement('blockquote');
-    quote.style.cssText = 'border-left:2px solid var(--tc-text-tertiary);padding-left:12px;color:var(--tc-text-secondary);font-style:italic;font-size:12px;margin:8px 0';
+    quote.style.cssText =
+      'border-left:2px solid var(--tc-text-tertiary);padding-left:12px;color:var(--tc-text-secondary);font-style:italic;font-size:12px;margin:8px 0';
     quote.textContent = flag.quote;
     details.appendChild(quote);
   }
-  card.appendChild(details);
 
+  card.appendChild(details);
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-expanded', 'false');
@@ -206,9 +330,9 @@ function createRedFlagCard(flag: { category: string; description: string; severi
     card.setAttribute('aria-expanded', String(!expanded));
     details.style.maxHeight = expanded ? '0' : '300px';
   });
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
+  card.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
       card.click();
     }
   });
@@ -241,7 +365,10 @@ function createFooter(): HTMLElement {
   return footer;
 }
 
-function createFooterButton(text: string, onClick: () => void): HTMLButtonElement {
+function createFooterButton(
+  text: string,
+  onClick: () => void
+): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.style.cssText =
     'background:transparent;color:var(--tc-accent);border:1px solid var(--tc-border);border-radius:var(--tc-radius-md);padding:6px 16px;cursor:pointer;font-size:13px;transition:background 150ms';
@@ -259,34 +386,37 @@ function createFooterButton(text: string, onClick: () => void): HTMLButtonElemen
 async function handleAnalyze(): Promise<void> {
   state.loading = true;
   state.error = null;
-  const appEl = document.getElementById('app');
-  if (appEl) render(appEl);
+  renderCurrentApp();
 
   try {
-    const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tab = tabs[0];
-    if (!tab?.id) throw new Error('No active tab');
+    if (state.tabId === null) {
+      throw new Error('No active tab');
+    }
 
-    await chrome.tabs.sendMessage(tab.id, { type: 'DETECT_TC', payload: { tabId: tab.id } });
-    state.loading = false;
+    const response = (await chrome.tabs.sendMessage(state.tabId, {
+      type: 'DETECT_TC',
+      payload: { tabId: state.tabId },
+    })) as { ok?: boolean; error?: string } | undefined;
+
+    await refreshPageAnalysis();
+    if (response && response.ok === false && !state.analysis) {
+      state.error = response.error ?? 'Could not analyze this page.';
+    }
   } catch {
-    state.loading = false;
     state.error = 'Could not analyze this page.';
+  } finally {
+    state.loading = false;
+    renderCurrentApp();
   }
-
-  const appEl2 = document.getElementById('app');
-  if (appEl2) render(appEl2);
 }
 
 function showSettings(): void {
   const app = document.getElementById('app');
   if (!app) return;
+
   app.textContent = '';
-  const back = document.createElement('button');
-  back.style.cssText = 'background:none;border:none;color:var(--tc-accent);cursor:pointer;font-size:14px;margin-bottom:12px';
-  back.textContent = '← Back';
-  back.addEventListener('click', () => { const a = document.getElementById('app'); if (a) render(a); });
-  app.appendChild(back);
+  app.appendChild(createBackButton());
+
   const heading = document.createElement('h2');
   heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
   heading.textContent = 'Settings';
@@ -294,13 +424,15 @@ function showSettings(): void {
 
   const tabs = ['Providers', 'Detection', 'Notifications', 'Cache'] as const;
   const tabBar = document.createElement('div');
-  tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--tc-border)';
+  tabBar.style.cssText =
+    'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--tc-border)';
 
   const contentDiv = document.createElement('div');
 
   for (const tab of tabs) {
     const btn = document.createElement('button');
-    btn.style.cssText = 'background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:500;color:var(--tc-text-secondary)';
+    btn.style.cssText =
+      'background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:500;color:var(--tc-text-secondary)';
     btn.textContent = tab;
     btn.addEventListener('click', async () => {
       for (const child of tabBar.children) {
@@ -309,11 +441,20 @@ function showSettings(): void {
       }
       btn.style.borderBottomColor = 'var(--tc-accent)';
       btn.style.color = 'var(--tc-text)';
+
       switch (tab) {
-        case 'Providers': await renderProviderSettings(contentDiv); break;
-        case 'Detection': await renderDetectionSettings(contentDiv); break;
-        case 'Notifications': await renderNotificationSettings(contentDiv); break;
-        case 'Cache': await renderCacheSettings(contentDiv); break;
+        case 'Providers':
+          await renderProviderSettings(contentDiv);
+          break;
+        case 'Detection':
+          await renderDetectionSettings(contentDiv);
+          break;
+        case 'Notifications':
+          await renderNotificationSettings(contentDiv);
+          break;
+        case 'Cache':
+          await renderCacheSettings(contentDiv);
+          break;
       }
     });
     tabBar.appendChild(btn);
@@ -322,7 +463,6 @@ function showSettings(): void {
   app.appendChild(tabBar);
   app.appendChild(contentDiv);
 
-  // Activate first tab
   const firstTab = tabBar.children[0] as HTMLElement;
   firstTab.style.borderBottomColor = 'var(--tc-accent)';
   firstTab.style.color = 'var(--tc-text)';
@@ -332,16 +472,84 @@ function showSettings(): void {
 function showHistory(): void {
   const app = document.getElementById('app');
   if (!app) return;
+
   app.textContent = '';
-  const back = document.createElement('button');
-  back.style.cssText = 'background:none;border:none;color:var(--tc-accent);cursor:pointer;font-size:14px;margin-bottom:12px';
-  back.textContent = '← Back';
-  back.addEventListener('click', () => { const a = document.getElementById('app'); if (a) render(a); });
-  app.appendChild(back);
+  app.appendChild(createBackButton());
 
   const contentDiv = document.createElement('div');
   app.appendChild(contentDiv);
-  void renderHistoryPanel(contentDiv, state.domain);
+  void renderHistoryPanel(contentDiv, state.analysis?.domain ?? state.domain);
 }
 
-document.addEventListener('DOMContentLoaded', init);
+function createBackButton(): HTMLButtonElement {
+  const back = document.createElement('button');
+  back.style.cssText =
+    'background:none;border:none;color:var(--tc-accent);cursor:pointer;font-size:14px;margin-bottom:12px';
+  back.textContent = '← Back';
+  back.addEventListener('click', () => {
+    void refreshPageAnalysis().then(() => {
+      renderCurrentApp();
+    });
+  });
+  return back;
+}
+
+async function refreshPageAnalysis(): Promise<void> {
+  if (state.tabId === null) {
+    state.analysis = null;
+    return;
+  }
+
+  const response = (await sendToBackground({
+    type: 'GET_PAGE_ANALYSIS',
+    payload: { tabId: state.tabId },
+  })) as {
+    ok: boolean;
+    data?: PageAnalysisRecord | null;
+    error?: string;
+  };
+
+  if (!response.ok) {
+    state.analysis = null;
+    state.error = response.error ?? 'Could not load page analysis.';
+    return;
+  }
+
+  state.analysis = response.data ?? null;
+  state.error = null;
+
+  if (state.analysis?.domain) {
+    state.domain = state.analysis.domain;
+  }
+}
+
+function renderCurrentApp(): void {
+  const app = document.getElementById('app');
+  if (app) {
+    render(app);
+  }
+}
+
+function formatConfidence(value: number | null): string {
+  if (value === null) return 'n/a';
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatToken(value: string | null): string {
+  if (!value) return 'n/a';
+  return value.replace(/_/g, ' ');
+}
+
+function bootstrap(): void {
+  if (initialized) return;
+  initialized = true;
+  void init();
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
+}
+
+if (document.getElementById('app')) {
+  queueMicrotask(bootstrap);
+}

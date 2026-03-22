@@ -1,4 +1,9 @@
-import { getStorage, setStorage } from '@shared/storage';
+import {
+  getDomainNotificationPreference,
+  getStorage,
+  setDomainNotificationPreference,
+  setStorage,
+} from '@shared/storage';
 import { getAllTrackedDomains } from '@versioning/schema';
 
 export async function renderNotificationSettings(container: HTMLElement): Promise<void> {
@@ -46,7 +51,10 @@ export async function renderNotificationSettings(container: HTMLElement): Promis
     row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e5e7eb;cursor:pointer';
     const check = document.createElement('input');
     check.type = 'checkbox';
-    check.checked = true;
+    check.checked = await getDomainNotificationPreference(domain);
+    check.addEventListener('change', async () => {
+      await setDomainNotificationPreference(domain, check.checked);
+    });
     row.appendChild(check);
     row.appendChild(document.createTextNode(domain));
     container.appendChild(row);

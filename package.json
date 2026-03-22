@@ -25,6 +25,7 @@
   "packageManager": "pnpm@10.32.1",
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.33",
+    "@playwright/test": "^1.58.2",
     "@types/chrome": "^0.1.38",
     "@types/diff": "^8.0.0",
     "@types/node": "^20.19.37",

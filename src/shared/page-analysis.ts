@@ -6,6 +6,7 @@ export type PageAnalysisStatus =
   | 'idle'
   | 'analyzing'
   | 'no_detection'
+  | 'extraction_failed'
   | 'needs_provider'
   | 'error'
   | 'ready';
