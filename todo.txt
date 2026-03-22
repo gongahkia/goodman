@@ -841,11 +841,11 @@ blockedBy: [8, 22]
 6. Max dimensions: 380px wide, 500px tall, scrollable content area.
 
 **DONE WHEN**
-- [ ] Overlay renders inside a shadow DOM with no host page style leakage
-- [ ] Severity badge color matches the summary severity
-- [ ] Red flags are expandable (click to show/hide details)
-- [ ] Overlay does not exceed 380x500px
-- [ ] Close button dismisses the overlay
+- [x] Overlay renders inside a shadow DOM with no host page style leakage
+- [x] Severity badge color matches the summary severity
+- [x] Red flags are expandable (click to show/hide details)
+- [x] Overlay does not exceed 380x500px
+- [x] Close button dismisses the overlay
 
 ### Task 33 (A) +ui
 blockedBy: [32]
