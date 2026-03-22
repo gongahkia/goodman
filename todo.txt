@@ -974,11 +974,11 @@ blockedBy: [36, 3]
 7. Persist all settings via `setStorage('settings', ...)`.
 
 **DONE WHEN**
-- [ ] API keys can be entered, tested, and persisted for each provider
-- [ ] "Test Key" shows clear success/failure feedback
-- [ ] Model selection is saved and used by the provider
-- [ ] Ollama "Detect Models" populates the dropdown with local models
-- [ ] Active provider selection is reflected immediately in summarization
+- [x] API keys can be entered, tested, and persisted for each provider
+- [x] "Test Key" shows clear success/failure feedback
+- [x] Model selection is saved and used by the provider
+- [x] Ollama "Detect Models" populates the dropdown with local models
+- [x] Active provider selection is reflected immediately in summarization
 
 ### Task 39 (B) +popup
 blockedBy: [36, 8]
@@ -995,9 +995,9 @@ blockedBy: [36, 8]
 4. Persist the selection via `setStorage('settings', { detectionSensitivity: value })`.
 
 **DONE WHEN**
-- [ ] Selection persists across popup opens
-- [ ] Changing sensitivity immediately affects detection on the next page load
-- [ ] Default is "Normal" on first install
+- [x] Selection persists across popup opens
+- [x] Changing sensitivity immediately affects detection on the next page load
+- [x] Default is "Normal" on first install
 
 ### Task 40 (B) +popup
 blockedBy: [36, 25]
