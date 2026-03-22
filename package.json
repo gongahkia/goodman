@@ -33,6 +33,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
+    "pdfjs-dist": "^5.5.207",
     "webextension-polyfill": "^0.12.0"
   }
 }

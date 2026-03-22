@@ -278,10 +278,10 @@ blockedBy: [10]
 7. Detect if a URL points to a PDF: check for `.pdf` extension or `Content-Type: application/pdf` header from the fetch response.
 
 **DONE WHEN**
-- [ ] Extracts readable text from a standard T&C PDF (text-based, not scanned image)
-- [ ] Handles multi-page PDFs, preserving page order
-- [ ] Returns an appropriate error for password-protected PDFs
-- [ ] Returns an appropriate error for image-only PDFs (no extractable text)
+- [x] Extracts readable text from a standard T&C PDF (text-based, not scanned image)
+- [x] Handles multi-page PDFs, preserving page order
+- [x] Returns an appropriate error for password-protected PDFs
+- [x] Returns an appropriate error for image-only PDFs (no extractable text)
 
 ### Task 12 (A) +extraction
 blockedBy: [9, 10]
