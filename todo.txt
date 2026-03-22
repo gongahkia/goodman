@@ -1393,6 +1393,6 @@ blockedBy: [14, 20]
 2. Include code examples showing the minimum implementation for each method.
 
 **DONE WHEN**
-- [ ] Block comment exists in `src/providers/types.ts` with all 5 steps
-- [ ] Each step includes a concrete file path
-- [ ] A contributor can follow the guide to add a new provider without asking questions
+- [x] Block comment exists in `src/providers/types.ts` with all 5 steps
+- [x] Each step includes a concrete file path
+- [x] A contributor can follow the guide to add a new provider without asking questions
