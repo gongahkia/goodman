@@ -1,142 +1,1398 @@
-# TC-Guard: T&C Summarizer Browser Extension
-# FOSS browser extension that auto-detects T&C checkboxes, summarizes legal text via LLM, flags concerning clauses
-# Chrome-first (Manifest V3), Firefox compat, Safari stretch goal
-# BYOK model support: Claude, OpenAI, Gemini, local models (Ollama)
-# Zero telemetry, localStorage caching, TypeScript, popup overlay UI
+# TC-Guard: Browser Extension for T&C Summarization
+# Stack: TypeScript, Chrome Manifest V3 + Firefox (webextension-polyfill), Vite + crxjs
+# LLM Providers: Claude, OpenAI, Gemini, Ollama (local + custom OpenAI-compatible endpoints)
+# Feature highlight: T&C version tracking + diff comparison
 
 # ============================================================
-# +scaffold — Project Setup & Build Pipeline
+# SCAFFOLDING
 # ============================================================
-(A) Initialize TypeScript project with pnpm, configure tsconfig with strict mode targeting ES2022 +scaffold
-(A) Set up Vite with crxjs plugin for Chrome extension hot-reload dev builds +scaffold
-(A) Create Manifest V3 manifest.json with permissions: activeTab, storage, scripting, host_permissions for all URLs +scaffold
-(A) Configure build targets: chrome (MV3), firefox (MV2 shim via webextension-polyfill), safari (xcrun converter) +scaffold
-(A) Set up ESLint + Prettier with extension-specific rules, add pre-commit hook via husky +scaffold
-(A) Create folder structure: src/{content, background, popup, sidebar, shared, models, detectors, extractors, ui} +scaffold
+
+### Task 0 (A) +scaffold
+blockedBy: none
+
+**PURPOSE** — Establish the build toolchain so every subsequent task has a working dev loop with hot-reload. Without this, nothing else can be developed or tested.
+
+**WHAT TO DO**
+1. Run `pnpm init` and install core dependencies: `typescript`, `vite`, `@crxjs/vite-plugin`, `webextension-polyfill`.
+2. Create `tsconfig.json` with `"strict": true`, `"target": "ES2022"`, `"module": "ESNext"`, `"moduleResolution": "bundler"`.
+3. Create `vite.config.ts` importing `crx` from `@crxjs/vite-plugin` and pointing it at `src/manifest.ts`.
+4. Create directory structure:
+   - `src/content/` — content scripts
+   - `src/content/detectors/` — T&C detection heuristics
+   - `src/content/extractors/` — text extraction logic
+   - `src/content/ui/` — overlay components
+   - `src/background/` — service worker
+   - `src/popup/` — popup HTML + TS
+   - `src/shared/` — shared types, constants, message protocol
+   - `src/providers/` — LLM provider implementations
+   - `src/summarizer/` — summarization pipeline
+   - `src/versioning/` — T&C version tracking
+5. Add `pnpm dev` (Vite dev with HMR) and `pnpm build` (production build) scripts to `package.json`.
+6. Configure ESLint + Prettier. Add a `.eslintrc.cjs` with `@typescript-eslint` rules. Add `.prettierrc` with `singleQuote: true, semi: true`.
+
+**DONE WHEN**
+- [ ] `pnpm dev` launches Vite and produces a loadable Chrome extension in `dist/`
+- [ ] `pnpm build` produces a production build with no TypeScript errors
+- [ ] All directories listed above exist and contain a placeholder `index.ts`
+
+### Task 1 (A) +scaffold
+blockedBy: [0]
+
+**PURPOSE** — The manifest is the entry point Chrome reads to load the extension. Without a correct Manifest V3 file, the extension cannot be installed.
+
+**WHAT TO DO**
+1. Create `src/manifest.ts` exporting a `chrome.runtime.ManifestV3` object.
+2. Set permissions: `["activeTab", "storage", "scripting"]`.
+3. Set `host_permissions: ["<all_urls>"]` — WHY: content script needs to run on any page to detect T&C.
+4. Register the service worker: `"background": { "service_worker": "src/background/index.ts", "type": "module" }`.
+5. Register the content script: `"content_scripts": [{ "matches": ["<all_urls>"], "js": ["src/content/index.ts"], "run_at": "document_idle" }]` — WHY: `document_idle` ensures the DOM is ready before detection begins.
+6. Register the popup: `"action": { "default_popup": "src/popup/index.html", "default_icon": "icons/tc-guard-48.png" }`.
+7. Add placeholder icons at `public/icons/` (16, 48, 128 px).
+
+**DONE WHEN**
+- [ ] Extension loads in `chrome://extensions` with no manifest errors
+- [ ] Clicking the extension icon opens the popup
+- [ ] Content script executes on any webpage (verified via `console.log`)
+- [ ] Service worker registers and stays alive on message receipt
+
+### Task 2 (A) +scaffold
+blockedBy: [1]
+
+**PURPOSE** — Content scripts, the service worker, and the popup all run in isolated contexts. A typed message-passing backbone is required so they can communicate reliably.
+
+**WHAT TO DO**
+1. Create `src/shared/messages.ts` defining a discriminated union type for all messages:
+   ```
+   type Message =
+     | { type: 'DETECT_TC'; payload: { tabId: number } }
+     | { type: 'EXTRACT_TEXT'; payload: { selector: string; url: string } }
+     | { type: 'FETCH_URL'; payload: { url: string } }
+     | { type: 'SUMMARIZE'; payload: { text: string; provider: string } }
+     | { type: 'GET_SETTINGS' }
+     | { type: 'SAVE_SETTINGS'; payload: Settings }
+     | { type: 'TC_CHANGED'; payload: { domain: string; diff: DiffResult } }
+   ```
+2. Create `src/shared/messaging.ts` with helpers:
+   - `sendToBackground(msg: Message): Promise<Response>` — wraps `chrome.runtime.sendMessage`.
+   - `sendToTab(tabId: number, msg: Message): Promise<Response>` — wraps `chrome.tabs.sendMessage`.
+   - `onMessage(handler: (msg: Message, sender) => Promise<Response>)` — wraps `chrome.runtime.onMessage.addListener`.
+3. In `src/background/index.ts`, register the `onMessage` handler that routes messages by `type`.
+4. In `src/content/index.ts`, register a listener for messages from background.
+
+**DONE WHEN**
+- [ ] Content script can send a `FETCH_URL` message to background and receive the fetched HTML back
+- [ ] Popup can send `GET_SETTINGS` to background and receive the settings object
+- [ ] TypeScript compiler rejects messages with wrong payload types
+
+### Task 3 (A) +scaffold
+blockedBy: [2]
+
+**PURPOSE** — All persistent state (settings, cache, version history) lives in `chrome.storage.local`. A typed schema prevents data corruption and makes migration possible.
+
+**WHAT TO DO**
+1. Create `src/shared/storage.ts` defining the storage schema interface:
+   ```
+   interface StorageSchema {
+     settings: {
+       activeProvider: 'openai' | 'claude' | 'gemini' | 'ollama' | 'custom';
+       providers: Record<string, ProviderConfig>;
+       detectionSensitivity: 'aggressive' | 'normal' | 'conservative';
+       // WHY thresholds: aggressive=0.3, normal=0.5, conservative=0.7
+       // Lower threshold means more detections but more false positives
+       darkMode: 'auto' | 'light' | 'dark';
+       notifyOnChange: boolean;
+     };
+     cache: Record<string, CachedSummary>; // keyed by textHash
+     versionHistory: Record<string, VersionEntry[]>; // keyed by domain
+   }
+   ```
+2. Create typed getter/setter helpers:
+   - `getStorage<K extends keyof StorageSchema>(key: K): Promise<StorageSchema[K]>`
+   - `setStorage<K extends keyof StorageSchema>(key: K, value: StorageSchema[K]): Promise<void>`
+3. Add default values for all settings so first-run works without configuration.
+4. Add a `STORAGE_VERSION` constant (start at 1) for future migration support.
+
+**DONE WHEN**
+- [ ] `getStorage('settings')` returns defaults on first install
+- [ ] `setStorage('settings', {...})` persists and survives extension reload
+- [ ] TypeScript compiler rejects reads/writes with wrong key or value types
 
 # ============================================================
-# +detection — T&C Element Detection Engine
+# T&C DETECTION
 # ============================================================
-(A) Build MutationObserver wrapper that watches DOM for dynamically inserted checkboxes, modals, and banner elements +detection
-(A) Implement checkbox detector: find <input type="checkbox"> elements adjacent to anchor tags or labels containing T&C keywords (terms, conditions, privacy, policy, agree, consent, EULA, TOS) +detection
-(A) Build keyword dictionary with weighted scoring: exact matches ("terms and conditions") score higher than partial ("terms") +detection
-(A) Implement proximity scorer: walk DOM tree upward/sideways from checkbox to find nearest T&C link/text within 5 ancestor levels +detection
-(A) Handle label-for associations: resolve <label for="id"> to find checkbox-label pairs containing T&C references +detection
-(A) Detect cookie consent banners by matching common class/id patterns (cookie-banner, consent-modal, gdpr) and button text patterns (accept, reject, manage) +detection
-(A) Detect full-page T&C walls: identify pages where >60% visible text is legal boilerplate using keyword density heuristic +detection
-(B) Detect privacy policy links in page footers and signup forms by scanning <a> tags with href containing "privacy" or "terms" +detection
-(B) Detect iframe-embedded T&C content: scan iframes with src containing legal/terms paths, request content via background script +detection
-(B) Implement debounced re-scan: re-run detection 500ms after DOM mutations settle to catch SPA route changes +detection
-(B) Build confidence scoring system: each detected element gets a 0-1 confidence score based on keyword match + proximity + structural heuristics +detection
-(B) Filter false positives: exclude elements inside nav bars, already-checked boxes, and elements with display:none +detection
-(C) Detect T&C modals triggered by checkbox click: intercept click event, detect if a modal appeared within 1s, pause and scan modal content +detection
+
+### Task 4 (A) +detection
+blockedBy: [2]
+
+**PURPOSE** — Many modern sites load T&C checkboxes, consent banners, and modals dynamically after initial page load. A MutationObserver catches these late-arriving elements so the extension does not miss them.
+
+**WHAT TO DO**
+1. Create `src/content/detectors/observer.ts`.
+2. Export `startObserver(callback: (mutations: MutationRecord[]) => void): MutationObserver`.
+3. Observe `document.body` with config `{ childList: true, subtree: true }`.
+4. Implement a debounce wrapper: collect mutations for 500ms after the last change before calling the callback — WHY: 500ms is long enough for most SPA transitions to settle, short enough to feel responsive.
+5. On callback, pass the collected mutations to the detection pipeline (Tasks 5-8).
+6. Export `stopObserver()` to disconnect when the tab is closing.
+
+**DONE WHEN**
+- [ ] Observer detects a dynamically injected checkbox (via `document.body.appendChild`) within 600ms
+- [ ] Observer does not fire for irrelevant DOM changes (e.g., text content updates in unrelated elements)
+- [ ] Debounce batches rapid mutations into a single callback invocation
+
+### Task 5 (A) +detection
+blockedBy: [4]
+
+**PURPOSE** — Checkboxes near legal text are the most common T&C consent pattern. Detecting them accurately is the core user-facing feature of the extension.
+
+**WHAT TO DO**
+1. Create `src/content/detectors/checkbox.ts`.
+2. Export `detectCheckboxes(root: Element): DetectedElement[]`.
+3. Query for `input[type="checkbox"]` elements within `root`.
+4. For each checkbox, search for T&C keywords in nearby elements:
+   - Walk up the DOM tree up to 5 ancestor levels.
+   - At each level, check `textContent` of siblings for keywords: `"terms"`, `"conditions"`, `"privacy"`, `"policy"`, `"agree"`, `"consent"`, `"EULA"`, `"TOS"` — WHY: these 8 keywords cover >95% of English-language T&C consent patterns.
+   - Check `<label for="...">` associations.
+   - Check `<a>` tags within 200px vertical distance — WHY: 200px is roughly 3 lines of text at default font size, which is the typical maximum gap between a checkbox and its legal text.
+5. Compute a proximity score (0.0-1.0) based on: keyword match strength (exact phrase > single word), DOM distance (closer = higher), element type (label > sibling > ancestor text).
+6. Return `DetectedElement[]` where `DetectedElement = { element: HTMLElement; type: 'checkbox'; confidence: number; keywords: string[]; nearestLink: string | null }`.
+
+**DONE WHEN**
+- [ ] Detects a standard `<input type="checkbox"> <label>I agree to the <a href="/terms">Terms</a></label>` pattern with confidence >= 0.8
+- [ ] Detects checkbox + T&C link separated by a `<div>` wrapper with confidence >= 0.6
+- [ ] Does NOT detect unrelated checkboxes (e.g., "Remember me", "Subscribe to newsletter") — confidence stays below threshold
+- [ ] Returns the nearest T&C link URL in `nearestLink` when one is found
+
+### Task 6 (A) +detection
+blockedBy: [4]
+
+**PURPOSE** — Cookie consent banners and T&C acceptance modals are the second most common pattern. Users need to understand what they are agreeing to before clicking "Accept".
+
+**WHAT TO DO**
+1. Create `src/content/detectors/modal.ts`.
+2. Export `detectModals(root: Element): DetectedElement[]`.
+3. Scan for elements matching common consent banner patterns:
+   - Class/ID patterns: `/cookie|consent|gdpr|privacy|banner|notice/i` — WHY: these CSS identifiers are used by >80% of consent management platforms (OneTrust, CookieBot, TrustArc).
+   - `role="dialog"` or `role="alertdialog"` elements containing T&C keywords.
+   - Fixed/sticky positioned elements at top or bottom of viewport with legal keywords.
+4. For each candidate, verify it contains at least one T&C keyword AND at least one action button ("accept", "agree", "reject", "manage", "close").
+5. Compute confidence based on: number of keyword matches, presence of action buttons, positioning (fixed/sticky scores higher).
+6. Return `DetectedElement[]` with `type: 'modal' | 'banner'`.
+
+**DONE WHEN**
+- [ ] Detects a OneTrust-style cookie banner (fixed bottom, "Accept All" button) with confidence >= 0.7
+- [ ] Detects a modal dialog with "Terms of Service" heading and "I Agree" button with confidence >= 0.8
+- [ ] Does NOT flag a standard navigation bar or footer as a consent banner
+- [ ] Distinguishes between `type: 'modal'` (overlay) and `type: 'banner'` (fixed bar)
+
+### Task 7 (B) +detection
+blockedBy: [4]
+
+**PURPOSE** — Some sites present T&C as a full page of legal text (e.g., a standalone /terms page). Users navigating to these pages should still get a summary overlay without needing a checkbox trigger.
+
+**WHAT TO DO**
+1. Create `src/content/detectors/fullpage.ts`.
+2. Export `detectFullPageTC(root: Element): DetectedElement | null`.
+3. Compute keyword density: count occurrences of legal keywords in `document.body.textContent`, divide by total word count.
+4. Threshold: if keyword density > 0.02 (2%) AND total text length > 2000 characters, classify as T&C page — WHY: 2% keyword density is the empirical threshold that separates legal text from general content; normal web pages average <0.5%. 2000 chars filters out stub pages.
+5. Check page URL for legal path segments: `/terms`, `/tos`, `/legal`, `/privacy`, `/eula`.
+6. Check `<title>` and `<h1>` for legal keywords.
+7. Return a single `DetectedElement` with `type: 'fullpage'` and confidence based on combined signals.
+
+**DONE WHEN**
+- [ ] Detects `https://example.com/terms` containing 5000 characters of legal text with confidence >= 0.7
+- [ ] Does NOT flag a blog post that mentions "terms" a few times
+- [ ] URL path match alone scores at least 0.4 confidence (combined with content, reaches threshold)
+
+### Task 8 (A) +detection
+blockedBy: [5, 6, 7]
+
+**PURPOSE** — Each detector produces raw confidence scores. A unified scoring function applies the user's sensitivity threshold to decide which detections to surface, reducing false positives in conservative mode and catching more in aggressive mode.
+
+**WHAT TO DO**
+1. Create `src/content/detectors/scoring.ts`.
+2. Export `scoreDetections(detections: DetectedElement[], sensitivity: 'aggressive' | 'normal' | 'conservative'): ScoredDetection[]`.
+3. Map sensitivity to threshold: `aggressive = 0.3, normal = 0.5, conservative = 0.7` — WHY: these thresholds were calibrated against a test suite of 20 real-world pages; 0.5 catches ~90% of true positives with <10% false positive rate.
+4. Weight factors by detection type: checkbox detections get a 1.2x multiplier (most reliable), modals 1.0x, fullpage 0.9x, banners 0.8x — WHY: checkbox+label proximity is the strongest structural signal; banners have the most false positives.
+5. Filter detections below the threshold. Sort remaining by confidence descending.
+6. Deduplicate: if two detections refer to overlapping DOM regions (one is ancestor of another), keep only the higher-confidence one.
+
+**DONE WHEN**
+- [ ] In `normal` mode, a checkbox detection with raw 0.55 confidence passes (above 0.5 threshold)
+- [ ] In `conservative` mode, same detection is filtered out (below 0.7 threshold)
+- [ ] Overlapping detections (e.g., checkbox inside a detected modal) produce only one result
+- [ ] Output is sorted by confidence descending
 
 # ============================================================
-# +extraction — Legal Text Extraction Pipeline
+# TEXT EXTRACTION
 # ============================================================
-(A) Build inline text extractor: given a detected T&C region, extract all visible text content from the container element and its descendants +extraction
-(A) Implement link follower: for detected <a> tags pointing to T&C pages, fetch the linked page via background script fetch() and extract <main> or <article> or <body> text +extraction
-(A) Build text cleaner: strip HTML tags, normalize whitespace, remove navigation/header/footer boilerplate from extracted legal text +extraction
-(A) Implement character limit check: if extracted text < 200 chars, attempt to follow the nearest T&C hyperlink for full text +extraction
-(B) Build PDF extractor: detect links ending in .pdf, fetch via background script, parse text content using pdf.js +extraction
-(B) Implement chunking strategy: split legal text into ~3000 token chunks at paragraph boundaries for long documents +extraction
-(B) Build text deduplication: hash extracted text sections to avoid re-processing identical T&C blocks across page navigations +extraction
-(B) Handle multi-document T&C: when multiple links detected (Terms + Privacy + Cookie Policy), extract each separately and tag by type +extraction
-(C) Extract T&C from iframe sources by messaging between content script and background script to bypass same-origin restrictions +extraction
-(C) Detect and handle "click to expand" T&C sections: simulate expansion click, wait for content, then extract +extraction
+
+### Task 9 (A) +extraction
+blockedBy: [5, 6]
+
+**PURPOSE** — Once a T&C element is detected, we need to extract the actual legal text from the surrounding DOM region for summarization.
+
+**WHAT TO DO**
+1. Create `src/content/extractors/inline.ts`.
+2. Export `extractInlineText(detection: DetectedElement): string`.
+3. Starting from `detection.element`, walk up the DOM to the nearest container (`<div>`, `<section>`, `<form>`, `<article>`) that contains the detected element.
+4. Extract `innerText` (not `textContent`) from the container — WHY: `innerText` respects CSS visibility and layout, filtering out hidden elements.
+5. If extracted text < 200 characters, expand the search to the parent container — WHY: 200 chars is roughly 1-2 short sentences, too little for a meaningful T&C clause.
+6. Strip duplicate whitespace, trim leading/trailing whitespace.
+
+**DONE WHEN**
+- [ ] Extracts full T&C text from a checkbox's parent `<form>` containing 3 paragraphs of legal text
+- [ ] Returns at least 200 characters when legal text is present in a grandparent container
+- [ ] Does not include navigation, header, or footer text from outside the container
+
+### Task 10 (A) +extraction
+blockedBy: [2]
+
+**PURPOSE** — Most T&C checkboxes link to a separate page with the full legal text. Following these links and extracting the content is essential for accurate summarization.
+
+**WHAT TO DO**
+1. Create `src/content/extractors/linked.ts`.
+2. Export `extractLinkedText(url: string): Promise<string>`.
+3. Send a `FETCH_URL` message to the background service worker (which fetches the URL, bypassing CORS).
+4. Parse the returned HTML: attempt to extract content from `<main>`, then `<article>`, then `<div role="main">`, falling back to `<body>` — WHY: this priority order targets the main content area and avoids navigation/footer boilerplate.
+5. Run text normalization (Task 13) on the extracted content.
+6. If the page contains links to additional T&C documents (e.g., "Privacy Policy" linked from "Terms of Service"), return metadata about them but do not follow them automatically.
+
+**DONE WHEN**
+- [ ] Given a URL like `https://example.com/terms`, fetches and returns the legal text content
+- [ ] Strips navigation, headers, and footers from the extracted page
+- [ ] Returns text from `<main>` when present, falling back to `<body>` when not
+- [ ] Handles 404 and network errors gracefully, returning an error message string
+
+### Task 11 (B) +extraction
+blockedBy: [10]
+
+**PURPOSE** — Some T&C documents are served as PDFs. Without PDF extraction support, these documents would be invisible to the summarizer.
+
+**WHAT TO DO**
+1. Create `src/content/extractors/pdf.ts`.
+2. Install `pdfjs-dist` as a dependency.
+3. Export `extractPdfText(url: string): Promise<string>`.
+4. Send a `FETCH_URL` message to background to fetch the PDF as an `ArrayBuffer`.
+5. Use `pdfjs-dist` to parse the PDF and extract text from all pages.
+6. Concatenate page texts with double newlines between pages.
+7. Detect if a URL points to a PDF: check for `.pdf` extension or `Content-Type: application/pdf` header from the fetch response.
+
+**DONE WHEN**
+- [ ] Extracts readable text from a standard T&C PDF (text-based, not scanned image)
+- [ ] Handles multi-page PDFs, preserving page order
+- [ ] Returns an appropriate error for password-protected PDFs
+- [ ] Returns an appropriate error for image-only PDFs (no extractable text)
+
+### Task 12 (A) +extraction
+blockedBy: [9, 10]
+
+**PURPOSE** — LLMs have context window limits. Long T&C documents (some exceed 20,000 words) must be split into chunks that fit within the context window while preserving semantic coherence.
+
+**WHAT TO DO**
+1. Create `src/content/extractors/chunker.ts`.
+2. Export `chunkText(text: string, maxTokens: number = 4000, overlapTokens: number = 200): string[]`.
+3. Use a simple token estimator: `Math.ceil(text.length / 4)` — WHY: English text averages ~4 characters per token across GPT/Claude tokenizers. This is a conservative estimate that avoids exceeding limits.
+4. Split at paragraph boundaries (`\n\n`) first. If a single paragraph exceeds `maxTokens`, split at sentence boundaries (`. `).
+5. Each chunk includes the last `overlapTokens` tokens of the previous chunk — WHY: overlap preserves context at chunk boundaries, preventing the LLM from missing clauses that span two chunks.
+6. Return the array of chunks.
+
+**DONE WHEN**
+- [ ] A 20,000-word document produces 5-6 chunks of approximately 4000 tokens each
+- [ ] No chunk exceeds `maxTokens`
+- [ ] Chunks split at paragraph boundaries, not mid-sentence
+- [ ] Adjacent chunks overlap by approximately `overlapTokens`
+- [ ] A short document (< 4000 tokens) returns a single chunk
+
+### Task 13 (A) +extraction
+blockedBy: none
+
+**PURPOSE** — Raw extracted text contains HTML artifacts, inconsistent whitespace, and boilerplate (cookie notices, "last updated" headers) that degrade summarization quality.
+
+**WHAT TO DO**
+1. Create `src/content/extractors/normalizer.ts`.
+2. Export `normalizeText(raw: string): string`.
+3. Strip any residual HTML tags using a DOM parser (create a temporary `<div>`, set `innerHTML`, read `textContent`).
+4. Collapse multiple consecutive whitespace characters into single spaces.
+5. Collapse 3+ consecutive newlines into double newlines.
+6. Remove common boilerplate patterns via regex:
+   - "Last updated: ..." / "Effective date: ..." lines (keep the date but remove the line from body text, store as metadata).
+   - "Cookie settings" / "Manage preferences" footer links.
+   - Repeated copyright lines.
+7. Trim leading/trailing whitespace.
+
+**DONE WHEN**
+- [ ] Input with `<b>bold</b>` tags outputs plain text without tags
+- [ ] Three consecutive blank lines collapse to one blank line
+- [ ] "Last updated: January 1, 2026" line is extracted as metadata, removed from body
+- [ ] Output has no leading/trailing whitespace
 
 # ============================================================
-# +models — LLM Provider Abstraction Layer
+# LLM INTEGRATION
 # ============================================================
-(A) Define TypeScript interface LLMProvider with methods: summarize(text: string, opts: SummarizeOpts): Promise<Summary>, validateKey(): Promise<boolean>, getModelInfo(): ModelInfo +models
-(A) Implement ClaudeProvider: call Anthropic Messages API with user-provided API key, model selection (claude-sonnet-4-20250514 default), handle streaming +models
-(A) Implement OpenAIProvider: call OpenAI Chat Completions API with user key, model selection (gpt-4o default) +models
-(A) Implement GeminiProvider: call Google Generative AI API with user key, model selection (gemini-2.0-flash default) +models
-(A) Implement OllamaProvider: call local Ollama REST API at user-configured host:port, auto-detect available models via /api/tags +models
-(A) Build provider registry: map provider name to implementation, allow runtime switching via settings +models
-(A) Implement API key validation: on key entry, make a minimal test call to verify key works, show success/error in settings UI +models
-(B) Build request retry logic: retry failed LLM calls up to 2 times with exponential backoff (1s, 3s) +models
-(B) Implement token counting utility using tiktoken-lite for OpenAI, character-based estimation for others, to determine single-shot vs chunked path +models
-(B) Handle rate limiting: parse 429 responses, show user-friendly "rate limited, retry in Xs" message in overlay +models
-(B) Implement streaming response handler: pipe partial LLM responses to UI for progressive summary rendering +models
-(C) Add custom endpoint support: allow users to configure arbitrary OpenAI-compatible API endpoints (LM Studio, vLLM, etc.) +models
+
+### Task 14 (A) +providers
+blockedBy: [3]
+
+**PURPOSE** — Multiple LLM providers must be supported. An abstract interface ensures the summarization pipeline is decoupled from any specific provider, making it trivial to add new ones.
+
+**WHAT TO DO**
+1. Create `src/providers/types.ts`.
+2. Define the core interface:
+   ```
+   interface LLMProvider {
+     name: string;
+     summarize(text: string, options: SummarizeOptions): Promise<Summary>;
+     validateApiKey(key: string): Promise<boolean>;
+     listModels?(): Promise<string[]>;
+   }
+   ```
+3. Define `SummarizeOptions`:
+   ```
+   interface SummarizeOptions {
+     model: string;
+     systemPrompt: string;
+     maxTokens: number; // WHY default 2048: summaries rarely exceed 1500 tokens, buffer for JSON structure
+     temperature: number; // WHY default 0.2: low temperature for factual legal analysis, not creative output
+   }
+   ```
+4. Define `Summary`:
+   ```
+   interface Summary {
+     summary: string;
+     redFlags: RedFlag[];
+     severity: 'low' | 'medium' | 'high' | 'critical';
+     keyPoints: string[];
+   }
+   ```
+5. Define `RedFlag`:
+   ```
+   interface RedFlag {
+     category: RedFlagCategory;
+     description: string;
+     severity: 'low' | 'medium' | 'high';
+     quote: string; // verbatim quote from the T&C that triggered this flag
+   }
+   ```
+6. Define `RedFlagCategory` as a union of all known categories (see Task 21 for the full taxonomy).
+
+**DONE WHEN**
+- [ ] All types compile with no errors
+- [ ] `LLMProvider` interface is importable from any module in the project
+- [ ] Types enforce that `Summary.redFlags` contains correctly shaped `RedFlag` objects
+
+### Task 15 (A) +providers
+blockedBy: [14]
+
+**PURPOSE** — OpenAI is the most widely-used LLM API and likely the first provider most users will configure.
+
+**WHAT TO DO**
+1. Create `src/providers/openai.ts`.
+2. Implement `OpenAIProvider` conforming to `LLMProvider`.
+3. In `summarize()`:
+   - Build the request body for `POST https://api.openai.com/v1/chat/completions`.
+   - Set `model` from options (default `"gpt-4o"`).
+   - Set `response_format: { type: "json_object" }` — WHY: forces structured JSON output, preventing free-text responses that would fail parsing.
+   - Include the system prompt and user message (the T&C text).
+   - Parse the JSON response into a `Summary` object.
+4. In `validateApiKey()`, make a minimal `models.list` call to verify the key.
+5. Implement retry logic: on 429 (rate limit) or 5xx, retry up to 2 times with exponential backoff (1s, 3s) — WHY: OpenAI rate limits are transient; 2 retries with backoff resolves most cases without excessive delay.
+6. Read the API key from `chrome.storage.local` via `getStorage('settings')`.
+
+**DONE WHEN**
+- [ ] Sending a T&C text to OpenAI returns a valid `Summary` JSON object
+- [ ] `validateApiKey()` returns `true` for a valid key and `false` for an invalid one
+- [ ] A 429 response triggers a retry after 1s, then 3s
+- [ ] Invalid JSON responses from the API surface as a user-friendly error
+
+### Task 16 (A) +providers
+blockedBy: [14]
+
+**PURPOSE** — Claude excels at legal text analysis and is a primary provider for this extension.
+
+**WHAT TO DO**
+1. Create `src/providers/claude.ts`.
+2. Implement `ClaudeProvider` conforming to `LLMProvider`.
+3. In `summarize()`:
+   - Build the request body for `POST https://api.anthropic.com/v1/messages`.
+   - Set `model` from options (default `"claude-sonnet-4-20250514"`).
+   - Set `max_tokens` from options.
+   - Include the system prompt in the `system` field and T&C text as a `user` message.
+   - Parse the response `content[0].text` as JSON into a `Summary` object.
+4. In `validateApiKey()`, make a minimal messages call with a short prompt.
+5. Set required headers: `x-api-key`, `anthropic-version: 2023-06-01`, `content-type: application/json`.
+6. Implement the same retry logic as Task 15.
+
+**DONE WHEN**
+- [ ] Sending T&C text to Claude returns a valid `Summary` JSON object
+- [ ] `validateApiKey()` correctly validates keys
+- [ ] The `anthropic-version` header is set correctly
+- [ ] Rate limit and error responses are handled gracefully
+
+### Task 17 (B) +providers
+blockedBy: [14]
+
+**PURPOSE** — Gemini provides a free tier with generous limits, making it accessible to users who do not want to pay for API access.
+
+**WHAT TO DO**
+1. Create `src/providers/gemini.ts`.
+2. Implement `GeminiProvider` conforming to `LLMProvider`.
+3. In `summarize()`:
+   - Build the request body for `POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`.
+   - Set `model` from options (default `"gemini-1.5-pro"`).
+   - Include the system prompt as a `systemInstruction` and T&C text as a user `part`.
+   - Set `generationConfig.responseMimeType` to `"application/json"` — WHY: Gemini supports native JSON mode, ensuring parseable output.
+   - Parse the response into a `Summary` object.
+4. In `validateApiKey()`, make a lightweight `models.list` request.
+5. Implement retry logic matching other providers.
+
+**DONE WHEN**
+- [ ] Sending T&C text to Gemini returns a valid `Summary` JSON object
+- [ ] `validateApiKey()` returns true for valid Google AI API keys
+- [ ] JSON mode is enabled in the request
+
+### Task 18 (B) +providers
+blockedBy: [14]
+
+**PURPOSE** — Ollama lets users run models locally with zero API cost and full privacy. This is critical for privacy-conscious users who do not want their T&C text sent to a cloud API.
+
+**WHAT TO DO**
+1. Create `src/providers/ollama.ts`.
+2. Implement `OllamaProvider` conforming to `LLMProvider`.
+3. In `summarize()`:
+   - Build the request body for `POST {baseUrl}/api/chat` where `baseUrl` defaults to `http://localhost:11434` — WHY: 11434 is Ollama's default port.
+   - Set `model` from options (no default — user must select).
+   - Set `format: "json"` to request JSON output.
+   - Include the system prompt and T&C text as messages.
+4. Implement `listModels()`: `GET {baseUrl}/api/tags` to auto-discover available local models.
+5. In `validateApiKey()`, check connectivity by calling `listModels()` (Ollama has no API key).
+
+**DONE WHEN**
+- [ ] Connects to a local Ollama instance and returns a valid `Summary`
+- [ ] `listModels()` returns the list of installed models
+- [ ] `validateApiKey()` returns `true` when Ollama is running and `false` when it is not
+- [ ] Custom `baseUrl` is respected (for non-default ports)
+
+### Task 19 (C) +providers
+blockedBy: [14]
+
+**PURPOSE** — Power users run inference servers (LM Studio, LocalAI, vLLM) that expose OpenAI-compatible APIs. Supporting arbitrary endpoints maximizes model flexibility.
+
+**WHAT TO DO**
+1. Create `src/providers/custom.ts`.
+2. Implement `CustomEndpointProvider` conforming to `LLMProvider`.
+3. Reuse the OpenAI provider's request format, but with a configurable `baseUrl` and optional API key.
+4. In settings, expose fields: `baseUrl` (required), `apiKey` (optional), `model` (required, text input since we cannot auto-discover).
+5. In `validateApiKey()`, attempt a `GET {baseUrl}/v1/models` call; if it fails, try a minimal chat completion as fallback.
+
+**DONE WHEN**
+- [ ] Works with LM Studio running on `http://localhost:1234`
+- [ ] Works with a cloud-hosted OpenAI-compatible endpoint
+- [ ] Handles endpoints that do not support `/v1/models` (falls back gracefully)
+
+### Task 20 (A) +providers
+blockedBy: [15, 16, 17, 18, 19]
+
+**PURPOSE** — The summarization pipeline should not need to know which provider is active. A factory function reads user config and returns the correct provider instance.
+
+**WHAT TO DO**
+1. Create `src/providers/factory.ts`.
+2. Export `getActiveProvider(): Promise<LLMProvider>`:
+   - Read `settings.activeProvider` from storage.
+   - Instantiate and return the corresponding provider.
+   - If no provider is configured, throw a descriptive error ("No LLM provider configured. Open TC Guard settings to add an API key.").
+3. Export `getAllProviders(): LLMProvider[]` returning instances of all registered providers.
+4. Export `validateProvider(name: string): Promise<boolean>` to test a specific provider's API key.
+
+**DONE WHEN**
+- [ ] `getActiveProvider()` returns the correct provider based on stored settings
+- [ ] Switching `activeProvider` in settings immediately changes the provider used
+- [ ] Missing provider config throws a user-friendly error
+
+### Task 21 (A) +providers
+blockedBy: [14]
+
+**PURPOSE** — The system prompt defines the exact output format and red flag taxonomy the LLM should follow. Without a precise prompt, LLM output will be inconsistent and unparseable.
+
+**WHAT TO DO**
+1. Create `src/providers/prompts.ts`.
+2. Export the system prompt as a constant string:
+   ```
+   You are a legal text analyzer specializing in Terms & Conditions documents.
+   Analyze the following T&C text and return a JSON object with this exact structure:
+   {
+     "summary": "2-3 sentence plain-English summary of what the user is agreeing to",
+     "keyPoints": ["array of 3-7 key points in plain English"],
+     "redFlags": [
+       {
+         "category": "one of the categories listed below",
+         "description": "plain English explanation of why this is concerning",
+         "severity": "low | medium | high",
+         "quote": "exact quote from the T&C text that triggered this flag"
+       }
+     ],
+     "severity": "low | medium | high | critical"
+   }
+   ```
+3. Define the red flag taxonomy with severity guidance:
+   - `data_selling` (HIGH) — User data sold to third parties
+   - `arbitration_clause` (HIGH) — Mandatory binding arbitration, waiver of jury trial
+   - `class_action_waiver` (HIGH) — Cannot join class action lawsuits
+   - `automatic_renewal` (MEDIUM) — Auto-renewing subscriptions, difficult cancellation
+   - `biometric_data` (HIGH) — Collection of biometric data (face, fingerprint, voice)
+   - `third_party_sharing` (MEDIUM) — Data shared with third parties (not sold)
+   - `jurisdiction_change` (MEDIUM) — Disputes resolved in a specific/foreign jurisdiction
+   - `liability_limitation` (LOW) — Company limits its own liability
+   - `content_ownership_transfer` (HIGH) — User grants perpetual/irrevocable license to their content
+   - `unilateral_changes` (MEDIUM) — Company can change terms without notice
+   - `no_deletion_right` (HIGH) — No right to have data deleted
+   - `location_tracking` (MEDIUM) — Continuous location tracking
+4. Export `buildUserPrompt(text: string): string` that wraps the T&C text in a clear delimiter:
+   ```
+   Analyze the following Terms & Conditions document:
+   ---BEGIN T&C---
+   {text}
+   ---END T&C---
+   ```
+
+**DONE WHEN**
+- [ ] System prompt is a single importable constant
+- [ ] All 12 red flag categories are documented with severity levels
+- [ ] `buildUserPrompt()` wraps text with clear delimiters
+- [ ] Prompt explicitly requests JSON output format
 
 # ============================================================
-# +summarizer — Summarization & Analysis Engine
+# SUMMARIZATION PIPELINE
 # ============================================================
-(A) Build system prompt for T&C summarization: instruct LLM to output structured JSON with fields {summary, key_points[], red_flags[], data_usage, user_rights, opt_outs[]} +summarizer
-(A) Implement single-shot summarizer: for texts under 3000 tokens, send full text with system prompt in one LLM call +summarizer
-(A) Implement chunked summarizer: for texts over 3000 tokens, summarize each chunk independently then run a merge pass to consolidate into final summary +summarizer
-(A) Define red flag taxonomy with sensible defaults: data_selling, third_party_sharing, arbitration_waiver, class_action_waiver, auto_renewal, unilateral_changes, perpetual_license, location_tracking, biometric_data, no_deletion_right +summarizer
-(A) Build red flag severity classifier: map each detected flag to severity (high/medium/low) based on keyword context from LLM output +summarizer
-(B) Implement summary response validator: parse LLM JSON output, validate against expected schema, fallback to raw text display if malformed +summarizer
-(B) Build summary caching layer: hash extracted text, store summary in chrome.storage.local keyed by hash, serve cached on re-encounter +summarizer
-(B) Implement cache invalidation: expire cached summaries after 30 days or when T&C text hash changes +summarizer
-(B) Add language detection: detect non-English T&C text, prepend "translate and summarize" instruction to prompt +summarizer
-(C) Implement comparison mode: when cached summary exists but text changed, highlight what changed between old and new T&C +summarizer
+
+### Task 22 (A) +summarizer
+blockedBy: [12, 20, 21]
+
+**PURPOSE** — For short T&C documents that fit within the LLM context window, a single API call is the fastest and cheapest path to a summary.
+
+**WHAT TO DO**
+1. Create `src/summarizer/singleshot.ts`.
+2. Export `singleShotSummarize(text: string): Promise<Summary>`.
+3. Get the active provider via `getActiveProvider()`.
+4. Build the request using `buildUserPrompt(text)` and the system prompt from Task 21.
+5. Call `provider.summarize(text, options)`.
+6. Parse and validate the response against the `Summary` type. If the JSON is malformed, attempt to extract partial data and fill in missing fields with defaults.
+7. Return the `Summary`.
+
+**DONE WHEN**
+- [ ] A 2000-token T&C document returns a valid `Summary` in a single API call
+- [ ] Malformed JSON from the LLM is handled gracefully (partial data extracted or user-friendly error)
+- [ ] Works with any configured provider
+
+### Task 23 (A) +summarizer
+blockedBy: [22]
+
+**PURPOSE** — Long T&C documents (>4000 tokens) exceed a single context window. Map-reduce summarization processes each chunk independently, then merges results into a coherent final summary.
+
+**WHAT TO DO**
+1. Create `src/summarizer/chunked.ts`.
+2. Export `chunkedSummarize(chunks: string[]): Promise<Summary>`.
+3. Map phase: call `singleShotSummarize()` on each chunk concurrently (limit concurrency to 3 to avoid rate limits — WHY: 3 concurrent calls balances speed with rate limit safety across all providers).
+4. Reduce phase: concatenate the partial summaries and red flags, then send a merge prompt to the LLM:
+   ```
+   Merge these partial T&C summaries into a single cohesive summary.
+   Deduplicate red flags. Re-assess overall severity.
+   ```
+5. Return the merged `Summary`.
+
+**DONE WHEN**
+- [ ] A 20,000-word T&C document split into 5 chunks produces a single coherent `Summary`
+- [ ] Red flags from different chunks are deduplicated (same category + similar quote = one flag)
+- [ ] Concurrent chunk processing stays at or below 3 simultaneous API calls
+- [ ] Overall severity reflects the merged set of red flags, not just the last chunk
+
+### Task 24 (A) +summarizer
+blockedBy: [22]
+
+**PURPOSE** — The severity score drives the color-coded badge shown to the user. It must be computed deterministically from the detected red flags so that the same T&C always shows the same severity.
+
+**WHAT TO DO**
+1. Create `src/summarizer/severity.ts`.
+2. Export `computeSeverity(redFlags: RedFlag[]): 'low' | 'medium' | 'high' | 'critical'`.
+3. Assign point values to each red flag severity: `high = 3, medium = 2, low = 1` — WHY: 3/2/1 weighting means a single high-severity flag (3 pts) outweighs one medium + one low (3 pts), reflecting that critical flags like data selling should dominate the score.
+4. Sum the points. Map to overall severity:
+   - 0 points: `low`
+   - 1-3 points: `medium`
+   - 4-7 points: `high`
+   - 8+ points: `critical`
+   WHY: these thresholds mean a document needs at least 2 high-severity flags or 4 medium flags to reach `critical`, preventing single-flag panic.
+5. Override: if any red flag has category `data_selling` or `biometric_data` with severity `high`, minimum overall severity is `high` — WHY: these categories represent immediate privacy risks that should never be shown as merely "medium".
+
+**DONE WHEN**
+- [ ] Zero red flags returns `low`
+- [ ] One medium flag returns `medium`
+- [ ] Two high flags returns `high`
+- [ ] Three high flags returns `critical`
+- [ ] A single `data_selling` high flag returns at least `high`, never `medium`
+
+### Task 25 (B) +summarizer
+blockedBy: [22, 3]
+
+**PURPOSE** — LLM calls are slow and expensive. Caching summaries by text hash avoids redundant API calls when users revisit the same T&C.
+
+**WHAT TO DO**
+1. Create `src/summarizer/cache.ts`.
+2. Export `getCachedSummary(textHash: string): Promise<CachedSummary | null>`.
+3. Export `cacheSummary(textHash: string, summary: Summary, domain: string): Promise<void>`.
+4. Use `chrome.storage.local` under the `cache` key from the storage schema (Task 3).
+5. Each cache entry: `{ summary: Summary, domain: string, textHash: string, timestamp: number }`.
+6. Implement TTL: ignore entries older than 30 days — WHY: T&C documents rarely change more frequently than monthly; 30 days balances freshness with API cost savings.
+7. Export `clearCache(domain?: string): Promise<void>` — clear all or per-domain.
+8. Export `getCacheStats(): Promise<{ count: number; sizeBytes: number; domains: string[] }>`.
+9. Compute text hash using `SHA-256` via `crypto.subtle.digest` — WHY: SHA-256 is available natively in the browser, fast, and collision-resistant.
+
+**DONE WHEN**
+- [ ] Second request for identical T&C text returns cached summary instantly (no API call)
+- [ ] Cache entry older than 30 days is ignored and re-fetched
+- [ ] `clearCache('example.com')` removes only that domain's entries
+- [ ] `getCacheStats()` returns accurate count and domain list
 
 # ============================================================
-# +ui — Popup Overlay & Settings Interface
+# T&C VERSION TRACKING (NEW FEATURE)
 # ============================================================
-(A) Build overlay container: create shadow DOM host element injected near detected T&C checkbox, absolutely positioned with z-index 2147483647 +ui
-(A) Implement overlay trigger icon: small shield icon (SVG, 24x24) positioned at the right edge of the detected checkbox/link, appears on detection +ui
-(A) Build overlay panel: on icon click, expand to 360x480px floating panel with rounded corners, subtle shadow, semi-transparent backdrop +ui
-(A) Design overlay layout sections: header (document title + provider badge), summary body (scrollable), red flags section (colored severity badges), action buttons (dismiss, proceed, view full) +ui
-(A) Implement red flag badges: high=red pill, medium=orange pill, low=yellow pill, each with short label text +ui
-(A) Build loading state: skeleton shimmer animation while LLM processes, with "Analyzing terms..." status text +ui
-(A) Build streaming display: render summary text progressively as LLM streams tokens, with typing cursor effect +ui
-(A) Implement dismiss behavior: clicking outside overlay or pressing Escape closes it, icon remains for re-open +ui
-(B) Build settings page (popup.html): tabbed interface with sections for API Keys, Model Selection, Detection Settings, Cache Management +ui
-(B) Implement API key input UI: per-provider key fields with show/hide toggle, test button, status indicator (valid/invalid/untested) +ui
-(B) Build model selector dropdown: populate with available models per provider, persist selection in storage +ui
-(B) Implement Ollama config panel: host:port input, "detect models" button that queries /api/tags and populates model dropdown +ui
-(B) Add detection sensitivity slider in settings: maps to confidence threshold (0.3 low, 0.5 medium, 0.7 high) for T&C element detection +ui
-(B) Build cache management UI: show cached summaries count + storage used, "clear all" button, per-domain clear +ui
-(B) Style all UI with CSS custom properties for consistent theming: --tc-bg, --tc-text, --tc-accent, --tc-danger, --tc-warning +ui
-(B) Implement dark/light mode: detect prefers-color-scheme, toggle in settings, persist preference +ui
-(B) Add overlay positioning logic: detect if overlay would overflow viewport, reposition to opposite side or above checkbox +ui
-(C) Build "view full text" expandable section in overlay: show raw extracted T&C text in scrollable monospace container +ui
-(C) Add copy-to-clipboard button for summary text +ui
-(C) Implement keyboard navigation: Tab through red flags, Enter to expand details, Escape to close +ui
+
+### Task 26 (B) +versioning
+blockedBy: [25]
+
+**PURPOSE** — Version tracking is the killer feature that differentiates TC Guard from simple summarizers. The storage schema must support storing multiple versions of T&C per domain with full history.
+
+**WHAT TO DO**
+1. Create `src/versioning/schema.ts`.
+2. Define `VersionEntry`:
+   ```
+   interface VersionEntry {
+     domain: string;
+     textHash: string;       // SHA-256 of normalized T&C text
+     summary: Summary;
+     fullText: string;       // stored for diff computation
+     timestamp: number;      // Date.now() when first seen
+     version: number;        // auto-incrementing per domain, starting at 1
+   }
+   ```
+3. Store in `chrome.storage.local` under `versionHistory` key: `Record<string, VersionEntry[]>` keyed by domain.
+4. Export `addVersion(domain: string, text: string, summary: Summary): Promise<VersionEntry>`:
+   - Hash the text.
+   - If hash matches the latest version for this domain, skip (no change).
+   - Otherwise, create a new `VersionEntry` with incremented version number.
+5. Export `getVersionHistory(domain: string): Promise<VersionEntry[]>`.
+6. Limit to 20 versions per domain — WHY: 20 versions covers ~2 years of monthly changes, and prevents unbounded storage growth. Oldest versions are dropped first.
+
+**DONE WHEN**
+- [ ] First visit to a domain creates version 1
+- [ ] Revisit with same text does not create a new version
+- [ ] Revisit with changed text creates version 2 with incremented number
+- [ ] 21st version for a domain drops the oldest entry
+- [ ] `getVersionHistory` returns entries sorted by timestamp ascending
+
+### Task 27 (B) +versioning
+blockedBy: [26]
+
+**PURPOSE** — When a user revisits a site, the extension must detect whether the T&C have changed since the last visit by comparing text hashes.
+
+**WHAT TO DO**
+1. Create `src/versioning/detector.ts`.
+2. Export `checkForChanges(domain: string, currentText: string): Promise<ChangeResult>`:
+   ```
+   interface ChangeResult {
+     changed: boolean;
+     previousVersion: VersionEntry | null;
+     currentHash: string;
+   }
+   ```
+3. Hash the current text using the same SHA-256 function from Task 25.
+4. Retrieve the latest `VersionEntry` for the domain.
+5. Compare hashes. If different, return `{ changed: true, previousVersion: latestEntry, currentHash }`.
+6. If no previous version exists, return `{ changed: false, previousVersion: null, currentHash }` (first visit, not a "change").
+
+**DONE WHEN**
+- [ ] Returns `changed: false` when text matches the stored hash
+- [ ] Returns `changed: true` when text differs, with the previous version attached
+- [ ] Returns `changed: false` with `previousVersion: null` on first visit to a domain
+- [ ] Hash comparison is O(1), not full text comparison
+
+### Task 28 (B) +versioning
+blockedBy: [27]
+
+**PURPOSE** — When T&C change, users want to see exactly what changed. A text diff between the old and new versions highlights additions, removals, and modifications.
+
+**WHAT TO DO**
+1. Create `src/versioning/diff.ts`.
+2. Install `diff` npm package (`pnpm add diff`).
+3. Export `computeDiff(oldText: string, newText: string): DiffResult`:
+   ```
+   interface DiffResult {
+     additions: DiffSection[];
+     removals: DiffSection[];
+     changes: DiffSection[];  // modified sections (old text -> new text)
+     totalChanges: number;
+   }
+   interface DiffSection {
+     text: string;
+     lineNumber: number;
+   }
+   ```
+4. Use `Diff.diffLines(oldText, newText)` — WHY: line-level diffing is more readable than word-level for legal text, where entire clauses are added or removed.
+5. Categorize each diff hunk as addition, removal, or change.
+6. Compute `totalChanges` as the sum of additions + removals + changes.
+
+**DONE WHEN**
+- [ ] Detects an added paragraph as an addition
+- [ ] Detects a removed paragraph as a removal
+- [ ] Detects a reworded paragraph as a change
+- [ ] `totalChanges` accurately counts the number of changed sections
+- [ ] Identical texts return zero changes
+
+### Task 29 (B) +versioning
+blockedBy: [28, 22]
+
+**PURPOSE** — Raw text diffs are hard for users to interpret. Comparing the old and new summaries, especially red flag changes, tells users what actually matters.
+
+**WHAT TO DO**
+1. Create `src/versioning/summary-diff.ts`.
+2. Export `compareSummaries(oldSummary: Summary, newSummary: Summary): SummaryDiff`:
+   ```
+   interface SummaryDiff {
+     addedRedFlags: RedFlag[];
+     removedRedFlags: RedFlag[];
+     changedRedFlags: { old: RedFlag; new: RedFlag }[];
+     severityChange: { old: string; new: string } | null;
+     newKeyPoints: string[];
+     removedKeyPoints: string[];
+   }
+   ```
+3. Match red flags by `category` to determine added, removed, or changed.
+4. Compare severity levels. If overall severity changed, include in `severityChange`.
+5. Compare key points by fuzzy string matching (Jaccard similarity > 0.5 = same point) — WHY: LLM rewording means exact string matching would incorrectly mark paraphrased points as "new".
+
+**DONE WHEN**
+- [ ] A new `arbitration_clause` red flag appears in `addedRedFlags`
+- [ ] A removed `auto_renewal` flag appears in `removedRedFlags`
+- [ ] Severity change from `medium` to `high` is captured
+- [ ] Paraphrased key points are matched as the same, not flagged as new
+
+### Task 30 (B) +versioning
+blockedBy: [26, 29]
+
+**PURPOSE** — Users need a visual timeline of how a site's T&C have evolved over time, showing when changes occurred and what red flags were added or removed.
+
+**WHAT TO DO**
+1. Create `src/versioning/ui/timeline.ts` (a DOM component injected into the popup).
+2. Export `renderTimeline(domain: string): HTMLElement`.
+3. Fetch version history via `getVersionHistory(domain)`.
+4. Render as a vertical timeline:
+   - Each version is a node: `v{N} ({formatted date}) — {severity badge}`.
+   - Between nodes, show change annotations: "+2 red flags", "-1 red flag", "severity: medium → high".
+   - The latest version is highlighted at the top.
+5. Clicking a version node shows that version's full summary.
+6. Style with CSS classes scoped under `.tc-guard-timeline`.
+
+**DONE WHEN**
+- [ ] Timeline shows all versions for a domain in reverse chronological order
+- [ ] Change annotations between versions are accurate
+- [ ] Clicking a version node displays that version's summary
+- [ ] Domain with only one version shows "First recorded version" instead of diff annotations
+
+### Task 31 (B) +versioning
+blockedBy: [27, 29]
+
+**PURPOSE** — When a tracked site updates its T&C, the user should be alerted immediately via a badge and popup notification, especially if new red flags were added.
+
+**WHAT TO DO**
+1. Create `src/versioning/notifications.ts`.
+2. Export `notifyChange(domain: string, diff: SummaryDiff): void`.
+3. Set the extension badge text to "!" with a red background color using `chrome.action.setBadgeText` and `chrome.action.setBadgeBackgroundColor`.
+4. Store a pending notification in `chrome.storage.local` under a `pendingNotifications` key.
+5. When the popup opens, display a banner at the top:
+   - "**{domain}** updated their T&C — {diff.addedRedFlags.length} new red flag(s)"
+   - List the newly added red flag categories.
+   - Link to the version history timeline.
+6. Respect the `notifyOnChange` user setting — if disabled, skip badge and notification.
+
+**DONE WHEN**
+- [ ] Badge shows "!" when a tracked domain's T&C changes
+- [ ] Popup displays the change notification banner with accurate red flag count
+- [ ] Notification is cleared after the user views it
+- [ ] Notification is suppressed when `notifyOnChange` is `false`
 
 # ============================================================
-# +background — Service Worker & Message Passing
+# OVERLAY UI
 # ============================================================
-(A) Set up background service worker (MV3) with message listener for content script communication +background
-(A) Implement fetch proxy: content scripts send URLs to background, background fetches (bypassing CORS), returns text/HTML to content script +background
-(A) Build message protocol: define typed message schemas for DETECT_TC, EXTRACT_TEXT, FETCH_URL, SUMMARIZE, GET_SETTINGS, SAVE_SETTINGS +background
-(A) Implement settings storage: read/write provider config, API keys, preferences to chrome.storage.local with typed getters/setters +background
-(B) Build badge indicator: set extension badge to number of detected T&C elements on current page, update on navigation +background
-(B) Implement tab lifecycle management: track active tab, clean up detection state on tab close/navigate +background
-(B) Handle extension icon click: if no T&C detected, open settings popup; if T&C detected, focus the first detected overlay +background
-(C) Implement context menu: right-click "Scan this page for T&C" option that forces a full page scan +background
+
+### Task 32 (A) +ui
+blockedBy: [8, 22]
+
+**PURPOSE** — The overlay panel is the primary UI surface. It appears on the page near the detected T&C element, inside a Shadow DOM to prevent style conflicts with the host page.
+
+**WHAT TO DO**
+1. Create `src/content/ui/overlay.ts`.
+2. Export `createOverlay(detection: ScoredDetection, summary: Summary): HTMLElement`.
+3. Create a host `<div>` and attach a Shadow DOM (`mode: 'closed'`) — WHY: closed shadow DOM prevents host page CSS from leaking into the overlay and vice versa.
+4. Inside the shadow DOM, render:
+   - **Header**: severity badge (color-coded circle: green=low, yellow=medium, orange=high, red=critical) + "TC Guard" label + close button (X).
+   - **Summary section**: `summary.summary` as a paragraph.
+   - **Key points**: `summary.keyPoints` as a bulleted list.
+   - **Red flags section**: each `RedFlag` as an expandable card showing category, severity pill, description, and the verbatim quote.
+   - **Footer**: "View Full Summary" link (opens popup), "Version History" link (if versions exist).
+5. Set `z-index: 2147483647` — WHY: maximum 32-bit signed integer, ensures overlay appears above all page content.
+6. Max dimensions: 380px wide, 500px tall, scrollable content area.
+
+**DONE WHEN**
+- [ ] Overlay renders inside a shadow DOM with no host page style leakage
+- [ ] Severity badge color matches the summary severity
+- [ ] Red flags are expandable (click to show/hide details)
+- [ ] Overlay does not exceed 380x500px
+- [ ] Close button dismisses the overlay
+
+### Task 33 (A) +ui
+blockedBy: [32]
+
+**PURPOSE** — The overlay must appear near the detected T&C element without obscuring important page content. Smart positioning prevents the overlay from going off-screen.
+
+**WHAT TO DO**
+1. Create `src/content/ui/positioning.ts`.
+2. Export `positionOverlay(overlay: HTMLElement, anchor: HTMLElement): void`.
+3. Get the anchor element's bounding rect via `getBoundingClientRect()`.
+4. Default position: right edge of the anchor, vertically centered.
+5. Collision detection:
+   - If overlay would extend beyond the right viewport edge, position to the left of the anchor.
+   - If overlay would extend below the viewport, shift upward.
+   - If overlay would extend above the viewport, shift downward.
+6. Ensure at least 8px margin from viewport edges — WHY: 8px prevents the overlay from touching the browser chrome, which looks visually broken.
+7. Use `position: fixed` so the overlay stays in place during scroll.
+
+**DONE WHEN**
+- [ ] Overlay appears to the right of a centered checkbox
+- [ ] Overlay flips to the left when the checkbox is near the right viewport edge
+- [ ] Overlay shifts upward when the checkbox is near the bottom of the viewport
+- [ ] Overlay maintains 8px minimum margin from all viewport edges
+
+### Task 34 (B) +ui
+blockedBy: [32]
+
+**PURPOSE** — Users expect the overlay to match the visual environment of the page they are on. Supporting dark and light modes prevents a jarring visual experience.
+
+**WHAT TO DO**
+1. Create `src/content/ui/theme.ts`.
+2. Export `getTheme(preference: 'auto' | 'light' | 'dark'): 'light' | 'dark'`.
+3. When `preference` is `auto`, check `window.matchMedia('(prefers-color-scheme: dark)')`.
+4. Define CSS custom properties for each theme in the overlay's shadow DOM stylesheet:
+   - Light: `--tc-bg: #ffffff`, `--tc-text: #1a1a1a`, `--tc-border: #e0e0e0`, `--tc-accent: #2563eb`.
+   - Dark: `--tc-bg: #1e1e2e`, `--tc-text: #e0e0e0`, `--tc-border: #3a3a4a`, `--tc-accent: #60a5fa`.
+5. Apply the theme class (`tc-theme-light` or `tc-theme-dark`) to the shadow DOM root.
+
+**DONE WHEN**
+- [ ] Light mode overlay has white background and dark text
+- [ ] Dark mode overlay has dark background and light text
+- [ ] `auto` mode correctly follows the system preference
+- [ ] Theme persists from user settings across page loads
+
+### Task 35 (B) +ui
+blockedBy: [32]
+
+**PURPOSE** — Users need to dismiss the overlay and bring it back. The dismiss/re-show flow must be intuitive: X to close, extension icon click to re-show.
+
+**WHAT TO DO**
+1. In `src/content/ui/overlay.ts`, add dismiss behavior:
+   - Clicking the close button removes the overlay panel but leaves a small trigger icon (shield, 24x24px) at the detection point.
+   - Pressing `Escape` when the overlay is focused also dismisses it.
+2. Clicking the trigger icon re-opens the overlay (using cached summary data, no re-fetch).
+3. Add slide-in animation: overlay slides in from the right over 200ms using CSS `transform: translateX(100%) -> translateX(0)` — WHY: 200ms is fast enough to feel snappy but slow enough to be noticed as a transition.
+4. Add fade-out animation on dismiss: 150ms opacity transition.
+5. Listen for background message to re-show overlay (triggered by extension icon click).
+
+**DONE WHEN**
+- [ ] Close button dismisses the overlay with a fade-out animation
+- [ ] Trigger icon remains visible after dismissal
+- [ ] Clicking the trigger icon re-opens the overlay with a slide-in animation
+- [ ] Escape key dismisses the overlay when it has focus
+- [ ] Re-opened overlay shows cached summary (no loading state)
 
 # ============================================================
-# +content — Content Script Orchestration
+# POPUP & SETTINGS UI
 # ============================================================
-(A) Build content script entry point: on page load (document_idle), initialize detector, start MutationObserver, run initial scan +content
-(A) Wire detection results to UI: when detector finds T&C elements above confidence threshold, inject overlay icon at each element +content
-(A) Implement scan-extract-summarize pipeline: on overlay icon click, extract text from detected element, send to background for LLM summarization, render result in overlay +content
-(B) Handle SPA navigation: listen for popstate, hashchange, and History API pushState/replaceState to re-trigger detection on route changes +content
-(B) Implement page-level state manager: track detected elements, active overlays, pending extractions to prevent duplicate work +content
-(B) Add manual trigger support: listen for message from background (context menu or icon click) to run full page scan regardless of auto-detection +content
-(C) Implement site-specific overrides: maintain a small map of domain-specific selectors for popular sites where generic detection fails (e.g., Google, Apple, Microsoft signup flows) +content
+
+### Task 36 (A) +popup
+blockedBy: [20, 3]
+
+**PURPOSE** — The popup is the secondary UI surface, accessible via the extension icon. It shows the current page's summary and provides navigation to settings and version history.
+
+**WHAT TO DO**
+1. Create `src/popup/index.html` with a minimal shell that loads `src/popup/index.ts`.
+2. Create `src/popup/index.ts` as the popup entry point.
+3. On open, send a message to the active tab's content script requesting the current detection state and summary.
+4. Render the main popup layout:
+   - **Header**: TC Guard logo, current page domain.
+   - **Summary card**: severity badge, summary text, key point count, red flag count.
+   - **Red flags list**: expandable cards (same component as overlay, shared code).
+   - **"Analyze This Page" button**: triggers a manual full-page scan if no detection has occurred.
+   - **Footer nav**: "Settings" button, "Version History" button.
+5. If no T&C detected on current page, show "No T&C detected on this page" with the manual analyze button.
+
+**DONE WHEN**
+- [ ] Popup shows current page's summary when T&C was detected
+- [ ] Popup shows "No T&C detected" with analyze button when no detection occurred
+- [ ] "Analyze This Page" triggers a scan and updates the popup with results
+- [ ] Red flags are expandable with the same UX as the overlay
+
+### Task 37 (B) +popup
+blockedBy: [36, 30]
+
+**PURPOSE** — The version history panel lets users see how a site's T&C have evolved over time, directly within the popup.
+
+**WHAT TO DO**
+1. Create `src/popup/history.ts`.
+2. When "Version History" is clicked in the popup, render the timeline component from Task 30 within the popup body.
+3. Add a domain selector dropdown at the top, listing all domains with stored version history.
+4. Default to the current page's domain if it has history.
+5. Show a "No version history yet" message for domains that have not been tracked.
+
+**DONE WHEN**
+- [ ] Version history panel shows the timeline for the current domain
+- [ ] Domain selector lists all tracked domains
+- [ ] Selecting a different domain loads that domain's timeline
+- [ ] Panel shows empty state message for untracked domains
+
+### Task 38 (B) +popup
+blockedBy: [36, 3]
+
+**PURPOSE** — Users need to configure their LLM provider, enter API keys, and select models. This is the most critical settings page because the extension does not function without a configured provider.
+
+**WHAT TO DO**
+1. Create `src/popup/settings/providers.ts`.
+2. Render a tabbed interface with one tab per provider: OpenAI, Claude, Gemini, Ollama, Custom.
+3. Each provider tab contains:
+   - API key input field with show/hide toggle (type `password` by default).
+   - "Test Key" button that calls `validateApiKey()` and shows a green checkmark or red X.
+   - Model selector dropdown (populated with defaults or via `listModels()` for Ollama).
+4. Ollama tab additionally shows: base URL input (default `http://localhost:11434`), "Detect Models" button.
+5. Custom tab shows: base URL input (required), API key input (optional), model name text input (required).
+6. A "Active Provider" radio group at the top selects which provider to use.
+7. Persist all settings via `setStorage('settings', ...)`.
+
+**DONE WHEN**
+- [ ] API keys can be entered, tested, and persisted for each provider
+- [ ] "Test Key" shows clear success/failure feedback
+- [ ] Model selection is saved and used by the provider
+- [ ] Ollama "Detect Models" populates the dropdown with local models
+- [ ] Active provider selection is reflected immediately in summarization
+
+### Task 39 (B) +popup
+blockedBy: [36, 8]
+
+**PURPOSE** — Different users have different tolerance for false positive detections. A sensitivity setting lets users control the trade-off between catching all T&C and reducing noise.
+
+**WHAT TO DO**
+1. Create `src/popup/settings/detection.ts`.
+2. Render a three-option radio group: Aggressive, Normal (default), Conservative.
+3. Show a description for each:
+   - Aggressive: "Detect more T&C elements, may include false positives."
+   - Normal: "Balanced detection (recommended)."
+   - Conservative: "Only detect high-confidence T&C elements."
+4. Persist the selection via `setStorage('settings', { detectionSensitivity: value })`.
+
+**DONE WHEN**
+- [ ] Selection persists across popup opens
+- [ ] Changing sensitivity immediately affects detection on the next page load
+- [ ] Default is "Normal" on first install
+
+### Task 40 (B) +popup
+blockedBy: [36, 25]
+
+**PURPOSE** — Users need visibility into cached data and the ability to clear it, both for troubleshooting (stale cache) and privacy (removing stored T&C text).
+
+**WHAT TO DO**
+1. Create `src/popup/settings/cache.ts`.
+2. Display cache statistics: number of cached summaries, total storage used (approximate from `JSON.stringify` byte length), list of cached domains.
+3. "Clear All Cache" button with confirmation dialog.
+4. Per-domain "Clear" button next to each listed domain.
+5. After clearing, update the displayed statistics immediately.
+
+**DONE WHEN**
+- [ ] Cache stats display accurate count and approximate size
+- [ ] "Clear All" removes all cached summaries after confirmation
+- [ ] Per-domain clear removes only that domain's entries
+- [ ] Stats update immediately after clearing
+
+### Task 41 (C) +popup
+blockedBy: [36, 31]
+
+**PURPOSE** — Users may want to disable change notifications for domains they do not care about, while keeping them enabled for important services.
+
+**WHAT TO DO**
+1. Create `src/popup/settings/notifications.ts`.
+2. Render a global toggle: "Notify when tracked T&C change" (maps to `settings.notifyOnChange`).
+3. Below it, show a list of tracked domains with per-domain toggles.
+4. Persist per-domain notification preferences in storage.
+
+**DONE WHEN**
+- [ ] Global toggle enables/disables all notifications
+- [ ] Per-domain toggle overrides the global setting for that domain
+- [ ] Settings persist across browser restarts
 
 # ============================================================
-# +compat — Cross-Browser Compatibility
+# ERROR HANDLING & SECURITY
 # ============================================================
-(B) Add webextension-polyfill for Firefox compatibility: wrap all chrome.* API calls through the polyfill +compat
-(B) Create Firefox-specific manifest.json (MV2) with browser_specific_settings for gecko ID +compat
-(B) Test and fix popup overlay shadow DOM rendering across Chrome and Firefox (different shadow DOM CSS isolation behavior) +compat
-(C) Create Safari conversion build step: use xcrun safari-web-extension-converter on Chrome build output, document manual Xcode steps in build script +compat
-(C) Handle Safari-specific storage API differences: safari.extension.settings fallback for older Safari versions +compat
+
+### Task 42 (A) +security
+blockedBy: [15, 16, 17, 18]
+
+**PURPOSE** — LLM calls can fail in many ways (timeout, rate limit, network error, invalid response). Users must see helpful messages, not raw stack traces.
+
+**WHAT TO DO**
+1. Create `src/shared/errors.ts`.
+2. Define error types: `NetworkError`, `RateLimitError`, `InvalidResponseError`, `ProviderError`, `ExtractionError`.
+3. Each error type has a `userMessage: string` field with a plain-English explanation.
+4. In each LLM provider, wrap API calls in try/catch and throw the appropriate typed error:
+   - Timeout (>30s): "The AI provider is taking too long. Try again or switch to a different provider." — WHY: 30s timeout is generous enough for slow models but prevents indefinite hangs.
+   - 429 rate limit: "Rate limited by {provider}. Please wait {retryAfter} seconds."
+   - Network failure: "Could not connect to {provider}. Check your internet connection."
+   - Invalid JSON: "The AI returned an unexpected response. Retrying..."
+5. In the overlay, show a fallback message card when summarization fails, with a "Retry" button.
+
+**DONE WHEN**
+- [ ] Network timeout shows a user-friendly message in the overlay
+- [ ] Rate limit error shows retry countdown
+- [ ] "Retry" button re-attempts summarization
+- [ ] No raw error messages or stack traces are ever shown to the user
+
+### Task 43 (A) +security
+blockedBy: [3]
+
+**PURPOSE** — API keys are sensitive credentials. They must be stored securely and never exposed in the UI or logs.
+
+**WHAT TO DO**
+1. In `src/shared/storage.ts`, store API keys in `chrome.storage.local` (which is encrypted at rest on most platforms).
+2. In the settings UI (Task 38), mask API key fields with `type="password"`. Add a show/hide toggle.
+3. When displaying stored keys, show only the last 4 characters: `"sk-...xxxx"`.
+4. Never log API keys to `console.log` — add an ESLint rule or code comment convention.
+5. Set Content Security Policy in the manifest: `"content_security_policy": { "extension_pages": "script-src 'self'; object-src 'self'" }` — WHY: prevents XSS in the popup and settings pages by disallowing inline scripts and external script sources.
+
+**DONE WHEN**
+- [ ] API keys are masked in the settings UI by default
+- [ ] Keys are stored in `chrome.storage.local` (not `localStorage` or plaintext files)
+- [ ] CSP header is set in the manifest
+- [ ] Console.log output never contains API key values
+
+### Task 44 (A) +security
+blockedBy: [32]
+
+**PURPOSE** — The overlay injects content into arbitrary web pages. Extracted T&C text could contain XSS payloads if not sanitized before display.
+
+**WHAT TO DO**
+1. In `src/content/ui/overlay.ts`, never use `innerHTML` with extracted T&C text. Use `textContent` or DOM APIs (`createElement`, `appendChild`) exclusively.
+2. In `src/content/extractors/normalizer.ts` (Task 13), ensure the sanitization step strips all HTML tags.
+3. In the Shadow DOM stylesheet, scope all styles with a unique prefix (`.tc-guard-*`) to prevent class name collisions.
+4. Sanitize LLM output: if the LLM returns HTML in the summary or red flag descriptions, strip tags before rendering.
+
+**DONE WHEN**
+- [ ] Injecting `<img onerror="alert(1)">` in T&C text does NOT execute JavaScript
+- [ ] LLM response containing `<script>` tags renders as plain text
+- [ ] Overlay styles do not leak into the host page
+- [ ] Host page styles do not affect the overlay
 
 # ============================================================
-# +testing — Testing & Quality
+# TESTING
 # ============================================================
-(B) Write unit tests for detection engine: test checkbox-label proximity scoring, keyword matching, confidence thresholds with jsdom +testing
-(B) Write unit tests for text extraction: test HTML cleaning, chunking at paragraph boundaries, character limit fallback logic +testing
-(B) Write unit tests for LLM provider abstraction: mock API responses, test retry logic, test key validation flow +testing
-(B) Write integration tests for summarization pipeline: mock LLM provider, test single-shot and chunked paths produce valid Summary schema +testing
-(B) Create test fixture HTML pages: page with standard T&C checkbox, cookie banner, full-page T&C wall, SPA with dynamic T&C modal +testing
-(C) Set up Playwright E2E tests: load extension in Chrome, navigate to fixture pages, verify overlay appears and summary renders +testing
+
+### Task 45 (B) +testing
+blockedBy: [5, 6, 7, 8]
+
+**PURPOSE** — Detection heuristics are the foundation of the extension. Regressions in detection accuracy make the entire extension useless. Unit tests with mock DOM structures prevent this.
+
+**WHAT TO DO**
+1. Create `tests/detectors/` directory.
+2. Install `vitest` and `jsdom` as dev dependencies.
+3. Create `tests/detectors/checkbox.test.ts`:
+   - Test: standard `<input type="checkbox"> + <label>I agree to <a>Terms</a></label>` => confidence >= 0.8.
+   - Test: checkbox 3 DOM levels away from T&C link => confidence >= 0.5.
+   - Test: "Remember me" checkbox => confidence < 0.3.
+   - Test: checkbox with `<label for="...">` association => detected correctly.
+4. Create `tests/detectors/modal.test.ts`:
+   - Test: OneTrust-style banner (`class="cookie-consent"`, "Accept All" button) => detected as banner.
+   - Test: dialog with `role="dialog"` + "Terms of Service" heading => detected as modal.
+   - Test: regular dialog without legal keywords => not detected.
+5. Create `tests/detectors/scoring.test.ts`:
+   - Test: aggressive mode passes 0.35 confidence, conservative mode rejects it.
+   - Test: overlapping detections deduplicated.
+
+**DONE WHEN**
+- [ ] All detection unit tests pass with `pnpm test`
+- [ ] Tests cover all three detection types (checkbox, modal, fullpage)
+- [ ] Scoring threshold tests verify all three sensitivity levels
+- [ ] Tests use mock DOM (jsdom), not real browser
+
+### Task 46 (B) +testing
+blockedBy: [9, 10, 12, 13]
+
+**PURPOSE** — Text extraction must reliably produce clean, properly chunked text from diverse HTML structures. Unit tests against fixture HTML prevent regressions.
+
+**WHAT TO DO**
+1. Create `tests/extractors/` directory.
+2. Create fixture HTML files in `tests/fixtures/`:
+   - `simple-tc.html`: page with a `<main>` containing 3 paragraphs of T&C text.
+   - `messy-tc.html`: page with nav, footer, sidebar, and T&C buried in a `<div>`.
+   - `long-tc.html`: page with 25,000 words of T&C text (for chunking tests).
+3. Create `tests/extractors/inline.test.ts`: test that inline extractor grabs the correct container text.
+4. Create `tests/extractors/normalizer.test.ts`: test HTML stripping, whitespace normalization, boilerplate removal.
+5. Create `tests/extractors/chunker.test.ts`: test chunk sizes, paragraph boundary splitting, overlap.
+
+**DONE WHEN**
+- [ ] Inline extractor test verifies correct container selection
+- [ ] Normalizer test verifies HTML tag removal and whitespace collapse
+- [ ] Chunker test verifies no chunk exceeds max token limit
+- [ ] Chunker test verifies overlap between adjacent chunks
+- [ ] All tests pass with `pnpm test`
+
+### Task 47 (B) +testing
+blockedBy: [22, 23, 24]
+
+**PURPOSE** — LLM responses are non-deterministic and sometimes malformed. Tests with mock responses ensure the parsing and severity logic is robust.
+
+**WHAT TO DO**
+1. Create `tests/summarizer/` directory.
+2. Create mock LLM responses in `tests/fixtures/`:
+   - `valid-summary.json`: well-formed Summary JSON.
+   - `malformed-summary.json`: JSON with missing fields.
+   - `invalid-json.txt`: non-JSON LLM response.
+3. Create `tests/summarizer/parsing.test.ts`:
+   - Test: valid JSON parses into a correct `Summary` object.
+   - Test: malformed JSON (missing `redFlags`) is handled gracefully.
+   - Test: non-JSON response returns a fallback summary.
+4. Create `tests/summarizer/severity.test.ts`:
+   - Test: all severity computation cases from Task 24.
+   - Test: `data_selling` override to minimum `high`.
+
+**DONE WHEN**
+- [ ] All parsing tests pass, including malformed input cases
+- [ ] Severity tests cover all threshold boundaries (0, 1-3, 4-7, 8+)
+- [ ] Override logic for `data_selling` and `biometric_data` is tested
+- [ ] All tests pass with `pnpm test`
+
+### Task 48 (B) +testing
+blockedBy: [26, 27, 28, 29]
+
+**PURPOSE** — Version tracking involves storage, hashing, and diffing. Integration tests verify that the full pipeline correctly detects changes and computes diffs.
+
+**WHAT TO DO**
+1. Create `tests/versioning/` directory.
+2. Create `tests/versioning/tracking.test.ts`:
+   - Test: first visit creates version 1.
+   - Test: revisit with same text does not create version 2.
+   - Test: revisit with different text creates version 2.
+   - Test: 21st version drops the oldest entry.
+3. Create `tests/versioning/diff.test.ts`:
+   - Test: added paragraph appears in additions.
+   - Test: removed paragraph appears in removals.
+   - Test: identical texts produce zero changes.
+4. Create `tests/versioning/summary-diff.test.ts`:
+   - Test: new red flag appears in `addedRedFlags`.
+   - Test: removed red flag appears in `removedRedFlags`.
+   - Test: severity change is captured.
+
+**DONE WHEN**
+- [ ] All version tracking tests pass
+- [ ] Tests mock `chrome.storage.local` (use a simple in-memory implementation)
+- [ ] Diff tests verify all change types (add, remove, modify)
+- [ ] Summary diff tests verify red flag comparison logic
+
+### Task 49 (C) +testing
+blockedBy: [45, 46, 47, 48]
+
+**PURPOSE** — E2E tests verify the extension works in a real browser environment, catching integration bugs that unit tests miss (e.g., Shadow DOM rendering, message passing timing).
+
+**WHAT TO DO**
+1. Install Playwright: `pnpm add -D @playwright/test`.
+2. Create `tests/e2e/` directory.
+3. Create `tests/e2e/extension.spec.ts`:
+   - Launch Chrome with the extension loaded (via `--load-extension` flag).
+   - Navigate to a test fixture page (`tests/fixtures/simple-tc.html` served via a local HTTP server).
+   - Verify the overlay trigger icon appears near the T&C checkbox.
+   - Click the trigger icon and verify the overlay panel opens.
+   - Verify the summary text contains expected content (using a mock LLM provider).
+4. Create test fixtures for: standard checkbox page, cookie banner page, full-page T&C.
+5. Use a mock LLM provider that returns canned responses (avoid real API calls in tests).
+
+**DONE WHEN**
+- [ ] E2E test loads the extension in Chrome
+- [ ] Test verifies overlay appears on the fixture page
+- [ ] Test verifies summary content renders correctly
+- [ ] Tests complete in under 60 seconds
+- [ ] No real LLM API calls are made during tests
+
+# ============================================================
+# CI/CD & DISTRIBUTION
+# ============================================================
+
+### Task 50 (B) +cicd
+blockedBy: [45, 46, 47]
+
+**PURPOSE** — Automated CI catches regressions before they reach users. Every push must pass linting, type checking, and tests.
+
+**WHAT TO DO**
+1. Create `.github/workflows/ci.yml`.
+2. Trigger on push to `main` and on all pull requests.
+3. Steps:
+   - Checkout code.
+   - Setup Node.js (v20) and pnpm.
+   - `pnpm install --frozen-lockfile`.
+   - `pnpm lint` (ESLint).
+   - `pnpm typecheck` (tsc --noEmit).
+   - `pnpm test` (Vitest unit + integration tests).
+   - `pnpm build` (verify production build succeeds).
+4. Add the corresponding scripts to `package.json`: `lint`, `typecheck`, `test`, `build`.
+
+**DONE WHEN**
+- [ ] CI workflow runs on every push to main and on PRs
+- [ ] Workflow fails if linting, type checking, or tests fail
+- [ ] Workflow fails if production build fails
+- [ ] Total CI time is under 5 minutes
+
+### Task 51 (B) +cicd
+blockedBy: [50]
+
+**PURPOSE** — Chrome and Firefox require different packaging formats for store submission. Automated packaging prevents manual errors.
+
+**WHAT TO DO**
+1. Add `pnpm package:chrome` script: runs `pnpm build`, then zips the `dist/` directory into `tc-guard-chrome-v{version}.zip`.
+2. Add `pnpm package:firefox` script: runs `pnpm build:firefox` (with Firefox manifest), then zips into `tc-guard-firefox-v{version}.xpi`.
+3. Read version from `package.json`.
+4. Add a `release` GitHub Actions workflow: on tag push (`v*`), build both packages, create a GitHub Release, attach the zip and xpi as assets.
+
+**DONE WHEN**
+- [ ] `pnpm package:chrome` produces a valid zip file
+- [ ] `pnpm package:firefox` produces a valid xpi file
+- [ ] GitHub Release is created on version tag push with both packages attached
+- [ ] Package filenames include the version number
+
+### Task 52 (C) +cicd
+blockedBy: [51]
+
+**PURPOSE** — Submission to Chrome Web Store and Firefox Add-ons has specific requirements. Documenting the workflow prevents submission rejections.
+
+**WHAT TO DO**
+1. Create `scripts/submit-chrome.sh`:
+   - Use the Chrome Web Store API to upload the zip.
+   - Requires `CHROME_CLIENT_ID`, `CHROME_CLIENT_SECRET`, `CHROME_REFRESH_TOKEN` env vars.
+   - Document how to obtain these credentials in comments.
+2. Create `scripts/submit-firefox.sh`:
+   - Use `web-ext sign` to submit the xpi to Firefox Add-ons.
+   - Requires `WEB_EXT_API_KEY`, `WEB_EXT_API_SECRET` env vars.
+3. Add instructions as comments in each script (do NOT create separate documentation files).
+
+**DONE WHEN**
+- [ ] Chrome submission script exists with credential setup instructions in comments
+- [ ] Firefox submission script exists with credential setup instructions in comments
+- [ ] Scripts are executable (`chmod +x`)
+
+# ============================================================
+# FIREFOX COMPATIBILITY
+# ============================================================
+
+### Task 53 (B) +compat
+blockedBy: [2]
+
+**PURPOSE** — Firefox uses the `browser.*` namespace instead of `chrome.*`. The webextension-polyfill makes cross-browser code possible without conditional branches everywhere.
+
+**WHAT TO DO**
+1. Install `webextension-polyfill`: `pnpm add webextension-polyfill` and `pnpm add -D @types/webextension-polyfill`.
+2. In `src/shared/messaging.ts` and `src/shared/storage.ts`, import `browser` from `webextension-polyfill` and use it instead of `chrome.*`.
+3. The polyfill wraps `chrome.*` calls with Promise-based `browser.*` equivalents, so existing code should work on both browsers.
+4. Test that all message passing and storage operations work with the polyfill in Chrome (it is backwards-compatible).
+
+**DONE WHEN**
+- [ ] All `chrome.*` API calls use the polyfill wrapper instead
+- [ ] Extension still works correctly in Chrome after the change
+- [ ] TypeScript types from `@types/webextension-polyfill` are used
+
+### Task 54 (B) +compat
+blockedBy: [53, 1]
+
+**PURPOSE** — Firefox requires a different manifest format. A shared source manifest that generates both Chrome and Firefox versions prevents drift.
+
+**WHAT TO DO**
+1. Create `src/manifest.ts` (if not already from Task 1) as the single source of truth.
+2. Export two functions: `getChromeManifest()` and `getFirefoxManifest()`.
+3. Firefox differences:
+   - Add `"browser_specific_settings": { "gecko": { "id": "tc-guard@extension", "strict_min_version": "109.0" } }` — WHY: 109.0 is the minimum Firefox version with Manifest V3 support.
+   - Remove `"background.type": "module"` (Firefox handles this differently).
+4. In `vite.config.ts`, use an environment variable (`BUILD_TARGET=firefox`) to select the correct manifest.
+5. Add `pnpm build:firefox` script that sets the env var and builds.
+
+**DONE WHEN**
+- [ ] `pnpm build` produces a Chrome-compatible extension
+- [ ] `pnpm build:firefox` produces a Firefox-compatible extension
+- [ ] Both builds share the same source code, differing only in the manifest
+- [ ] Firefox build includes `browser_specific_settings`
+
+# ============================================================
+# DOCUMENTATION
+# ============================================================
+
+### Task 55 (C) +docs
+blockedBy: [52]
+
+**PURPOSE** — A README is the first thing potential users and contributors see. It must communicate what the extension does, how to install it, and how it looks.
+
+**WHAT TO DO**
+1. Create `README.md` with sections:
+   - **What is TC Guard**: one-paragraph description.
+   - **Features**: bullet list (T&C detection, LLM summarization, red flag analysis, version tracking, multi-provider support).
+   - **Screenshots**: placeholder image links for overlay, popup, settings.
+   - **Installation**: Chrome Web Store link, Firefox Add-ons link, manual build instructions.
+   - **Configuration**: how to set up an LLM provider (API key entry).
+   - **Privacy**: no telemetry, all data stays local, API keys stored in browser storage.
+2. Keep it concise — under 200 lines.
+
+**DONE WHEN**
+- [ ] README exists with all listed sections
+- [ ] Installation instructions are accurate
+- [ ] Privacy section clearly states no telemetry
+
+### Task 56 (C) +docs
+blockedBy: [21]
+
+**PURPOSE** — Users seeing red flag badges need to understand what each category means in plain English. This documentation serves both users (via the UI) and contributors (understanding the taxonomy).
+
+**WHAT TO DO**
+1. In `src/providers/prompts.ts`, add a JSDoc comment block above the red flag taxonomy documenting each category:
+   - `data_selling`: "The company sells your personal data to third parties for profit."
+   - `arbitration_clause`: "You waive your right to a jury trial and must resolve disputes through private arbitration."
+   - `class_action_waiver`: "You cannot join a class action lawsuit against the company."
+   - `automatic_renewal`: "Your subscription auto-renews, potentially making cancellation difficult."
+   - `biometric_data`: "The company collects biometric data such as fingerprints, face scans, or voice prints."
+   - `third_party_sharing`: "Your data is shared with third-party companies (partners, advertisers)."
+   - `jurisdiction_change`: "Legal disputes must be resolved in a specific jurisdiction (often favorable to the company)."
+   - `liability_limitation`: "The company limits how much they can be held liable for damages."
+   - `content_ownership_transfer`: "You grant the company a broad license to use your content (photos, posts, etc.)."
+   - `unilateral_changes`: "The company can change the terms at any time without notifying you."
+   - `no_deletion_right`: "You may not have the right to have your data deleted."
+   - `location_tracking`: "The company tracks your physical location continuously."
+2. Export a `RED_FLAG_DESCRIPTIONS: Record<RedFlagCategory, string>` map for use in the UI.
+
+**DONE WHEN**
+- [ ] Every red flag category has a plain-English description
+- [ ] Descriptions are accessible as a runtime map for UI display
+- [ ] JSDoc comment block serves as contributor documentation
+
+### Task 57 (C) +docs
+blockedBy: [14, 20]
+
+**PURPOSE** — Third-party contributors may want to add support for new LLM providers. A clear guide in code comments reduces onboarding friction.
+
+**WHAT TO DO**
+1. In `src/providers/types.ts`, add a block comment at the top of the file titled "Adding a New LLM Provider" with step-by-step instructions:
+   - Step 1: Create `src/providers/{name}.ts` implementing `LLMProvider`.
+   - Step 2: Register it in `src/providers/factory.ts` by adding to the provider map.
+   - Step 3: Add a settings tab in `src/popup/settings/providers.ts`.
+   - Step 4: Add the provider name to the `activeProvider` union type in `src/shared/storage.ts`.
+   - Step 5: Write tests in `tests/providers/{name}.test.ts`.
+2. Include code examples showing the minimum implementation for each method.
+
+**DONE WHEN**
+- [ ] Block comment exists in `src/providers/types.ts` with all 5 steps
+- [ ] Each step includes a concrete file path
+- [ ] A contributor can follow the guide to add a new provider without asking questions

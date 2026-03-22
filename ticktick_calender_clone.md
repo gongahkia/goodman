@@ -1,17 +1,108 @@
 # TickTick Clone — PRD (`todo.md`)
 
-> **Architecture:** Local-first multi-platform productivity app with optional self-hosted sync.
+> **Architecture:** Local-first desktop productivity app with optional self-hosted sync.
 >
 > | Layer | Stack |
 > |---|---|
-> | **Apple (macOS + iOS)** | SwiftUI + GRDB (SQLite) |
-> | **Cross-platform (Linux/Win/WSL)** | Tauri 2.x (Rust) + Svelte 5 + TypeScript + better-sqlite3 |
+> | **Desktop Client** | Tauri 2.x (Rust) + Svelte 5 + TypeScript + better-sqlite3 |
 > | **Server (optional sync)** | Go 1.22+ (Echo) + PostgreSQL 16 + SMTP (magic link) |
 > | **Sync protocol** | Timestamp-based last-write-wins with per-field vector clocks |
 >
 > **MVP scope:** Tasks · Subtasks · Lists · Priorities · Tags · Calendar view · Recurring tasks · Natural language date input
 >
-> **Database choice rationale:** PostgreSQL server-side (strong date/time, JSONB for recurrence rules, row-level security ready). SQLite client-side on all platforms (offline-first, zero-config).
+> **Database choice rationale:** PostgreSQL server-side (strong date/time, JSONB for recurrence rules, row-level security ready). SQLite client-side via Tauri Rust backend (offline-first, zero-config).
+
+---
+
+## Module 0: Project Scaffolding (+scaffold)
+
+---
+
+### Task 0 (A) +scaffold
+blockedBy: [none]
+
+**PURPOSE** — Establishes the monorepo structure, initializes all project tooling, and provides a local development environment so every subsequent task has a working foundation.
+
+**WHAT TO DO**
+1. Create the monorepo directory structure:
+   ```
+   /
+   ├── apps/
+   │   └── desktop/              # Tauri 2 + Svelte 5 app
+   │       ├── src/              # Svelte frontend source
+   │       │   ├── lib/
+   │       │   │   ├── components/
+   │       │   │   ├── stores/
+   │       │   │   ├── services/
+   │       │   │   └── types.ts
+   │       │   └── App.svelte
+   │       ├── src-tauri/        # Rust backend
+   │       │   ├── src/
+   │       │   │   ├── commands/
+   │       │   │   ├── models/
+   │       │   │   ├── services/
+   │       │   │   └── sync/
+   │       │   ├── Cargo.toml
+   │       │   └── tauri.conf.json
+   │       ├── package.json
+   │       └── vite.config.ts
+   ├── services/
+   │   └── server/               # Go Echo server
+   │       ├── cmd/server/
+   │       │   └── main.go
+   │       ├── internal/
+   │       │   ├── app/
+   │       │   ├── database/
+   │       │   ├── handlers/
+   │       │   ├── middleware/
+   │       │   ├── models/
+   │       │   ├── repository/
+   │       │   └── services/
+   │       ├── migrations/
+   │       ├── Dockerfile
+   │       └── go.mod
+   ├── schema/
+   │   ├── canonical.sql
+   │   └── seed.sql
+   ├── docker-compose.yml
+   ├── .env.example
+   └── .github/
+       └── workflows/
+   ```
+2. Initialize the Tauri 2 project with Svelte 5 template:
+   - `npm create tauri-app@latest apps/desktop -- --template svelte-ts`
+   - Verify `apps/desktop/package.json` has `svelte@^5.0.0`, `@sveltejs/vite-plugin-svelte`, TypeScript, and Vite.
+3. Initialize the Go module:
+   - `cd services/server && go mod init github.com/<user>/tickclone-server`
+   - Add Echo framework: `go get github.com/labstack/echo/v4`
+4. Create `docker-compose.yml` for local PostgreSQL:
+   ```yaml
+   services:
+     db:
+       image: postgres:16-alpine
+       ports:
+         - "5432:5432"
+       environment:
+         POSTGRES_DB: tickclone
+         POSTGRES_USER: tickclone
+         POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+       volumes:
+         - pgdata:/var/lib/postgresql/data
+       healthcheck:
+         test: ["CMD-SHELL", "pg_isready -U tickclone"]
+         interval: 5s   # WHY: pg typically starts within 5s; frequent checks speed up docker compose up
+         timeout: 5s
+         retries: 5
+   volumes:
+     pgdata:
+   ```
+5. Create `.env.example` documenting all environment variables with defaults and descriptions.
+
+**DONE WHEN**
+- [ ] `cd apps/desktop && npm run tauri dev` compiles and opens a native window.
+- [ ] `cd services/server && go build ./cmd/server` compiles with zero errors.
+- [ ] `docker compose up -d db` starts PostgreSQL and `pg_isready` reports healthy.
+- [ ] The directory structure matches the tree above (all directories exist even if some are empty with `.gitkeep`).
 
 ---
 
@@ -20,12 +111,14 @@
 ---
 
 ### Task 1 (A) +db
-**PURPOSE** — Defines the canonical data model that every platform must implement locally in SQLite. Without this, no client can store or manipulate tasks.
+blockedBy: [0]
+
+**PURPOSE** — Defines the canonical data model that every client must implement locally in SQLite. Without this, no client can store or manipulate tasks.
 
 **WHAT TO DO**
 1. Create `schema/canonical.sql` containing the following tables:
    - `lists` — columns: `id TEXT PRIMARY KEY` (UUIDv7), `name TEXT NOT NULL`, `color TEXT` (hex, e.g. `#3B82F6`), `sort_order INTEGER NOT NULL DEFAULT 0`, `is_inbox INTEGER NOT NULL DEFAULT 0` (boolean, exactly one row may be 1), `created_at TEXT NOT NULL` (ISO8601), `updated_at TEXT NOT NULL` (ISO8601), `deleted_at TEXT` (soft delete).
-   - `tasks` — columns: `id TEXT PRIMARY KEY` (UUIDv7), `list_id TEXT NOT NULL REFERENCES lists(id)`, `parent_task_id TEXT REFERENCES tasks(id)` (NULL for top-level, non-NULL for subtasks), `title TEXT NOT NULL`, `content TEXT` (markdown body), `priority INTEGER NOT NULL DEFAULT 0` (0=none, 1=low, 2=medium, 3=high), `status INTEGER NOT NULL DEFAULT 0` (0=open, 1=completed), `due_date TEXT` (ISO8601 date or datetime), `due_timezone TEXT` (IANA tz string), `recurrence_rule TEXT` (RRULE string per RFC 5545), `sort_order INTEGER NOT NULL DEFAULT 0`, `completed_at TEXT`, `created_at TEXT NOT NULL`, `updated_at TEXT NOT NULL`, `deleted_at TEXT`.
+   - `tasks` — columns: `id TEXT PRIMARY KEY` (UUIDv7), `list_id TEXT NOT NULL REFERENCES lists(id)`, `parent_task_id TEXT REFERENCES tasks(id)` (NULL for top-level, non-NULL for subtasks), `title TEXT NOT NULL`, `content TEXT` (markdown body), `priority INTEGER NOT NULL DEFAULT 0` (0=none, 1=low, 2=medium, 3=high — WHY: 4 levels matches TickTick's priority model and fits in 2 bits), `status INTEGER NOT NULL DEFAULT 0` (0=open, 1=completed), `due_date TEXT` (ISO8601 date or datetime), `due_timezone TEXT` (IANA tz string), `recurrence_rule TEXT` (RRULE string per RFC 5545), `sort_order INTEGER NOT NULL DEFAULT 0`, `completed_at TEXT`, `created_at TEXT NOT NULL`, `updated_at TEXT NOT NULL`, `deleted_at TEXT`.
    - `tags` — columns: `id TEXT PRIMARY KEY`, `name TEXT NOT NULL UNIQUE`, `color TEXT`, `created_at TEXT NOT NULL`.
    - `task_tags` — columns: `task_id TEXT NOT NULL REFERENCES tasks(id)`, `tag_id TEXT NOT NULL REFERENCES tags(id)`, `PRIMARY KEY (task_id, tag_id)`.
    - `sync_meta` — columns: `entity_type TEXT NOT NULL` (`list`, `task`, `tag`, `task_tag`), `entity_id TEXT NOT NULL`, `field_name TEXT NOT NULL`, `updated_at TEXT NOT NULL`, `device_id TEXT NOT NULL`, `PRIMARY KEY (entity_type, entity_id, field_name)`.
@@ -40,10 +133,12 @@
 ---
 
 ### Task 2 (A) +db
+blockedBy: [0]
+
 **PURPOSE** — Creates the PostgreSQL server-side schema that mirrors the canonical model with Postgres-specific types, enabling the sync server to store all user data.
 
 **WHAT TO DO**
-1. Create `server/migrations/001_init.up.sql` using PostgreSQL syntax:
+1. Create `services/server/migrations/001_init.up.sql` using PostgreSQL syntax:
    - `users` — columns: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `email TEXT UNIQUE`, `device_id TEXT`, `created_at TIMESTAMPTZ NOT NULL DEFAULT now()`.
    - `magic_links` — columns: `id UUID PRIMARY KEY DEFAULT gen_random_uuid()`, `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`, `token TEXT NOT NULL UNIQUE`, `expires_at TIMESTAMPTZ NOT NULL`, `used_at TIMESTAMPTZ`.
    - `lists` — same as canonical but with `user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE`, all `TEXT` timestamps become `TIMESTAMPTZ`, and add `UNIQUE(user_id, id)`.
@@ -51,7 +146,7 @@
    - `tags` — same with `user_id`, uniqueness becomes `UNIQUE(user_id, name)`.
    - `task_tags` — same with `user_id`.
    - `sync_log` — columns: `id BIGSERIAL PRIMARY KEY`, `user_id UUID NOT NULL REFERENCES users(id)`, `entity_type TEXT NOT NULL`, `entity_id TEXT NOT NULL`, `field_name TEXT NOT NULL`, `new_value JSONB`, `device_id TEXT NOT NULL`, `timestamp TIMESTAMPTZ NOT NULL DEFAULT now()`. Index on `(user_id, timestamp)`.
-2. Create `server/migrations/001_init.down.sql` that drops all tables in reverse dependency order.
+2. Create `services/server/migrations/001_init.down.sql` that drops all tables in reverse dependency order.
 
 **DONE WHEN**
 - [ ] Running `001_init.up.sql` on a fresh PostgreSQL 16 database succeeds with zero errors.
@@ -61,18 +156,20 @@
 ---
 
 ### Task 3 (B) +db
+blockedBy: [1]
+
 **PURPOSE** — Provides seed data for development and testing so that every platform client can boot with a realistic dataset.
 
 **WHAT TO DO**
 1. Create `schema/seed.sql` that inserts:
    - 1 list named "Inbox" with `is_inbox=1`, 2 additional lists ("Work", "Personal").
-   - 10 tasks distributed across the 3 lists: at least 2 with subtasks (depth 1), at least 1 with `recurrence_rule='FREQ=DAILY;INTERVAL=1'`, at least 1 with each priority level (0–3), at least 2 with `status=1` (completed), at least 3 with `due_date` values (one past, one today, one future).
+   - 10 tasks distributed across the 3 lists: at least 2 with subtasks (depth 1), at least 1 with `recurrence_rule='FREQ=DAILY;INTERVAL=1'`, at least 1 with each priority level (0-3), at least 2 with `status=1` (completed), at least 3 with `due_date` values (one past, one today, one future).
    - 4 tags ("urgent", "errand", "review", "idea") and at least 6 `task_tags` associations.
 2. All `id` fields must be hardcoded UUIDv7 strings (use pre-generated values). All `created_at`/`updated_at` must be valid ISO8601.
 
 **DONE WHEN**
 - [ ] Executing `canonical.sql` followed by `seed.sql` on a fresh SQLite database succeeds with zero errors.
-- [ ] `SELECT COUNT(*) FROM tasks` returns 10; `SELECT COUNT(*) FROM tasks WHERE parent_task_id IS NOT NULL` returns ≥ 2; `SELECT COUNT(*) FROM tags` returns 4.
+- [ ] `SELECT COUNT(*) FROM tasks` returns 10; `SELECT COUNT(*) FROM tasks WHERE parent_task_id IS NOT NULL` returns >= 2; `SELECT COUNT(*) FROM tags` returns 4.
 
 ---
 
@@ -81,36 +178,40 @@
 ---
 
 ### Task 4 (A) +server
+blockedBy: [0]
+
 **PURPOSE** — Bootstraps the Go server project with Echo, structured logging, config loading, and graceful shutdown — the foundation for every subsequent server task.
 
 **WHAT TO DO**
-1. Initialize `server/` as a Go module: `go mod init github.com/<user>/tickclone-server`.
-2. Create `server/cmd/server/main.go`:
-   - Load config from environment variables using `github.com/caarlos0/env/v11`: `PORT` (default `8080`), `DATABASE_URL` (required), `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `MAGIC_LINK_SECRET` (required, 32+ char), `CORS_ORIGINS` (comma-separated, default `*`).
+1. Initialize `services/server/` as a Go module: `go mod init github.com/<user>/tickclone-server`.
+2. Create `services/server/cmd/server/main.go`:
+   - Load config from environment variables using `github.com/caarlos0/env/v11`: `PORT` (default `8080`), `DATABASE_URL` (required), `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `MAGIC_LINK_SECRET` (required, 32+ char — WHY: 256-bit minimum for HS256 JWT signing per RFC 7518 sec 3.2), `CORS_ORIGINS` (comma-separated, default `*`).
    - Initialize `slog.Logger` with JSON handler to stdout.
    - Create Echo instance, attach `middleware.Recover()`, `middleware.CORS()` (using config origins), and a request-logging middleware that logs method, path, status, and latency via `slog`.
    - Register a `GET /health` route returning `{"status":"ok","time":"<RFC3339>"}`.
-   - Start server with graceful shutdown on `SIGINT`/`SIGTERM` using `signal.NotifyContext` and `e.Shutdown(ctx)` with 10s timeout.
-3. Create `server/Dockerfile`: multi-stage build, `golang:1.22-alpine` builder, `alpine:3.19` runner, expose `$PORT`, run as non-root user.
+   - Start server with graceful shutdown on `SIGINT`/`SIGTERM` using `signal.NotifyContext` and `e.Shutdown(ctx)` with 10s timeout — WHY: 10s allows in-flight HTTP requests and DB transactions to complete without hanging indefinitely.
+3. Create `services/server/Dockerfile`: multi-stage build, `golang:1.22-alpine` builder, `alpine:3.19` runner, expose `$PORT`, run as non-root user.
 
 **DONE WHEN**
 - [ ] `go build ./cmd/server` compiles with zero errors.
 - [ ] Running the binary with `DATABASE_URL=postgres://...` set, then `curl localhost:8080/health` returns HTTP 200 with JSON containing `"status":"ok"`.
 - [ ] Sending `SIGTERM` to the process causes it to shut down within 10s with a log line indicating graceful shutdown.
-- [ ] `docker build -t tickclone-server ./server` succeeds.
+- [ ] `docker build -t tickclone-server ./services/server` succeeds.
 
 ---
 
 ### Task 5 (A) +server +db
+blockedBy: [2, 4]
+
 **PURPOSE** — Connects the server to PostgreSQL and runs migrations on startup so the database is always at the latest schema version.
 
 **WHAT TO DO**
 1. Add `github.com/jackc/pgx/v5/pgxpool` and `github.com/golang-migrate/migrate/v4` (with `pgx5` driver and `file` source) to `go.mod`.
-2. Create `server/internal/database/pool.go`:
-   - `func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error)` — parses URL, sets `pool_max_conns=20`, connects, and pings.
-3. Create `server/internal/database/migrate.go`:
+2. Create `services/server/internal/database/pool.go`:
+   - `func NewPool(ctx context.Context, databaseURL string) (*pgxpool.Pool, error)` — parses URL, sets `pool_max_conns=20` (WHY: 20 connections handles ~200 concurrent sync clients given avg query time of ~5ms; exceeding this saturates a single Postgres instance), connects, and pings.
+3. Create `services/server/internal/database/migrate.go`:
    - `func RunMigrations(databaseURL string, migrationsPath string) error` — uses `golang-migrate` to run all up migrations from the `migrationsPath` directory. Logs each migration step via `slog`. Returns `nil` on `migrate.ErrNoChange`.
-4. In `main.go`, call `RunMigrations` before starting Echo, then `NewPool` and store the pool in a custom Echo context or dependency struct `server/internal/app/app.go`: `type App struct { DB *pgxpool.Pool; Log *slog.Logger; Config *Config }`.
+4. In `main.go`, call `RunMigrations` before starting Echo, then `NewPool` and store the pool in a custom Echo context or dependency struct `services/server/internal/app/app.go`: `type App struct { DB *pgxpool.Pool; Log *slog.Logger; Config *Config }`.
 
 **DONE WHEN**
 - [ ] Starting the server against an empty PostgreSQL database automatically creates all tables from `001_init.up.sql`.
@@ -120,18 +221,20 @@
 ---
 
 ### Task 6 (A) +server
+blockedBy: [5]
+
 **PURPOSE** — Implements full CRUD for lists, the top-level organizational entity that tasks belong to.
 
 **WHAT TO DO**
-1. Create `server/internal/models/list.go`: struct `List` with fields matching the `lists` table (use `time.Time` for timestamps, `*time.Time` for nullable ones). Add JSON tags (camelCase).
-2. Create `server/internal/repository/list_repo.go`:
+1. Create `services/server/internal/models/list.go`: struct `List` with fields matching the `lists` table (use `time.Time` for timestamps, `*time.Time` for nullable ones). Add JSON tags (camelCase).
+2. Create `services/server/internal/repository/list_repo.go`:
    - `CreateList(ctx, userID uuid.UUID, list *List) error` — `INSERT INTO lists (...) VALUES (...) RETURNING id, created_at, updated_at`.
    - `GetListsByUser(ctx, userID uuid.UUID) ([]List, error)` — `SELECT ... WHERE user_id=$1 AND deleted_at IS NULL ORDER BY sort_order`.
    - `GetListByID(ctx, userID, listID uuid.UUID) (*List, error)`.
    - `UpdateList(ctx, userID, listID uuid.UUID, name *string, color *string, sortOrder *int) (*List, error)` — builds dynamic `SET` clause for non-nil fields, always sets `updated_at=now()`.
    - `DeleteList(ctx, userID, listID uuid.UUID) error` — soft-delete: `UPDATE lists SET deleted_at=now() WHERE ...`. Also soft-deletes all tasks in the list.
-3. Create `server/internal/handlers/list_handler.go`:
-   - `POST /api/lists` — validate `name` non-empty (max 255 chars), create, return 201 + JSON.
+3. Create `services/server/internal/handlers/list_handler.go`:
+   - `POST /api/lists` — validate `name` non-empty (max 255 chars — WHY: 255 is a safe upper bound for a display name; prevents abuse while accommodating all reasonable list names), create, return 201 + JSON.
    - `GET /api/lists` — return 200 + JSON array.
    - `GET /api/lists/:id` — return 200 or 404.
    - `PATCH /api/lists/:id` — partial update, return 200.
@@ -147,18 +250,20 @@
 ---
 
 ### Task 7 (A) +server
+blockedBy: [5]
+
 **PURPOSE** — Implements full CRUD for tasks including subtask nesting, which is the core data entity of the entire application.
 
 **WHAT TO DO**
-1. Create `server/internal/models/task.go`: struct `Task` with all columns from the `tasks` table. Include a `Subtasks []Task` field (JSON tag `subtasks`, populated on read). Include a `Tags []Tag` field populated via join.
-2. Create `server/internal/repository/task_repo.go`:
-   - `CreateTask(ctx, userID uuid.UUID, task *Task) error` — INSERT, validate `list_id` exists and belongs to user. If `parent_task_id` is set, validate it exists, belongs to same list, and is not itself a subtask (max depth = 1).
+1. Create `services/server/internal/models/task.go`: struct `Task` with all columns from the `tasks` table. Include a `Subtasks []Task` field (JSON tag `subtasks`, populated on read). Include a `Tags []Tag` field populated via join.
+2. Create `services/server/internal/repository/task_repo.go`:
+   - `CreateTask(ctx, userID uuid.UUID, task *Task) error` — INSERT, validate `list_id` exists and belongs to user. If `parent_task_id` is set, validate it exists, belongs to same list, and is not itself a subtask (max depth = 1 — WHY: single-level nesting keeps the UI simple and avoids recursive rendering complexity; TickTick uses the same limit).
    - `GetTasksByList(ctx, userID, listID uuid.UUID, includeCompleted bool) ([]Task, error)` — returns top-level tasks with subtasks nested. Joins `task_tags` + `tags` to populate `Tags` field. Filter by `deleted_at IS NULL`. Order by `sort_order`.
    - `GetTaskByID(ctx, userID, taskID uuid.UUID) (*Task, error)` — single task with subtasks and tags.
    - `UpdateTask(ctx, userID, taskID uuid.UUID, fields map[string]interface{}) (*Task, error)` — dynamic SET for provided fields. If `status` changes to 1, set `completed_at=now()`. If `status` changes to 0, set `completed_at=NULL`.
    - `DeleteTask(ctx, userID, taskID uuid.UUID) error` — soft-delete task and all its subtasks.
    - `MoveTask(ctx, userID, taskID, newListID uuid.UUID, newSortOrder int) error` — updates `list_id` and `sort_order`, also moves subtasks.
-3. Create `server/internal/handlers/task_handler.go`:
+3. Create `services/server/internal/handlers/task_handler.go`:
    - `POST /api/lists/:listId/tasks` — create task (or subtask if `parentTaskId` in body). Return 201.
    - `GET /api/lists/:listId/tasks?includeCompleted=false` — return nested tasks. Return 200.
    - `GET /api/tasks/:id` — single task. Return 200 or 404.
@@ -176,11 +281,13 @@
 ---
 
 ### Task 8 (A) +server
+blockedBy: [5]
+
 **PURPOSE** — Implements CRUD for tags and the task-tag association, enabling label-based filtering and organization.
 
 **WHAT TO DO**
-1. Create `server/internal/models/tag.go`: struct `Tag` with `ID`, `Name`, `Color`, `CreatedAt`.
-2. Create `server/internal/repository/tag_repo.go`:
+1. Create `services/server/internal/models/tag.go`: struct `Tag` with `ID`, `Name`, `Color`, `CreatedAt`.
+2. Create `services/server/internal/repository/tag_repo.go`:
    - `CreateTag(ctx, userID uuid.UUID, tag *Tag) error`.
    - `GetTagsByUser(ctx, userID uuid.UUID) ([]Tag, error)`.
    - `UpdateTag(ctx, userID, tagID uuid.UUID, name *string, color *string) (*Tag, error)`.
@@ -188,7 +295,7 @@
    - `AddTagToTask(ctx, userID, taskID, tagID uuid.UUID) error` — INSERT into `task_tags`, return conflict-safe (ON CONFLICT DO NOTHING).
    - `RemoveTagFromTask(ctx, userID, taskID, tagID uuid.UUID) error` — DELETE from `task_tags`.
    - `GetTasksByTag(ctx, userID, tagID uuid.UUID) ([]Task, error)` — returns all non-deleted tasks with the given tag.
-3. Create `server/internal/handlers/tag_handler.go`:
+3. Create `services/server/internal/handlers/tag_handler.go`:
    - `POST /api/tags` — create. Return 201.
    - `GET /api/tags` — list all. Return 200.
    - `PATCH /api/tags/:id` — update. Return 200.
@@ -206,14 +313,16 @@
 ---
 
 ### Task 9 (A) +server +auth
+blockedBy: [5]
+
 **PURPOSE** — Implements passwordless magic link authentication so users can optionally enable sync across devices.
 
 **WHAT TO DO**
-1. Create `server/internal/services/auth_service.go`:
+1. Create `services/server/internal/services/auth_service.go`:
    - `GenerateMagicLink(ctx, email string) (token string, err error)`:
      a. Find or create user by email in `users` table.
      b. Generate a 32-byte crypto-random token, base64url-encode it.
-     c. Insert into `magic_links` with `expires_at = now() + 15 minutes`.
+     c. Insert into `magic_links` with `expires_at = now() + 15 minutes` — WHY: 15min gives enough time to check email (even slow providers) but limits the attack window for token interception.
      d. Return the token (caller sends the email).
    - `ValidateMagicLink(ctx, token string) (userID uuid.UUID, err error)`:
      a. Look up token in `magic_links` where `used_at IS NULL AND expires_at > now()`.
@@ -221,14 +330,14 @@
      c. Mark `used_at = now()`.
      d. Return `user_id`.
    - `GenerateSessionToken(userID uuid.UUID) (jwt string, err error)`:
-     a. Create a JWT (HS256) signed with `MAGIC_LINK_SECRET`, claims: `sub=userID`, `iat=now`, `exp=now+30days`.
+     a. Create a JWT (HS256) signed with `MAGIC_LINK_SECRET`, claims: `sub=userID`, `iat=now`, `exp=now+30days` — WHY: 30-day sessions reduce re-authentication friction for a desktop app; users rarely sign out of productivity tools.
      b. Return the signed token string.
-2. Create `server/internal/services/email_service.go`:
+2. Create `services/server/internal/services/email_service.go`:
    - `SendMagicLink(ctx, toEmail, token string) error` — uses `net/smtp` to send an email via configured SMTP. Email body: plain text with a link `{BASE_URL}/auth/verify?token={token}`.
-3. Create `server/internal/handlers/auth_handler.go`:
+3. Create `services/server/internal/handlers/auth_handler.go`:
    - `POST /api/auth/magic-link` — body `{"email":"..."}`. Calls `GenerateMagicLink`, then `SendMagicLink`. Always returns 200 `{"message":"If that email is registered, a link has been sent."}` (no user enumeration).
    - `POST /api/auth/verify` — body `{"token":"..."}`. Calls `ValidateMagicLink`, then `GenerateSessionToken`. Returns 200 `{"token":"<jwt>","expiresAt":"..."}`.
-4. Create `server/internal/middleware/auth_middleware.go`:
+4. Create `services/server/internal/middleware/auth_middleware.go`:
    - Echo middleware that reads `Authorization: Bearer <jwt>`, validates signature and expiry, extracts `sub` claim as `userID`, sets it in Echo context via `c.Set("userID", userID)`.
    - If no/invalid token: return 401 `{"error":"unauthorized"}`.
    - Apply this middleware to all `/api/*` routes except `/api/auth/*` and `/health`.
@@ -242,6 +351,8 @@
 ---
 
 ### Task 10 (A) +server
+blockedBy: [9]
+
 **PURPOSE** — Implements the local-first single-user mode where the server is used without auth, enabling the default no-account experience.
 
 **WHAT TO DO**
@@ -259,12 +370,14 @@
 ---
 
 ### Task 11 (B) +server
+blockedBy: [7]
+
 **PURPOSE** — Implements recurring task expansion so the server can generate future instances of recurring tasks based on RRULE.
 
 **WHAT TO DO**
 1. Add `github.com/teambition/rrule-go` to `go.mod`.
-2. Create `server/internal/services/recurrence_service.go`:
-   - `ExpandRecurrence(rule string, dtstart time.Time, after time.Time, limit int) ([]time.Time, error)` — parses the RRULE string, returns the next `limit` occurrences after `after`. Default `limit=10`.
+2. Create `services/server/internal/services/recurrence_service.go`:
+   - `ExpandRecurrence(rule string, dtstart time.Time, after time.Time, limit int) ([]time.Time, error)` — parses the RRULE string, returns the next `limit` occurrences after `after`. Default `limit=10` — WHY: 10 previews covers 2+ weeks of daily tasks, which is the practical lookahead horizon for most users.
    - `CompleteRecurringTask(ctx, repo TaskRepo, userID, taskID uuid.UUID) (*Task, error)`:
      a. Fetch the task. If `recurrence_rule` is empty, return error.
      b. Mark current instance as completed (`status=1`, `completed_at=now()`).
@@ -288,14 +401,16 @@
 ---
 
 ### Task 12 (A) +sync +server
+blockedBy: [6, 7, 8]
+
 **PURPOSE** — Implements the server-side sync endpoint that clients push local changes to and pull remote changes from, using timestamp-based conflict resolution.
 
 **WHAT TO DO**
-1. Create `server/internal/models/sync.go`:
+1. Create `services/server/internal/models/sync.go`:
    - `SyncPushPayload` struct: `DeviceID string`, `Changes []ChangeRecord`. Each `ChangeRecord`: `EntityType string`, `EntityID string`, `FieldName string`, `NewValue json.RawMessage`, `Timestamp time.Time`.
    - `SyncPullPayload` struct: `DeviceID string`, `LastSyncAt time.Time`.
    - `SyncPullResponse` struct: `Changes []ChangeRecord`, `ServerTime time.Time`.
-2. Create `server/internal/services/sync_service.go`:
+2. Create `services/server/internal/services/sync_service.go`:
    - `PushChanges(ctx, userID uuid.UUID, payload SyncPushPayload) (accepted int, conflicts int, err error)`:
      a. For each `ChangeRecord`, check `sync_log` for the latest entry with same `(entity_type, entity_id, field_name)`.
      b. If no existing entry OR `payload.Timestamp > existing.Timestamp`: apply the change (UPDATE the corresponding table field), insert into `sync_log`. Increment `accepted`.
@@ -303,7 +418,7 @@
    - `PullChanges(ctx, userID uuid.UUID, payload SyncPullPayload) (*SyncPullResponse, error)`:
      a. Query `sync_log WHERE user_id=$1 AND device_id != $2 AND timestamp > $3 ORDER BY timestamp ASC`.
      b. Return the change records and current server time.
-3. Create `server/internal/handlers/sync_handler.go`:
+3. Create `services/server/internal/handlers/sync_handler.go`:
    - `POST /api/sync/push` — accepts `SyncPushPayload`, returns 200 `{"accepted": N, "conflicts": M}`.
    - `POST /api/sync/pull` — accepts `SyncPullPayload`, returns 200 with `SyncPullResponse`.
 
@@ -316,6 +431,8 @@
 ---
 
 ### Task 13 (A) +sync +server
+blockedBy: [12]
+
 **PURPOSE** — Adds batch transaction support to sync push so that multiple related changes (e.g., creating a task and assigning tags) succeed or fail atomically.
 
 **WHAT TO DO**
@@ -336,18 +453,20 @@
 ---
 
 ### Task 14 (A) +tauri
+blockedBy: [0]
+
 **PURPOSE** — Scaffolds the Tauri 2.x project with Svelte 5 frontend, establishing the cross-platform application shell.
 
 **WHAT TO DO**
-1. In project root, run `npm create tauri-app@latest tauri-app -- --template svelte-ts` (or equivalent manual setup).
-2. Ensure `tauri-app/src-tauri/Cargo.toml` targets Tauri 2.x with features: `["shell-open"]`.
-3. Configure `tauri-app/src-tauri/tauri.conf.json`:
+1. In the monorepo, ensure `apps/desktop/` contains the Tauri 2 + Svelte 5 project (initialized in Task 0).
+2. Ensure `apps/desktop/src-tauri/Cargo.toml` targets Tauri 2.x with features: `["shell-open"]`.
+3. Configure `apps/desktop/src-tauri/tauri.conf.json`:
    - `productName`: `"TickClone"`, `identifier`: `"com.tickclone.app"`.
-   - Window: `title: "TickClone"`, `width: 1200`, `height: 800`, `minWidth: 800`, `minHeight: 600`.
+   - Window: `title: "TickClone"`, `width: 1200`, `height: 800` (WHY: 1200x800 is the most common default for productivity apps — large enough to show sidebar + list + detail without scrolling), `minWidth: 800`, `minHeight: 600`.
    - Allow list for IPC commands (to be populated in later tasks).
-4. Verify `tauri-app/package.json` has Svelte 5 (`svelte@^5.0.0`), `@sveltejs/vite-plugin-svelte`, TypeScript, and Vite.
-5. Create `tauri-app/src/App.svelte` with a placeholder layout: 250px left sidebar, remaining content area, top toolbar. Use CSS grid. Display "TickClone" in the toolbar.
-6. Verify the dev loop: `cd tauri-app && npm run tauri dev` launches a native window on the current platform.
+4. Verify `apps/desktop/package.json` has Svelte 5 (`svelte@^5.0.0`), `@sveltejs/vite-plugin-svelte`, TypeScript, and Vite.
+5. Create `apps/desktop/src/App.svelte` with a placeholder layout: 250px left sidebar (WHY: 250px fits ~20 characters of list name which covers 95% of typical list names), remaining content area, top toolbar. Use CSS grid. Display "TickClone" in the toolbar.
+6. Verify the dev loop: `cd apps/desktop && npm run tauri dev` launches a native window on the current platform.
 
 **DONE WHEN**
 - [ ] `npm run tauri dev` compiles and opens a native window titled "TickClone" with the sidebar + content layout visible.
@@ -357,16 +476,18 @@
 ---
 
 ### Task 15 (A) +tauri
+blockedBy: [1, 14]
+
 **PURPOSE** — Implements the local SQLite database layer in the Tauri Rust backend, providing offline-first task storage.
 
 **WHAT TO DO**
 1. Add `rusqlite` (with `bundled` feature) and `serde`/`serde_json` to `src-tauri/Cargo.toml`.
 2. Create `src-tauri/src/db.rs`:
-   - `pub fn init_db(app_data_dir: &Path) -> Result<Connection>` — opens or creates `tickclone.db` in the app data directory. Runs `PRAGMA foreign_keys=ON`, `PRAGMA journal_mode=WAL`. Executes the canonical schema SQL (embed it via `include_str!("../../schema/canonical.sql")` — copy the schema file into the Tauri project or use a shared path).
+   - `pub fn init_db(app_data_dir: &Path) -> Result<Connection>` — opens or creates `tickclone.db` in the app data directory. Runs `PRAGMA foreign_keys=ON`, `PRAGMA journal_mode=WAL` (WHY: WAL mode allows concurrent readers during writes, preventing UI freezes during sync operations). Executes the canonical schema SQL (embed it via `include_str!("../../schema/canonical.sql")` — copy the schema file into the Tauri project or use a shared path).
    - `pub fn get_connection(app_data_dir: &Path) -> Result<Connection>` — opens existing DB with same PRAGMAs.
 3. Create `src-tauri/src/state.rs`:
    - `pub struct AppState { pub db_path: PathBuf }` — stored as Tauri managed state.
-4. In `src-tauri/src/main.rs` (or `lib.rs` for Tauri 2):
+4. In `src-tauri/src/lib.rs` (Tauri 2):
    - On app setup, resolve `app.path().app_data_dir()`, call `init_db`, store `AppState` via `app.manage()`.
 
 **DONE WHEN**
@@ -377,6 +498,8 @@
 ---
 
 ### Task 16 (A) +tauri
+blockedBy: [15]
+
 **PURPOSE** — Exposes Tauri IPC commands for list CRUD so the Svelte frontend can manage lists via the Rust backend.
 
 **WHAT TO DO**
@@ -397,11 +520,13 @@
 ---
 
 ### Task 17 (A) +tauri
+blockedBy: [15]
+
 **PURPOSE** — Exposes Tauri IPC commands for task CRUD including subtask support, the primary data operations for the app.
 
 **WHAT TO DO**
 1. Create `src-tauri/src/commands/task_commands.rs`:
-   - `create_task(state, list_id, title, content?, priority?, due_date?, due_timezone?, recurrence_rule?, parent_task_id?) -> Result<Task, String>` — validates `parent_task_id` depth ≤ 1, generates UUIDv7, inserts.
+   - `create_task(state, list_id, title, content?, priority?, due_date?, due_timezone?, recurrence_rule?, parent_task_id?) -> Result<Task, String>` — validates `parent_task_id` depth <= 1 (WHY: single-level nesting keeps the UI simple; same limit as TickTick), generates UUIDv7, inserts.
    - `get_tasks_by_list(state, list_id, include_completed: bool) -> Result<Vec<Task>, String>` — returns top-level tasks with nested `subtasks` vec. Joins tags.
    - `get_task(state, id) -> Result<Task, String>`.
    - `update_task(state, id, fields: TaskUpdatePayload) -> Result<Task, String>` — `TaskUpdatePayload` has all optional fields. Auto-sets `completed_at` on status change.
@@ -420,6 +545,8 @@
 ---
 
 ### Task 18 (A) +tauri
+blockedBy: [15]
+
 **PURPOSE** — Exposes Tauri IPC commands for tag CRUD and task-tag association management.
 
 **WHAT TO DO**
@@ -445,20 +572,22 @@
 ---
 
 ### Task 19 (A) +svelte
+blockedBy: [16, 17, 18]
+
 **PURPOSE** — Implements the global Svelte store layer that bridges Tauri IPC with reactive UI state, enabling all components to read and mutate app data.
 
 **WHAT TO DO**
-1. Create `tauri-app/src/lib/stores/lists.ts`:
+1. Create `apps/desktop/src/lib/stores/lists.ts`:
    - Export a writable store `lists` of type `Writable<List[]>`.
    - Export async functions: `loadLists()`, `addList(name, color?)`, `editList(id, updates)`, `removeList(id)`. Each calls the corresponding Tauri `invoke` and updates the store.
-2. Create `tauri-app/src/lib/stores/tasks.ts`:
+2. Create `apps/desktop/src/lib/stores/tasks.ts`:
    - Export a writable store `tasks` of type `Writable<Task[]>` (the current list's tasks).
    - Export a writable store `selectedListId` of type `Writable<string | null>`.
    - Export async functions: `loadTasks(listId, includeCompleted?)`, `addTask(...)`, `editTask(id, fields)`, `removeTask(id)`, `moveTask(id, newListId, sortOrder)`, `completeTask(id)` (handles recurring logic).
    - When `selectedListId` changes, auto-call `loadTasks`.
-3. Create `tauri-app/src/lib/stores/tags.ts`:
+3. Create `apps/desktop/src/lib/stores/tags.ts`:
    - Export store and CRUD functions for tags, plus `tagTask(taskId, tagId)` and `untagTask(taskId, tagId)`.
-4. Create shared TypeScript types in `tauri-app/src/lib/types.ts`: `List`, `Task`, `Tag`, `TaskUpdatePayload`, matching the Rust models.
+4. Create shared TypeScript types in `apps/desktop/src/lib/types.ts`: `List`, `Task`, `Tag`, `TaskUpdatePayload`, matching the Rust models.
 
 **DONE WHEN**
 - [ ] Calling `addList('Work')` in browser console (via dev tools) triggers IPC, and the `lists` store reactively updates.
@@ -468,10 +597,12 @@
 ---
 
 ### Task 20 (A) +svelte
+blockedBy: [19]
+
 **PURPOSE** — Builds the sidebar component displaying all lists, inbox, tag filters, and the "Add List" action — the primary navigation element.
 
 **WHAT TO DO**
-1. Create `tauri-app/src/lib/components/Sidebar.svelte`:
+1. Create `apps/desktop/src/lib/components/Sidebar.svelte`:
    - Render the Inbox list at the top (distinguished with an inbox icon — use Lucide SVG inline or a simple SVG).
    - Below inbox, render user lists from `$lists` store sorted by `sort_order`. Each list item shows: colored circle (6px, `list.color`), name, task count badge (number of open tasks).
    - Clicking a list sets `$selectedListId` to that list's ID.
@@ -490,18 +621,20 @@
 ---
 
 ### Task 21 (A) +svelte
+blockedBy: [19, 20]
+
 **PURPOSE** — Builds the task list view showing all tasks for the selected list with inline add, complete, and priority indicators.
 
 **WHAT TO DO**
-1. Create `tauri-app/src/lib/components/TaskList.svelte`:
+1. Create `apps/desktop/src/lib/components/TaskList.svelte`:
    - If no list selected, show empty state: centered text "Select a list to view tasks".
    - Otherwise, show list name as header with task count.
    - Quick-add input at top: `<input placeholder="Add a task..." />`. On Enter, call `addTask` with the typed title and the current `selectedListId`. Clear input after.
-   - Render each task as a row: checkbox (on click → `completeTask(id)`), priority indicator (colored left border: none/gray/blue/orange/red for 0–3), title text, due date badge (if set, show relative: "Today", "Tomorrow", "Mar 15", styled red if overdue), tag pills (small colored badges).
-   - Subtasks: indented below parent with a subtle left margin (24px). Show collapse/expand chevron on parent if subtasks exist.
+   - Render each task as a row: checkbox (on click -> `completeTask(id)`), priority indicator (colored left border: none/gray/blue/orange/red for 0-3), title text, due date badge (if set, show relative: "Today", "Tomorrow", "Mar 15", styled red if overdue), tag pills (small colored badges).
+   - Subtasks: indented below parent with a subtle left margin (24px — WHY: 24px is 1.5x the base font size, providing clear visual hierarchy without excessive indentation). Show collapse/expand chevron on parent if subtasks exist.
    - Completed tasks: if `includeCompleted` is toggled on, show below a "Completed" divider with strikethrough titles and muted colors.
-   - Clicking a task title (not checkbox) opens the task detail panel (Task 23).
-2. Support drag-and-drop reordering (use a simple mousedown/mousemove/mouseup handler or `@dnd-kit` equivalent for Svelte — or a lightweight `sortablejs` integration). On drop, call `editTask(id, { sortOrder: newIndex })` for affected tasks.
+   - Clicking a task title (not checkbox) opens the task detail panel (Task 22).
+2. Support drag-and-drop reordering (use a simple mousedown/mousemove/mouseup handler or a lightweight `sortablejs` integration). On drop, call `editTask(id, { sortOrder: newIndex })` for affected tasks.
 
 **DONE WHEN**
 - [ ] Typing "Buy milk" and pressing Enter creates a task that appears in the list immediately.
@@ -513,21 +646,23 @@
 ---
 
 ### Task 22 (A) +svelte
+blockedBy: [19, 21]
+
 **PURPOSE** — Builds the task detail panel for viewing and editing all task fields, providing the full editing experience.
 
 **WHAT TO DO**
-1. Create `tauri-app/src/lib/components/TaskDetail.svelte`:
-   - Slides in from the right (400px wide panel) when a task is selected. Close button (X) in top-right.
-   - Editable title: `<input>` bound to task title, debounced save (300ms) via `editTask`.
+1. Create `apps/desktop/src/lib/components/TaskDetail.svelte`:
+   - Slides in from the right (400px wide panel — WHY: 400px provides enough width for date pickers and tag management without overwhelming the task list) when a task is selected. Close button (X) in top-right.
+   - Editable title: `<input>` bound to task title, debounced save (300ms — WHY: 300ms balances responsiveness with avoiding excessive IPC calls during rapid typing) via `editTask`.
    - Editable content/notes: `<textarea>` for markdown body, debounced save.
    - Priority selector: 4 clickable icons/buttons (none, low, med, high) with color coding. Clicking calls `editTask`.
    - Due date picker: `<input type="date">` + optional time `<input type="time">`. On change, calls `editTask` with ISO8601 string.
    - Recurrence rule: dropdown with presets ("None", "Daily", "Weekly", "Monthly", "Yearly", "Custom"). "Custom" shows a text input for raw RRULE. Calls `editTask`.
-   - Tags section: display current tags as removable pills (click X → `untagTask`). "+" button shows a dropdown of available tags to add (calls `tagTask`).
-   - Subtasks section: inline list of subtasks with checkboxes + a "+ Add subtask" input.
+   - Tags section: display current tags as removable pills (click X -> `untagTask`). "+" button shows a dropdown of available tags to add (calls `tagTask`).
+   - Subtasks section: inline list of subtasks with checkboxes + a "+ Add subtask" input. Max 50 subtasks per task — WHY: prevents UI performance degradation in tree rendering; no real-world task needs 50+ subtasks.
    - List assignment: dropdown showing all lists. Changing it calls `moveTask`.
    - Footer: "Created <date>" and "Delete task" button (red, with confirm dialog).
-2. Create `tauri-app/src/lib/stores/ui.ts`: `selectedTaskId` writable store. `TaskDetail` reacts to this.
+2. Create `apps/desktop/src/lib/stores/ui.ts`: `selectedTaskId` writable store. `TaskDetail` reacts to this.
 
 **DONE WHEN**
 - [ ] Clicking a task in `TaskList` opens `TaskDetail` with all fields populated.
@@ -538,7 +673,9 @@
 
 ---
 
-### Task 23 (B) +svelte
+### Task 23 (B) +svelte +tauri
+blockedBy: [17, 21]
+
 **PURPOSE** — Implements a "Today" smart view that aggregates tasks due today across all lists, a key productivity feature.
 
 **WHAT TO DO**
@@ -546,7 +683,7 @@
    - Query: `SELECT ... FROM tasks WHERE deleted_at IS NULL AND status=0 AND date(due_date) = date('now') ORDER BY priority DESC, sort_order ASC`.
    - Include subtasks and tags via the same join logic.
 2. Register the command.
-3. Create `tauri-app/src/lib/components/TodayView.svelte`:
+3. Create `apps/desktop/src/lib/components/TodayView.svelte`:
    - Header: "Today" + date string (e.g., "Thursday, Mar 12").
    - Group tasks by list: show list name as sub-header with colored dot, then tasks beneath.
    - Reuse the same task row rendering from `TaskList` (extract a `TaskRow.svelte` component in this task if not already done).
@@ -561,21 +698,23 @@
 
 ---
 
-### Task 24 (A) +svelte
+### Task 24 (A) +svelte +tauri
+blockedBy: [17, 21]
+
 **PURPOSE** — Implements the calendar month view displaying tasks on their due dates, the second core MVP view.
 
 **WHAT TO DO**
 1. Create a Tauri command `get_tasks_in_range(state, start_date: String, end_date: String) -> Result<Vec<Task>, String>`:
    - Query: `SELECT ... FROM tasks WHERE deleted_at IS NULL AND due_date >= $1 AND due_date <= $2 ORDER BY due_date, priority DESC`.
    - `start_date` and `end_date` are ISO8601 date strings.
-2. Create `tauri-app/src/lib/components/CalendarView.svelte`:
-   - Month grid: 7 columns (Mon–Sun), 5–6 rows. Header row with day names.
+2. Create `apps/desktop/src/lib/components/CalendarView.svelte`:
+   - Month grid: 7 columns (Mon-Sun), 5-6 rows. Header row with day names.
    - Navigation: "< Month Year >" header with left/right arrows to change month. "Today" button to jump to current month.
-   - Each day cell: date number (dim for days outside current month), list of task titles (max 3 visible, "+N more" overflow badge). Tasks colored by priority.
+   - Each day cell: date number (dim for days outside current month), list of task titles (max 3 visible — WHY: 3 tasks fit in a standard day cell height at default font size; more causes layout overflow, "+N more" overflow badge). Tasks colored by priority.
    - Clicking a day cell opens a popover or panel listing all tasks for that day with full `TaskRow` rendering.
    - Clicking a task in the calendar opens `TaskDetail`.
    - Quick add: clicking an empty area of a day cell opens an inline input to create a task with that date pre-filled as `due_date`.
-3. Store current month/year in `tauri-app/src/lib/stores/calendar.ts`. On month change, call `get_tasks_in_range` with first/last day of the visible range (include overflow days from adjacent months).
+3. Store current month/year in `apps/desktop/src/lib/stores/calendar.ts`. On month change, call `get_tasks_in_range` with first/last day of the visible range (include overflow days from adjacent months).
 4. Add "Calendar" navigation item in sidebar with a calendar icon.
 
 **DONE WHEN**
@@ -588,30 +727,32 @@
 ---
 
 ### Task 25 (B) +svelte
+blockedBy: [21]
+
 **PURPOSE** — Implements natural language date input so users can type things like "tomorrow 3pm" or "every weekday" and get structured date/recurrence data.
 
 **WHAT TO DO**
-1. Install `chrono-node` (npm package) in `tauri-app`: `npm install chrono-node`.
-2. Create `tauri-app/src/lib/services/nlp-date.ts`:
+1. Install `chrono-node` (npm package) in `apps/desktop`: `npm install chrono-node`.
+2. Create `apps/desktop/src/lib/services/nlp-date.ts`:
    - `export function parseNaturalDate(input: string, referenceDate?: Date): ParsedDate | null`.
    - `ParsedDate` type: `{ date: string (ISO8601), hasTime: boolean, recurrenceRule: string | null }`.
    - Use `chrono.parseDate(input, referenceDate)` for single dates.
    - For recurrence patterns, detect keywords before passing to chrono:
-     - "every day" / "daily" → `FREQ=DAILY;INTERVAL=1`
-     - "every week" / "weekly" → `FREQ=WEEKLY;INTERVAL=1`
-     - "every weekday" → `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR`
-     - "every month" / "monthly" → `FREQ=MONTHLY;INTERVAL=1`
-     - "every year" / "yearly" → `FREQ=YEARLY;INTERVAL=1`
-     - "every N days/weeks/months" → parse N and set interval.
+     - "every day" / "daily" -> `FREQ=DAILY;INTERVAL=1`
+     - "every week" / "weekly" -> `FREQ=WEEKLY;INTERVAL=1`
+     - "every weekday" -> `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR`
+     - "every month" / "monthly" -> `FREQ=MONTHLY;INTERVAL=1`
+     - "every year" / "yearly" -> `FREQ=YEARLY;INTERVAL=1`
+     - "every N days/weeks/months" -> parse N and set interval.
    - If recurrence detected, also parse the start date from remaining text (default: today).
 3. Integrate into the quick-add input in `TaskList.svelte`:
    - After the user types and before creating the task, run `parseNaturalDate` on the input.
-   - If a date is parsed, extract it and use the remaining text as the title. E.g., "Buy milk tomorrow 3pm" → title: "Buy milk", due_date: tomorrow at 15:00.
-   - Show a small preview badge below the input: "📅 Tomorrow, 3:00 PM" so the user sees what was parsed. Pressing Enter confirms.
+   - If a date is parsed, extract it and use the remaining text as the title. E.g., "Buy milk tomorrow 3pm" -> title: "Buy milk", due_date: tomorrow at 15:00.
+   - Show a small preview badge below the input: "Tomorrow, 3:00 PM" so the user sees what was parsed. Pressing Enter confirms.
    - If no date detected, create the task with no due date.
 
 **DONE WHEN**
-- [ ] Typing "Buy milk tomorrow" in quick-add shows a "📅 Tomorrow" badge and creates a task due tomorrow with title "Buy milk".
+- [ ] Typing "Buy milk tomorrow" in quick-add shows a "Tomorrow" badge and creates a task due tomorrow with title "Buy milk".
 - [ ] Typing "Standup meeting every weekday 9am" creates a task with `recurrenceRule: 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'` and due time 09:00.
 - [ ] Typing "something random" with no date keywords creates a task with no due date.
 - [ ] Typing "Dec 25" correctly parses to the next December 25th.
@@ -619,10 +760,12 @@
 ---
 
 ### Task 26 (B) +svelte
+blockedBy: [21, 22]
+
 **PURPOSE** — Implements keyboard shortcuts for power-user productivity, matching TickTick's keyboard-driven workflow.
 
 **WHAT TO DO**
-1. Create `tauri-app/src/lib/services/shortcuts.ts`:
+1. Create `apps/desktop/src/lib/services/shortcuts.ts`:
    - Register global keyboard listeners on `window` in `App.svelte` `onMount`.
    - Shortcuts (all should be suppressed if user is in an input/textarea):
      - `n` — focus the quick-add input.
@@ -645,261 +788,27 @@
 
 ---
 
-## Module 6: Apple — SwiftUI Shared (+apple)
+## Module 6: Recurring Tasks Engine (+recurrence)
 
 ---
 
-### Task 27 (A) +apple
-**PURPOSE** — Creates the Xcode project structure with shared SwiftUI code for both macOS and iOS targets.
+### Task 27 (A) +recurrence +tauri
+blockedBy: [17]
+
+**PURPOSE** — Implements the RRULE parsing and expansion engine in Rust for the Tauri app, matching the server's Go implementation.
 
 **WHAT TO DO**
-1. Create `apple/TickClone.xcodeproj` (or `.xcworkspace` with SPM) with three targets:
-   - `TickCloneShared` — a Swift Package (local) containing all shared models, database layer, stores, and reusable views. Path: `apple/Packages/TickCloneShared`.
-   - `TickClone-macOS` — macOS app target (deployment: macOS 14+). Depends on `TickCloneShared`.
-   - `TickClone-iOS` — iOS app target (deployment: iOS 17+). Depends on `TickCloneShared`.
-2. In `TickCloneShared/Package.swift`, add dependencies:
-   - `GRDB.swift` (latest 6.x) via SPM: `https://github.com/groue/GRDB.swift.git`.
-   - `UUIDv7` implementation: use `https://github.com/alexanderants/uuidv7-swift.git` or hand-roll a simple UUIDv7 generator in `Sources/TickCloneShared/Utilities/UUIDv7.swift`.
-3. Create `Sources/TickCloneShared/Models/` directory with placeholder files: `ListModel.swift`, `TaskModel.swift`, `TagModel.swift`.
+1. Add `rrule` crate to `src-tauri/Cargo.toml`: `rrule = "0.12"`.
+2. Create `src-tauri/src/services/recurrence.rs`:
+   - `pub fn expand_rrule(rule: &str, dtstart: &str, after: &str, limit: usize) -> Result<Vec<String>, String>` — parses RRULE string, returns next `limit` ISO8601 date strings after `after`. Default `limit=10` — WHY: same as server; covers 2+ weeks of daily recurrences which is the practical preview horizon.
+   - `pub fn next_occurrence(rule: &str, dtstart: &str, after: &str) -> Result<Option<String>, String>` — convenience wrapper returning just the next occurrence.
+3. Ensure `complete_recurring_task` (Task 17) calls `next_occurrence` to determine the next due date.
+4. Create Tauri command `preview_recurrence(rule: String, start_date: String, count: u32) -> Result<Vec<String>, String>` — returns upcoming occurrence dates for UI preview.
 
 **DONE WHEN**
-- [ ] The Xcode project builds both macOS and iOS targets without errors.
-- [ ] `TickCloneShared` is importable from both targets (`import TickCloneShared` compiles).
-- [ ] GRDB resolves and links correctly for both platforms.
-
----
-
-### Task 28 (A) +apple
-**PURPOSE** — Implements the GRDB database layer in the shared package, providing the same local SQLite storage as the Tauri app.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Database/AppDatabase.swift`:
-   - `final class AppDatabase` with a `dbWriter: DatabaseWriter` property (GRDB `DatabasePool`).
-   - `static func create(atPath: String) throws -> AppDatabase` — opens a `DatabasePool` at the given path, runs migrations.
-   - Migration using GRDB's `DatabaseMigrator`:
-     - `v1`: Create `lists`, `tasks`, `tags`, `task_tags`, `sync_meta` tables matching canonical schema exactly. Enable foreign keys.
-     - Register the migrator and run `migrator.migrate(dbWriter)`.
-2. Create `Sources/TickCloneShared/Database/AppDatabase+Seed.swift`:
-   - `func seedIfEmpty() throws` — checks if `lists` table is empty; if so, inserts the Inbox list.
-3. In both app targets, initialize `AppDatabase` in the `@main` App struct using the platform-appropriate directory:
-   - macOS: `FileManager.default.urls(for: .applicationSupportDirectory, ...)`.
-   - iOS: `FileManager.default.urls(for: .documentDirectory, ...)`.
-
-**DONE WHEN**
-- [ ] Launching the macOS app creates `tickclone.db` in `~/Library/Application Support/TickClone/`.
-- [ ] Launching the iOS app (simulator) creates the DB in the Documents directory.
-- [ ] The database contains all 5 tables. An Inbox list exists after first launch.
-- [ ] Restarting does not re-seed or error.
-
----
-
-### Task 29 (A) +apple
-**PURPOSE** — Defines the Swift model structs with GRDB record conformance for type-safe database operations.
-
-**WHAT TO DO**
-1. `Sources/TickCloneShared/Models/ListModel.swift`:
-   - `struct ListModel: Codable, FetchableRecord, PersistableRecord, Identifiable` with properties matching canonical `lists` columns. `static let databaseTableName = "lists"`.
-2. `Sources/TickCloneShared/Models/TaskModel.swift`:
-   - `struct TaskModel: Codable, FetchableRecord, PersistableRecord, Identifiable` matching `tasks`. Add a `subtasks: [TaskModel]` transient property (not persisted, populated via association).
-   - Define GRDB associations: `static let list = belongsTo(ListModel.self)`, `static let parentTask = belongsTo(TaskModel.self, key: "parentTask")`, `static let subtasks = hasMany(TaskModel.self, key: "subtasks", using: ...)`, `static let taskTags = hasMany(TaskTagModel.self)`, `static let tags = hasMany(TagModel.self, through: taskTags, using: TaskTagModel.tag)`.
-3. `Sources/TickCloneShared/Models/TagModel.swift`:
-   - `struct TagModel: Codable, FetchableRecord, PersistableRecord, Identifiable`.
-4. `Sources/TickCloneShared/Models/TaskTagModel.swift`:
-   - `struct TaskTagModel: Codable, FetchableRecord, PersistableRecord` with `taskId`, `tagId`. Associations to both `TaskModel` and `TagModel`.
-
-**DONE WHEN**
-- [ ] `try dbWriter.write { db in try ListModel(...).insert(db) }` inserts a list and `try ListModel.fetchAll(db)` retrieves it.
-- [ ] `TaskModel` can be fetched with `including(all: TaskModel.subtasks)` and the `subtasks` property is populated.
-- [ ] `TaskModel` can be fetched with `including(all: TaskModel.tags)` and tags are populated.
-
----
-
-### Task 30 (A) +apple
-**PURPOSE** — Implements the repository layer for list, task, and tag CRUD operations using GRDB, consumed by SwiftUI stores.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Repositories/ListRepository.swift`:
-   - `func createList(_ list: ListModel) throws`
-   - `func getAllLists() throws -> [ListModel]` — non-deleted, ordered by `sortOrder`.
-   - `func updateList(_ list: ListModel) throws`
-   - `func deleteList(id: String) throws` — soft-delete; also soft-deletes all tasks in the list. Throws if `isInbox == true`.
-2. Create `Sources/TickCloneShared/Repositories/TaskRepository.swift`:
-   - `func createTask(_ task: TaskModel) throws` — validates parent depth ≤ 1.
-   - `func getTasksByList(listId: String, includeCompleted: Bool) throws -> [TaskModel]` — returns top-level tasks with nested subtasks and tags.
-   - `func getTask(id: String) throws -> TaskModel?`.
-   - `func updateTask(id: String, fields: TaskUpdateFields) throws` — `TaskUpdateFields` struct with all optional properties. Auto-manages `completedAt`.
-   - `func deleteTask(id: String) throws` — soft-delete + subtasks.
-   - `func getTasksDueToday() throws -> [TaskModel]`.
-   - `func getTasksInRange(start: String, end: String) throws -> [TaskModel]`.
-   - `func completeRecurringTask(id: String) throws -> (completed: TaskModel, next: TaskModel?)` — same logic as server/Tauri.
-3. Create `Sources/TickCloneShared/Repositories/TagRepository.swift`:
-   - Full CRUD + `addTagToTask`, `removeTagFromTask`, `getTasksByTag`.
-4. All repositories take `AppDatabase` in their init and use `dbWriter.write`/`dbWriter.read`.
-
-**DONE WHEN**
-- [ ] `ListRepository.createList(...)` followed by `getAllLists()` returns the created list.
-- [ ] `TaskRepository.createTask(...)` with a `parentTaskId` pointing to a subtask throws an error.
-- [ ] `TaskRepository.completeRecurringTask(...)` on a daily-recurring task returns a `next` task with tomorrow's date.
-- [ ] `TagRepository.addTagToTask(...)` is idempotent (calling twice doesn't error).
-
----
-
-### Task 31 (A) +apple
-**PURPOSE** — Implements observable SwiftUI stores (`@Observable`) wrapping the repositories, driving reactive UI updates.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Stores/ListStore.swift`:
-   - `@Observable final class ListStore` with `var lists: [ListModel] = []`, `var selectedListId: String?`.
-   - Methods: `func load()`, `func add(name:color:)`, `func update(id:name:color:sortOrder:)`, `func delete(id:)`. All call corresponding repository methods and refresh `lists`.
-2. Create `Sources/TickCloneShared/Stores/TaskStore.swift`:
-   - `@Observable final class TaskStore` with `var tasks: [TaskModel] = []`, `var selectedTaskId: String?`.
-   - Methods: `func loadForList(listId:includeCompleted:)`, `func loadToday()`, `func loadRange(start:end:)`, `func add(...)`, `func update(id:fields:)`, `func delete(id:)`, `func complete(id:)`, `func move(id:toListId:sortOrder:)`.
-3. Create `Sources/TickCloneShared/Stores/TagStore.swift`:
-   - `@Observable final class TagStore` with `var tags: [TagModel] = []`.
-   - CRUD methods + `tagTask` / `untagTask`.
-4. All stores handle errors by storing `var errorMessage: String?` which the UI can display.
-
-**DONE WHEN**
-- [ ] Modifying `ListStore.add(name: "Work")` updates `lists` array, and a SwiftUI View observing `listStore.lists` rerenders.
-- [ ] `TaskStore.loadToday()` populates `tasks` with only today's due tasks.
-- [ ] Setting `selectedListId` and calling `loadForList` updates `tasks` reactively.
-
----
-
-### Task 32 (A) +apple
-**PURPOSE** — Builds the main navigation structure and sidebar for both macOS and iOS using SwiftUI's NavigationSplitView.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Views/MainView.swift`:
-   - Use `NavigationSplitView` (3-column on macOS: sidebar, list, detail; 2-column on iOS with navigation stack).
-   - Sidebar column: `SidebarView`.
-   - Content column: switches on `currentView` state (`today`, `calendar`, `list`) to show `TodayView`, `CalendarView`, or `TaskListView`.
-   - Detail column: `TaskDetailView` when a task is selected.
-2. Create `Sources/TickCloneShared/Views/SidebarView.swift`:
-   - "Today" item with calendar icon + badge of today's task count.
-   - "Calendar" item with calendar-grid icon.
-   - Section "Lists": ForEach over `listStore.lists`, each showing colored circle + name + open task count.
-   - "New List" button: presents an alert with a text field.
-   - Section "Tags": collapsible, shows all tags with colored dots.
-   - Swipe-to-delete on lists (except Inbox). Context menu for rename/change color.
-3. Inject `ListStore`, `TaskStore`, `TagStore` via `@Environment` in app entry points.
-
-**DONE WHEN**
-- [ ] macOS app shows a 3-column layout with sidebar, task list, and detail panel.
-- [ ] iOS app shows a navigation stack that drills from sidebar → task list → task detail.
-- [ ] Tapping "Today" in sidebar switches content to the Today view.
-- [ ] Creating a new list via the sidebar adds it immediately to the list.
-- [ ] Swipe-to-delete on a non-Inbox list removes it; Inbox has no delete action.
-
----
-
-### Task 33 (A) +apple
-**PURPOSE** — Builds the task list view in SwiftUI, displaying tasks with priorities, due dates, tags, and subtask nesting.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Views/TaskListView.swift`:
-   - Header: list name + task count.
-   - Quick-add `TextField` at top. On submit, parse with NLP (Task 37) and call `taskStore.add(...)`.
-   - `List` or `LazyVStack` iterating over `taskStore.tasks`:
-     - `TaskRowView` for each task (create as separate component).
-   - `DisclosureGroup` for subtasks under each parent.
-   - "Completed" section at bottom (collapsible), showing completed tasks with strikethrough.
-2. Create `Sources/TickCloneShared/Views/TaskRowView.swift`:
-   - Leading: checkbox (circle, filled when complete). On tap → `taskStore.complete(id:)`.
-   - Priority indicator: colored left bar or tinted checkbox (none/green/blue/orange/red).
-   - Title text (strikethrough if completed).
-   - Trailing: due date badge (red if overdue, gray otherwise), tag pills.
-
-**DONE WHEN**
-- [ ] Task list renders all tasks for the selected list with correct priority coloring.
-- [ ] Tapping the checkbox completes a task; it moves to the "Completed" section with strikethrough.
-- [ ] Subtasks render indented under their parent task.
-- [ ] Overdue tasks show a red due-date badge.
-
----
-
-### Task 34 (A) +apple
-**PURPOSE** — Builds the task detail editing view in SwiftUI for full task field manipulation.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Views/TaskDetailView.swift`:
-   - Bound to `taskStore.selectedTaskId`. If nil, show "Select a task" placeholder.
-   - Editable title `TextField`.
-   - Notes `TextEditor` for markdown body.
-   - Priority picker: segmented control or HStack of tappable icons (P0–P3).
-   - Date picker: `DatePicker` for due date + toggle for "Include time".
-   - Recurrence picker: `Picker` with options ("None", "Daily", "Weekly", "Monthly", "Yearly", "Custom"). "Custom" shows a `TextField` for raw RRULE.
-   - Tags section: `FlowLayout` (or `HStack` wrapping) of tag pills with "+" button showing a picker.
-   - Subtasks: inline list with "+" button.
-   - List picker: `Picker` over `listStore.lists` for moving.
-   - "Delete" button with confirmation alert.
-2. All changes save immediately via `taskStore.update(id:fields:)` on `onChange` modifiers.
-
-**DONE WHEN**
-- [ ] Selecting a task shows all its fields in the detail view.
-- [ ] Changing priority immediately persists (verified by re-selecting the task after navigating away).
-- [ ] Changing the list via picker moves the task out of the current list.
-- [ ] Adding/removing tags updates both the detail view and the task row.
-
----
-
-### Task 35 (B) +apple
-**PURPOSE** — Builds the Today smart view in SwiftUI, aggregating tasks due today across all lists.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Views/TodayView.swift`:
-   - Header: "Today" + formatted date (e.g., "Thursday, March 12").
-   - "Overdue" section (red accent) showing tasks with `due_date < today` and `status == 0`.
-   - "Due Today" section grouped by list (sub-headers with list color dot + name).
-   - Each task rendered with `TaskRowView`.
-   - Quick-add at top, auto-sets `due_date` to today.
-2. On appear, call `taskStore.loadToday()`.
-
-**DONE WHEN**
-- [ ] Today view shows only tasks due today + overdue, grouped by list.
-- [ ] Completing a task removes it from the view.
-- [ ] Quick-adding a task in the Today view creates it with today's date.
-
----
-
-### Task 36 (A) +apple
-**PURPOSE** — Builds the calendar month view in SwiftUI displaying tasks on their due dates.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Views/CalendarView.swift`:
-   - Month header with navigation arrows and "Today" button.
-   - 7-column `LazyVGrid` for the day grid (Mon–Sun headers).
-   - Each day cell: date number (dimmed for outside current month), up to 3 task title snippets with priority colors, "+N" badge for overflow.
-   - Tapping a day opens a sheet/popover listing all tasks for that day.
-   - Tapping a task navigates to `TaskDetailView`.
-2. Store: `@State private var displayedMonth: Date`. On change, call `taskStore.loadRange(start:end:)` with first/last visible dates.
-
-**DONE WHEN**
-- [ ] Calendar renders the correct number of days for the current month with correct weekday alignment.
-- [ ] Tasks appear on their due date cells with priority color indicators.
-- [ ] Navigating months loads and displays tasks for the new month.
-- [ ] Tapping a day shows all tasks for that day.
-
----
-
-### Task 37 (B) +apple
-**PURPOSE** — Implements natural language date parsing in Swift for quick task entry on Apple platforms.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Services/NaturalDateParser.swift`:
-   - `struct ParsedDate { let date: Date; let hasTime: Bool; let recurrenceRule: String? }`
-   - `static func parse(_ input: String, reference: Date = Date()) -> (title: String, parsed: ParsedDate?)`
-   - Use `NSDataDetector` with `.date` type to find date references in the string.
-   - For recurrence keywords ("every day", "daily", "every weekday", "weekly", "monthly", "yearly", "every N days/weeks/months"), regex-match before running `NSDataDetector`, strip the recurrence phrase, generate RRULE string.
-   - Return the remaining text (with date/recurrence phrases removed) as the title.
-2. Integrate into the quick-add `TextField` in `TaskListView.swift`:
-   - On text change (debounced 500ms), run `NaturalDateParser.parse` and show a preview label below the input: "📅 Tomorrow, 3:00 PM" or "🔁 Daily at 9:00 AM".
-   - On submit, use the parsed date/recurrence if available.
-
-**DONE WHEN**
-- [ ] `NaturalDateParser.parse("Buy milk tomorrow 3pm")` returns title "Buy milk", date = tomorrow at 15:00, `hasTime = true`.
-- [ ] `NaturalDateParser.parse("Standup every weekday 9am")` returns title "Standup", recurrenceRule = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", date = today at 09:00.
-- [ ] `NaturalDateParser.parse("Just a normal task")` returns title "Just a normal task", parsed = nil.
+- [ ] `expand_rrule("FREQ=WEEKLY;BYDAY=MO,WE,FR", "2026-03-12", "2026-03-12", 5)` returns 5 dates all on Mon/Wed/Fri.
+- [ ] `next_occurrence("FREQ=MONTHLY;INTERVAL=1", "2026-03-01", "2026-03-15")` returns "2026-04-01".
+- [ ] `invoke('preview_recurrence', { rule: 'FREQ=DAILY', startDate: '2026-03-12', count: 7 })` returns 7 consecutive dates.
 
 ---
 
@@ -907,7 +816,9 @@
 
 ---
 
-### Task 38 (A) +sync +tauri
+### Task 28 (A) +sync +tauri
+blockedBy: [12, 13, 16, 17, 18]
+
 **PURPOSE** — Implements the sync client in the Tauri Rust backend that pushes local changes and pulls remote changes to/from the server.
 
 **WHAT TO DO**
@@ -920,9 +831,9 @@
    - `pub fn record_change(conn: &Connection, entity_type: &str, entity_id: &str, field_name: &str, new_value: &str)` — inserts into `sync_meta` table with current timestamp and device_id.
    - `pub fn get_pending_changes(conn: &Connection, since: &str) -> Vec<ChangeRecord>` — fetches all `sync_meta` entries after `since`.
    - `pub fn apply_remote_change(conn: &Connection, change: &ChangeRecord) -> Result<()>` — updates the corresponding table/field based on `entity_type` and `field_name`. Skips if local timestamp is newer.
-3. Modify all CRUD commands (Tasks 16–18) to call `record_change` after every write operation.
+3. Modify all CRUD commands (Tasks 16-18) to call `record_change` after every write operation.
 4. Create Tauri command `sync_now(state) -> Result<SyncStatus, String>`:
-   - Get pending changes → push → pull → apply remote changes → update `last_sync_at` in a `settings` table (create if not exists: `key TEXT PRIMARY KEY, value TEXT`).
+   - Get pending changes -> push -> pull -> apply remote changes -> update `last_sync_at` in a `settings` table (create if not exists: `key TEXT PRIMARY KEY, value TEXT`).
    - Return `SyncStatus { pushed: u32, pulled: u32, conflicts: u32 }`.
 
 **DONE WHEN**
@@ -933,167 +844,37 @@
 
 ---
 
-### Task 39 (A) +sync +apple
-**PURPOSE** — Implements the sync client in the Swift shared package, mirroring the Tauri sync logic for Apple platforms.
+### Task 29 (B) +sync +svelte
+blockedBy: [28]
 
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Sync/SyncClient.swift`:
-   - `class SyncClient` with `baseURL: URL`, `authToken: String?`, `deviceId: String` (generated once, stored in UserDefaults).
-   - `func push(changes: [ChangeRecord]) async throws -> PushResult` — POST to `/api/sync/push` using `URLSession`.
-   - `func pull(lastSyncAt: Date) async throws -> PullResult` — POST to `/api/sync/pull`.
-2. Create `Sources/TickCloneShared/Sync/SyncTracker.swift`:
-   - `func recordChange(db: Database, entityType:entityId:fieldName:newValue:)` — inserts into `sync_meta`.
-   - `func getPendingChanges(db: Database, since: Date) -> [ChangeRecord]`.
-   - `func applyRemoteChange(db: Database, change: ChangeRecord)` — same LWW logic.
-3. Modify all repository methods to call `recordChange` after writes.
-4. Create `Sources/TickCloneShared/Sync/SyncManager.swift`:
-   - `@Observable class SyncManager` with `var isSyncing: Bool`, `var lastSyncAt: Date?`.
-   - `func syncNow() async` — push → pull → apply → update `lastSyncAt` (stored in UserDefaults).
-   - `func startAutoSync(interval: TimeInterval = 300)` — schedules periodic sync via `Timer`.
-
-**DONE WHEN**
-- [ ] Creating a task on iOS records a change in `sync_meta`.
-- [ ] Calling `syncManager.syncNow()` with a running server pushes and pulls successfully.
-- [ ] Auto-sync triggers every 5 minutes when enabled.
-- [ ] `isSyncing` toggles to `true` during sync (UI can show a spinner).
-
----
-
-### Task 40 (B) +sync +svelte
 **PURPOSE** — Adds sync UI controls to the Tauri/Svelte app so users can configure and trigger sync.
 
 **WHAT TO DO**
 1. Create a Tauri command `get_sync_settings(state) -> Result<SyncSettings, String>` — reads `server_url`, `auth_token`, `last_sync_at`, `auto_sync_enabled` from the local `settings` table.
 2. Create a Tauri command `save_sync_settings(state, server_url, auth_token?, auto_sync_enabled) -> Result<(), String>`.
-3. Create `tauri-app/src/lib/components/SyncSettings.svelte`:
+3. Create `apps/desktop/src/lib/components/SyncSettings.svelte`:
    - "Server URL" text input.
-   - "Auth Token" text input (or "Login with Magic Link" button that opens a flow: enter email → call server `/api/auth/magic-link` → prompt for token from email → call `/api/auth/verify` → store token).
-   - "Auto Sync" toggle.
+   - "Auth Token" text input (or "Login with Magic Link" button that opens a flow: enter email -> call server `/api/auth/magic-link` -> prompt for token from email -> call `/api/auth/verify` -> store token).
+   - "Auto Sync" toggle with interval of 60s — WHY: 60s polling balances battery life vs. data freshness for a desktop app; more aggressive polling provides negligible UX benefit for task management.
    - "Sync Now" button showing status (spinner, "Last synced: 2 min ago").
    - Sync result summary: "Pushed 3, Pulled 5, Conflicts 0".
 4. Accessible from a gear icon in the sidebar footer.
 
 **DONE WHEN**
 - [ ] Entering a server URL and clicking "Sync Now" triggers sync and shows results.
-- [ ] The magic link login flow works: enter email → receive link → enter token → JWT stored.
+- [ ] The magic link login flow works: enter email -> receive link -> enter token -> JWT stored.
 - [ ] Auto-sync toggle persists across app restarts.
 - [ ] "Last synced" timestamp updates after each sync.
 
 ---
 
-### Task 41 (B) +sync +apple
-**PURPOSE** — Adds sync settings UI to the SwiftUI app, mirroring the Tauri sync settings.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Views/SyncSettingsView.swift`:
-   - `TextField` for server URL.
-   - Magic link login flow: email input → "Send Link" button → token input → "Verify" button.
-   - `Toggle` for auto-sync.
-   - "Sync Now" button with `ProgressView` spinner during sync.
-   - Last sync timestamp display.
-2. Present as a sheet (iOS) or preferences pane (macOS) from a settings gear button in the sidebar.
-3. Store settings in `UserDefaults` (suite: `"com.tickclone.app"`).
-
-**DONE WHEN**
-- [ ] Entering a server URL and tapping "Sync Now" performs a full sync cycle.
-- [ ] The magic link flow stores a JWT and subsequent syncs use it.
-- [ ] Settings persist across app launches.
+## Module 8: Search & Filtering (+search)
 
 ---
 
-## Module 8: Platform-Specific Polish (+macos, +ios)
+### Task 30 (B) +search +tauri
+blockedBy: [15, 17]
 
----
-
-### Task 42 (B) +macos
-**PURPOSE** — Implements macOS-specific features: menu bar, global keyboard shortcuts, and window management.
-
-**WHAT TO DO**
-1. In `TickClone-macOS/TickCloneApp.swift`:
-   - Add `.commands { ... }` modifier with menu items:
-     - File → "New Task" (Cmd+N), "New List" (Cmd+Shift+N).
-     - Edit → "Delete" (Cmd+Delete).
-     - View → "Today" (Cmd+1), "Calendar" (Cmd+2).
-   - Menu actions call the corresponding store methods.
-2. Set `.windowStyle(.titleBar)` and `.windowToolbarStyle(.unified)`.
-3. Add a toolbar with: "Today" button, "Calendar" button, search field (local search — filters tasks by title containing the query).
-4. Support standard macOS behaviors: Cmd+, opens settings, Cmd+W closes window, Cmd+Q quits.
-
-**DONE WHEN**
-- [ ] Cmd+N focuses the quick-add input or opens a new-task sheet.
-- [ ] Cmd+1 switches to Today view; Cmd+2 to Calendar view.
-- [ ] The unified toolbar shows navigation buttons and a functional search field.
-- [ ] Cmd+, opens the sync settings view.
-
----
-
-### Task 43 (B) +ios
-**PURPOSE** — Implements iOS-specific features: haptic feedback, swipe actions, and widget-ready data provider.
-
-**WHAT TO DO**
-1. In `TaskRowView`, add swipe actions:
-   - Leading swipe: complete task (green checkmark). Trigger `UIImpactFeedbackGenerator(style: .medium)`.
-   - Trailing swipe: delete task (red trash icon) with confirmation.
-   - Secondary trailing swipe: flag/priority cycle.
-2. Add pull-to-refresh on task list: calls `taskStore.loadForList(...)`.
-3. Create `Sources/TickCloneShared/Services/WidgetDataProvider.swift`:
-   - `static func getTodayTasks() -> [TaskModel]` — reads from the shared app group database (setup `App Groups` entitlement for widget access in a future task).
-   - Returns max 5 tasks due today, ordered by priority.
-4. Add haptic feedback on task completion and list switching using `UIImpactFeedbackGenerator`.
-
-**DONE WHEN**
-- [ ] Swiping right on a task completes it with a haptic tap.
-- [ ] Swiping left shows a delete action with confirmation.
-- [ ] Pull-to-refresh reloads the task list.
-- [ ] `WidgetDataProvider.getTodayTasks()` returns up to 5 tasks due today.
-
----
-
-## Module 9: Recurring Tasks Engine (+recurrence)
-
----
-
-### Task 44 (A) +recurrence +tauri
-**PURPOSE** — Implements the RRULE parsing and expansion engine in Rust for the Tauri app, matching the server's Go implementation.
-
-**WHAT TO DO**
-1. Add `rrule` crate to `src-tauri/Cargo.toml`: `rrule = "0.12"`.
-2. Create `src-tauri/src/services/recurrence.rs`:
-   - `pub fn expand_rrule(rule: &str, dtstart: &str, after: &str, limit: usize) -> Result<Vec<String>, String>` — parses RRULE string, returns next `limit` ISO8601 date strings after `after`.
-   - `pub fn next_occurrence(rule: &str, dtstart: &str, after: &str) -> Result<Option<String>, String>` — convenience wrapper returning just the next occurrence.
-3. Ensure `complete_recurring_task` (Task 17) calls `next_occurrence` to determine the next due date.
-4. Create Tauri command `preview_recurrence(rule: String, start_date: String, count: u32) -> Result<Vec<String>, String>` — returns upcoming occurrence dates for UI preview.
-
-**DONE WHEN**
-- [ ] `expand_rrule("FREQ=WEEKLY;BYDAY=MO,WE,FR", "2026-03-12", "2026-03-12", 5)` returns 5 dates all on Mon/Wed/Fri.
-- [ ] `next_occurrence("FREQ=MONTHLY;INTERVAL=1", "2026-03-01", "2026-03-15")` returns "2026-04-01".
-- [ ] `invoke('preview_recurrence', { rule: 'FREQ=DAILY', startDate: '2026-03-12', count: 7 })` returns 7 consecutive dates.
-
----
-
-### Task 45 (A) +recurrence +apple
-**PURPOSE** — Implements RRULE parsing in Swift for the Apple platforms using a pure-Swift approach.
-
-**WHAT TO DO**
-1. Add a dependency on a Swift RRULE library. Options: `https://github.com/nicklama/swift-rrule` or implement a lightweight parser.
-   - If no suitable library: create `Sources/TickCloneShared/Services/RRuleParser.swift` supporting `FREQ` (DAILY, WEEKLY, MONTHLY, YEARLY), `INTERVAL`, `COUNT`, `UNTIL`, `BYDAY`, `BYMONTHDAY`.
-2. Create `Sources/TickCloneShared/Services/RecurrenceEngine.swift`:
-   - `static func expand(rule: String, dtstart: Date, after: Date, limit: Int) -> [Date]`.
-   - `static func nextOccurrence(rule: String, dtstart: Date, after: Date) -> Date?`.
-3. Ensure `TaskRepository.completeRecurringTask` uses `RecurrenceEngine.nextOccurrence`.
-
-**DONE WHEN**
-- [ ] `RecurrenceEngine.expand(rule: "FREQ=DAILY;INTERVAL=2", ...)` returns dates 2 days apart.
-- [ ] `RecurrenceEngine.expand(rule: "FREQ=WEEKLY;BYDAY=MO,WE,FR;COUNT=6", ...)` returns exactly 6 dates on Mon/Wed/Fri.
-- [ ] `nextOccurrence` for a monthly rule returns the correct next month's date.
-
----
-
-## Module 10: Search & Filtering (+search)
-
----
-
-### Task 46 (B) +search +tauri
 **PURPOSE** — Implements full-text task search in the Tauri app using SQLite FTS5.
 
 **WHAT TO DO**
@@ -1108,9 +889,9 @@
    CREATE TRIGGER IF NOT EXISTS tasks_ad AFTER DELETE ON tasks BEGIN INSERT INTO tasks_fts(tasks_fts, rowid, title, content) VALUES('delete', old.rowid, old.title, old.content); END;
    ```
 3. Create Tauri command `search_tasks(state, query: String) -> Result<Vec<Task>, String>`:
-   - Query: `SELECT tasks.* FROM tasks JOIN tasks_fts ON tasks.rowid = tasks_fts.rowid WHERE tasks_fts MATCH $1 AND tasks.deleted_at IS NULL ORDER BY rank LIMIT 50`.
+   - Query: `SELECT tasks.* FROM tasks JOIN tasks_fts ON tasks.rowid = tasks_fts.rowid WHERE tasks_fts MATCH $1 AND tasks.deleted_at IS NULL ORDER BY rank LIMIT 50` — WHY: 50 result limit prevents UI lag when searching large databases; users rarely scroll past 50 search results.
    - Populate subtasks and tags via the standard join approach.
-4. Create `tauri-app/src/lib/components/SearchBar.svelte`: input with debounced (300ms) search, dropdown results list.
+4. Create `apps/desktop/src/lib/components/SearchBar.svelte`: input with debounced (300ms — WHY: matches TaskDetail debounce; fast enough to feel instant, slow enough to avoid excessive SQLite queries) search, dropdown results list.
 
 **DONE WHEN**
 - [ ] Creating a task "Buy groceries for dinner" and searching "groceries" returns that task.
@@ -1120,35 +901,20 @@
 
 ---
 
-### Task 47 (B) +search +apple
-**PURPOSE** — Implements task search on Apple platforms using the same FTS5 approach.
-
-**WHAT TO DO**
-1. In `AppDatabase.swift` migration `v1`, add the same FTS5 table and triggers from Task 46.
-2. Create `Sources/TickCloneShared/Repositories/SearchRepository.swift`:
-   - `func search(query: String) throws -> [TaskModel]` — uses GRDB's raw SQL to query `tasks_fts`, joins to get full `TaskModel` with subtasks and tags. Limit 50.
-3. Add a `searchQuery` property to `TaskStore` and a `func searchTasks(query:)` method.
-4. In `MainView.swift`, add a `.searchable(text: $searchQuery)` modifier. On commit, call `taskStore.searchTasks(query:)`. Display results in the content area.
-
-**DONE WHEN**
-- [ ] Typing "milk" in the macOS/iOS search field shows tasks containing "milk" in title or content.
-- [ ] Search is integrated into the native SwiftUI `.searchable` experience.
-- [ ] Results update as the user types (debounced).
+## Module 9: Data Import/Export (+data)
 
 ---
 
-## Module 11: Data Import/Export (+data)
+### Task 31 (C) +data +tauri
+blockedBy: [16, 17, 18]
 
----
-
-### Task 48 (C) +data +tauri
 **PURPOSE** — Enables users to export all their data as JSON and import from a JSON backup, ensuring data portability.
 
 **WHAT TO DO**
 1. Create Tauri command `export_data(state) -> Result<String, String>`:
    - Queries all non-deleted lists, tasks (with subtasks), tags, and task_tags.
    - Serializes to JSON: `{ "version": 1, "exportedAt": "<ISO8601>", "lists": [...], "tasks": [...], "tags": [...], "taskTags": [...] }`.
-   - Uses `tauri::api::dialog::save_file` to let user choose save location. Writes the JSON string to the file.
+   - Uses Tauri dialog API to let user choose save location. Writes the JSON string to the file.
    - Returns the file path.
 2. Create Tauri command `import_data(state, path: String) -> Result<ImportResult, String>`:
    - Reads JSON from file, validates `version` field.
@@ -1163,28 +929,13 @@
 
 ---
 
-### Task 49 (C) +data +apple
-**PURPOSE** — Implements JSON export/import on Apple platforms, matching the Tauri format for cross-platform data portability.
-
-**WHAT TO DO**
-1. Create `Sources/TickCloneShared/Services/DataExporter.swift`:
-   - `static func exportJSON(db: AppDatabase) throws -> Data` — queries all entities, encodes to the same JSON format as Task 48.
-2. Create `Sources/TickCloneShared/Services/DataImporter.swift`:
-   - `static func importJSON(db: AppDatabase, data: Data) throws -> ImportResult` — decodes, validates version, upserts in a transaction.
-3. In settings view, add "Export" button (presents `fileExporter` on iOS / `NSSavePanel` on macOS) and "Import" button (presents `fileImporter` / `NSOpenPanel`).
-
-**DONE WHEN**
-- [ ] Exporting from the iOS app and importing into the Tauri app restores all data correctly.
-- [ ] Exporting from Tauri and importing into macOS works correctly.
-- [ ] Malformed JSON shows an error alert and makes no changes to the database.
+## Module 10: Docker Deployment (+deploy)
 
 ---
 
-## Module 12: Docker Deployment (+deploy)
+### Task 32 (A) +deploy
+blockedBy: [4, 5]
 
----
-
-### Task 50 (A) +deploy
 **PURPOSE** — Creates a complete Docker Compose setup for self-hosting the server with PostgreSQL, enabling one-command deployment.
 
 **WHAT TO DO**
@@ -1205,7 +956,7 @@
          timeout: 5s
          retries: 5
      server:
-       build: ./server
+       build: ./services/server
        ports:
          - "${PORT:-8080}:8080"
        environment:
@@ -1223,11 +974,6 @@
      pgdata:
    ```
 2. Create `.env.example` with all environment variables documented with comments.
-3. Create `README.md` in project root with:
-   - Architecture overview diagram (ASCII).
-   - Quick start: `cp .env.example .env && docker compose up -d`.
-   - Client setup instructions for each platform.
-   - SMTP configuration guide for magic link auth.
 
 **DONE WHEN**
 - [ ] `docker compose up -d` starts both services; `curl localhost:8080/health` returns 200.
@@ -1237,52 +983,152 @@
 
 ---
 
+## Module 11: Theming & Accessibility (+ui)
+
+---
+
+### Task 33 (C) +ui +svelte
+blockedBy: [20, 21, 22]
+
+**PURPOSE** — Implements dark/light theme toggling and system-preference detection in the Tauri app.
+
+**WHAT TO DO**
+1. Create `apps/desktop/src/lib/stores/theme.ts`:
+   - `theme` writable store: `'light' | 'dark' | 'system'`. Default: `'system'`.
+   - On init, detect system preference via `window.matchMedia('(prefers-color-scheme: dark)')`.
+   - On change, set `document.documentElement.dataset.theme` to `'light'` or `'dark'`.
+   - Persist choice in local Tauri settings (via a `get_setting`/`set_setting` command pair using the `settings` table).
+2. Define CSS custom properties in `apps/desktop/src/app.css`:
+   - `[data-theme="dark"]`: background `#1E1E2E`, surface `#313244`, text `#CDD6F4`, primary `#89B4FA`, danger `#F38BA8`, etc. (Catppuccin Mocha palette).
+   - `[data-theme="light"]`: background `#EFF1F5`, surface `#CCD0DA`, text `#4C4F69`, primary `#1E66F5`, danger `#D20F39`, etc. (Catppuccin Latte palette).
+3. Update all components to use `var(--bg)`, `var(--surface)`, `var(--text)`, etc. instead of hardcoded colors.
+4. Add theme toggle (sun/moon icon) in the sidebar footer.
+
+**DONE WHEN**
+- [ ] Clicking the theme toggle switches between dark and light themes instantly.
+- [ ] Setting "system" and changing OS dark mode preference updates the app theme.
+- [ ] Theme preference persists across app restarts.
+- [ ] All text has sufficient contrast ratio (>= 4.5:1 — WHY: WCAG 2.1 AA compliance minimum for normal text) in both themes.
+
+---
+
+## Module 12: Performance (+perf)
+
+---
+
+### Task 34 (C) +perf +tauri
+blockedBy: [17, 21]
+
+**PURPOSE** — Ensures the Tauri app handles large datasets (10,000+ tasks) without UI lag.
+
+**WHAT TO DO**
+1. Create a Tauri command `seed_benchmark_data(state, task_count: u32) -> Result<(), String>`:
+   - Creates 10 lists, `task_count` tasks distributed across lists, 20% with subtasks, 30% with tags, 10% with recurrence rules.
+   - Uses a transaction with batched inserts (500 per batch — WHY: 500 rows per batch is the sweet spot for SQLite; larger batches hit the SQLITE_MAX_VARIABLE_NUMBER limit, smaller batches have excessive transaction overhead).
+2. In `TaskList.svelte`, implement virtual scrolling: only render visible task rows + a buffer of 20 above/below (WHY: 20-row buffer prevents visible pop-in during fast scrolling while keeping DOM size manageable). Use a simple implementation: calculate total height, translate visible rows to correct positions.
+3. In `CalendarView.svelte`, lazy-load tasks only for the visible month range (already done if Task 24 was implemented correctly — verify).
+4. Add `EXPLAIN QUERY PLAN` checks in Rust tests for the 5 most common queries to verify they use indexes (no full table scans).
+
+**DONE WHEN**
+- [ ] After seeding 10,000 tasks, `invoke('get_tasks_by_list', ...)` for a list with 500 tasks returns in < 100ms.
+- [ ] Scrolling through a list of 500 tasks maintains 60fps (no visible stutter in dev tools performance tab).
+- [ ] All 5 critical queries use indexes (verified by `EXPLAIN QUERY PLAN` showing `USING INDEX`).
+
+---
+
+### Task 35 (C) +perf +server
+blockedBy: [5, 12]
+
+**PURPOSE** — Adds database query optimization and connection pool tuning to the Go server for production readiness.
+
+**WHAT TO DO**
+1. In `pool.go`, add pool configuration: `pool_min_conns=5` (WHY: 5 warm connections avoids cold-start latency for the first few requests after idle), `pool_max_conn_lifetime=1h`, `pool_max_conn_idle_time=30m` (WHY: 30min idle timeout recycles connections to prevent stale state from PG config changes).
+2. Add prepared statement caching: create a `Queries` struct in `services/server/internal/database/queries.go` that holds prepared `pgx.PreparedStatement` references for the 10 most-used queries (list tasks, get lists, search sync log, etc.).
+3. Add `EXPLAIN ANALYZE` logging in development mode: if `LOG_LEVEL=debug`, log query plans for any query taking > 50ms (WHY: 50ms is the threshold where users start to perceive latency; queries above this need optimization).
+4. Create `services/server/migrations/003_indexes.up.sql`: add any missing indexes identified by slow query analysis. At minimum add `idx_sync_log_user_device` on `sync_log(user_id, device_id, timestamp)`.
+
+**DONE WHEN**
+- [ ] The connection pool is configured with min/max/idle settings (verified by log output on startup).
+- [ ] In debug mode, queries > 50ms log their `EXPLAIN ANALYZE` output.
+- [ ] The `003_indexes` migration runs cleanly.
+
+---
+
 ## Module 13: Testing (+test)
 
 ---
 
-### Task 51 (A) +test +server
-**PURPOSE** — Implements integration tests for the server API covering all critical paths.
+### Task 36 (A) +test +server
+blockedBy: [6, 7, 8, 9, 11, 12]
+
+**PURPOSE** — Implements integration tests for the Go server API covering all critical paths.
 
 **WHAT TO DO**
-1. Create `server/internal/handlers/handlers_test.go`:
+1. Create `services/server/internal/handlers/handlers_test.go`:
    - Use `httptest.NewServer` with the full Echo app.
    - Setup: spin up a test PostgreSQL database (use `testcontainers-go` with the `postgres` module or a dedicated test DB URL from env).
    - Run migrations before tests, truncate tables between tests.
 2. Test cases:
-   - `TestListCRUD`: create → get all → update → delete → verify 404.
-   - `TestTaskCRUD`: create list → create task → create subtask → get tasks (verify nesting) → update task → complete → delete.
-   - `TestSubtaskDepthLimit`: create task → create subtask → attempt subtask-of-subtask → expect 400.
-   - `TestTagOperations`: create tag → add to task → get tasks (verify tag present) → remove from task → delete tag.
-   - `TestRecurringTaskCompletion`: create task with `FREQ=DAILY` → complete → verify new task created with next date.
-   - `TestMagicLinkAuth`: request magic link → verify token in DB → validate token → get JWT → use JWT on protected route.
-   - `TestSyncPushPull`: push changes from device A → pull from device B → verify received → push conflicting change from B (older) → verify rejected.
+   - `TestListCRUD`: create -> get all -> update -> delete -> verify 404.
+   - `TestTaskCRUD`: create list -> create task -> create subtask -> get tasks (verify nesting) -> update task -> complete -> delete.
+   - `TestSubtaskDepthLimit`: create task -> create subtask -> attempt subtask-of-subtask -> expect 400.
+   - `TestTagOperations`: create tag -> add to task -> get tasks (verify tag present) -> remove from task -> delete tag.
+   - `TestRecurringTaskCompletion`: create task with `FREQ=DAILY` -> complete -> verify new task created with next date.
+   - `TestMagicLinkAuth`: request magic link -> verify token in DB -> validate token -> get JWT -> use JWT on protected route.
+   - `TestSyncPushPull`: push changes from device A -> pull from device B -> verify received -> push conflicting change from B (older) -> verify rejected.
 3. Each test function is self-contained with its own setup and teardown.
 
 **DONE WHEN**
 - [ ] `go test ./internal/handlers/ -v` passes all test cases.
-- [ ] Test coverage for `handlers` package is ≥ 80% (measured by `go test -cover`).
+- [ ] Test coverage for `handlers` package is >= 80% (measured by `go test -cover`) — WHY: 80% threshold catches most regressions while allowing pragmatic skipping of trivial error paths.
 - [ ] Tests can run in CI with a PostgreSQL service container.
 
 ---
 
-### Task 52 (A) +test +tauri
+### Task 37 (A) +test +server
+blockedBy: [6, 7, 8]
+
+**PURPOSE** — Implements unit tests for Go server handlers using httptest, without requiring a real database.
+
+**WHAT TO DO**
+1. Create `services/server/internal/handlers/unit_test.go`.
+2. Define mock repository interfaces and implement them with in-memory maps.
+3. Test cases:
+   - `TestListHandler_CreateValidation`: POST with empty name -> 400, POST with name > 255 chars -> 400, POST with valid name -> 201.
+   - `TestListHandler_DeleteInbox`: DELETE on inbox list -> 409.
+   - `TestTaskHandler_CreateSubtaskDepth`: create task, create subtask, create sub-subtask -> 400.
+   - `TestTaskHandler_StatusChangeUpdatesCompletedAt`: PATCH status=1 -> verify completedAt set.
+   - `TestAuthMiddleware_MissingToken`: request without Authorization header -> 401.
+   - `TestAuthMiddleware_ExpiredToken`: request with expired JWT -> 401.
+   - `TestAuthMiddleware_ValidToken`: request with valid JWT -> passes through.
+4. Use Go standard `testing` package + `httptest.NewRecorder()`.
+
+**DONE WHEN**
+- [ ] `go test ./internal/handlers/ -run Unit -v` passes all unit tests.
+- [ ] Tests run without any external dependencies (no database, no network).
+- [ ] Each handler function has at least one positive and one negative test case.
+
+---
+
+### Task 38 (A) +test +tauri
+blockedBy: [16, 17, 18, 28]
+
 **PURPOSE** — Implements Rust unit tests for the Tauri backend database operations and sync logic.
 
 **WHAT TO DO**
 1. In `src-tauri/src/commands/list_commands.rs`, add `#[cfg(test)] mod tests`:
    - Use an in-memory SQLite database (`:memory:`) initialized with the canonical schema.
-   - `test_create_and_get_lists`: create 3 lists → get all → verify count and order.
-   - `test_delete_inbox_rejected`: create inbox → attempt delete → verify error.
-   - `test_soft_delete_cascades`: create list with tasks → delete list → verify tasks also soft-deleted.
+   - `test_create_and_get_lists`: create 3 lists -> get all -> verify count and order.
+   - `test_delete_inbox_rejected`: create inbox -> attempt delete -> verify error.
+   - `test_soft_delete_cascades`: create list with tasks -> delete list -> verify tasks also soft-deleted.
 2. In `src-tauri/src/commands/task_commands.rs`, add tests:
-   - `test_subtask_depth_limit`: create task → create subtask → create sub-subtask → verify error.
-   - `test_complete_recurring`: create daily task → complete → verify new task with next date.
-   - `test_complete_sets_timestamp`: complete task → verify `completed_at` is set.
+   - `test_subtask_depth_limit`: create task -> create subtask -> create sub-subtask -> verify error.
+   - `test_complete_recurring`: create daily task -> complete -> verify new task with next date.
+   - `test_complete_sets_timestamp`: complete task -> verify `completed_at` is set.
 3. In `src-tauri/src/sync/tracker.rs`, add tests:
-   - `test_record_and_retrieve_changes`: record 5 changes → get pending since past → verify 5 returned.
-   - `test_apply_remote_newer_wins`: apply remote change with newer timestamp → verify field updated.
-   - `test_apply_remote_older_skipped`: set local field → apply remote change with older timestamp → verify field unchanged.
+   - `test_record_and_retrieve_changes`: record 5 changes -> get pending since past -> verify 5 returned.
+   - `test_apply_remote_newer_wins`: apply remote change with newer timestamp -> verify field updated.
+   - `test_apply_remote_older_skipped`: set local field -> apply remote change with older timestamp -> verify field unchanged.
 
 **DONE WHEN**
 - [ ] `cargo test` in `src-tauri/` passes all tests.
@@ -1291,41 +1137,82 @@
 
 ---
 
-### Task 53 (B) +test +svelte
+### Task 39 (B) +test +svelte
+blockedBy: [19, 20, 21, 25]
+
 **PURPOSE** — Implements Svelte component tests for critical UI interactions.
 
 **WHAT TO DO**
 1. Install testing dependencies: `@testing-library/svelte`, `vitest`, `jsdom`.
 2. Configure `vitest.config.ts` with `environment: 'jsdom'` and Svelte preprocessing.
-3. Mock Tauri `invoke` globally in `tauri-app/src/test/setup.ts`: intercept all `invoke` calls and return pre-defined responses.
+3. Mock Tauri `invoke` globally in `apps/desktop/src/test/setup.ts`: intercept all `invoke` calls and return pre-defined responses.
 4. Test files:
-   - `TaskList.test.ts`: render with mock tasks → verify task titles visible → click checkbox → verify `invoke('update_task', ...)` called with `status: 1`.
-   - `Sidebar.test.ts`: render with mock lists → click a list → verify `selectedListId` store updated → click "+ New List" → type name → press Enter → verify `invoke('create_list', ...)` called.
+   - `TaskList.test.ts`: render with mock tasks -> verify task titles visible -> click checkbox -> verify `invoke('update_task', ...)` called with `status: 1`.
+   - `Sidebar.test.ts`: render with mock lists -> click a list -> verify `selectedListId` store updated -> click "+ New List" -> type name -> press Enter -> verify `invoke('create_list', ...)` called.
    - `NLPDate.test.ts` (unit test, no component): test `parseNaturalDate` with 10+ inputs covering: "tomorrow", "next monday", "every weekday", "Dec 25 3pm", "in 2 hours", plain text with no date.
 5. Add `"test"` script to `package.json`: `"vitest run"`.
 
 **DONE WHEN**
-- [ ] `npm run test` in `tauri-app/` passes all test files.
+- [ ] `npm run test` in `apps/desktop/` passes all test files.
 - [ ] The NLP date parser passes all 10+ test cases.
 - [ ] Component tests verify that Tauri `invoke` is called with correct arguments.
 
 ---
 
-### Task 54 (B) +test +apple
-**PURPOSE** — Implements Swift unit tests for the shared package covering repositories, NLP, and recurrence logic.
+### Task 40 (B) +test +sync
+blockedBy: [12, 13, 28]
+
+**PURPOSE** — Implements integration tests for the sync protocol, simulating two clients with conflicting changes to verify conflict resolution.
 
 **WHAT TO DO**
-1. In `Packages/TickCloneShared/Tests/`:
-   - `ListRepositoryTests.swift`: create → getAll → update → delete (verify soft-delete). Use in-memory GRDB database.
-   - `TaskRepositoryTests.swift`: create → subtask depth limit → complete recurring → complete non-recurring.
-   - `NaturalDateParserTests.swift`: test 10+ inputs matching the Svelte NLP tests.
-   - `RecurrenceEngineTests.swift`: daily, weekly with BYDAY, monthly, yearly, COUNT, INTERVAL.
-2. Use `XCTest` framework. Each test creates a fresh in-memory `AppDatabase`.
+1. Create `services/server/internal/services/sync_integration_test.go`:
+   - Setup: start test server with PostgreSQL, create a user.
+   - `TestTwoClientSync_NoConflict`:
+     a. Client A pushes a new task (title="Task A").
+     b. Client B pulls -> receives the task.
+     c. Client B pushes a new task (title="Task B").
+     d. Client A pulls -> receives Task B.
+     e. Verify both clients have both tasks.
+   - `TestTwoClientSync_ConflictResolution`:
+     a. Both clients have Task X (synced).
+     b. Client A updates title to "Updated by A" at T1.
+     c. Client B updates title to "Updated by B" at T2 (T2 > T1).
+     d. Client A pushes (accepted).
+     e. Client B pushes (accepted, because T2 > T1).
+     f. Client A pulls -> receives "Updated by B" (newer wins).
+   - `TestTwoClientSync_OlderRejected`:
+     a. Client A pushes title change at T2.
+     b. Client B pushes title change at T1 (T1 < T2).
+     c. Verify B's change is rejected (conflict count=1).
+     d. Server still has A's value.
+2. Use `net/http` client to simulate two different device IDs.
 
 **DONE WHEN**
-- [ ] `swift test` in the `TickCloneShared` package passes all tests.
-- [ ] All tests use in-memory databases.
-- [ ] NLP and recurrence tests cover the same cases as the Tauri/Svelte counterparts.
+- [ ] All three sync integration tests pass.
+- [ ] Conflict resolution correctly applies last-write-wins based on timestamps.
+- [ ] Tests clean up after themselves (no leftover data).
+
+---
+
+### Task 41 (B) +test +tauri
+blockedBy: [14]
+
+**PURPOSE** — Implements E2E tests for the Tauri desktop app using Playwright or tauri-driver.
+
+**WHAT TO DO**
+1. Install `@playwright/test` and configure for WebDriver-based testing of the Tauri webview.
+2. Create `apps/desktop/tests/e2e/` directory.
+3. Test cases:
+   - `app-launch.spec.ts`: verify the app window opens with the correct title "TickClone" and the sidebar is visible.
+   - `list-management.spec.ts`: click "+ New List" -> type "Groceries" -> press Enter -> verify list appears in sidebar -> click delete -> verify list removed.
+   - `task-workflow.spec.ts`: select Inbox -> type "Buy milk" in quick-add -> press Enter -> verify task appears -> click checkbox -> verify task moves to completed section.
+   - `navigation.spec.ts`: click "Today" -> verify Today view renders -> click "Calendar" -> verify calendar grid renders.
+4. Add `"test:e2e"` script to `package.json`.
+
+**DONE WHEN**
+- [ ] `npm run test:e2e` launches the Tauri app and runs all E2E tests.
+- [ ] All 4 test cases pass on the current platform.
+- [ ] Tests are stable (no flaky failures on re-run).
 
 ---
 
@@ -1333,7 +1220,9 @@
 
 ---
 
-### Task 55 (B) +ci
+### Task 42 (B) +ci
+blockedBy: [36, 37, 38, 39]
+
 **PURPOSE** — Sets up GitHub Actions CI to build and test all components on every push.
 
 **WHAT TO DO**
@@ -1342,7 +1231,7 @@
    name: CI
    on: [push, pull_request]
    jobs:
-     server:
+     server-test:
        runs-on: ubuntu-latest
        services:
          postgres:
@@ -1358,124 +1247,679 @@
          - uses: actions/checkout@v4
          - uses: actions/setup-go@v5
            with: { go-version: '1.22' }
-         - run: cd server && go test ./... -v -cover
+         - run: cd services/server && go test ./... -v -cover
            env:
              DATABASE_URL: postgres://test:test@localhost:5432/tickclone_test?sslmode=disable
              MAGIC_LINK_SECRET: test-secret-at-least-32-characters!
-     tauri:
+     tauri-test:
        runs-on: ubuntu-latest
        steps:
          - uses: actions/checkout@v4
          - uses: dtolnay/rust-toolchain@stable
-         - run: cd tauri-app/src-tauri && cargo test
+         - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+         - run: cd apps/desktop/src-tauri && cargo test
          - uses: actions/setup-node@v4
            with: { node-version: '20' }
-         - run: cd tauri-app && npm ci && npm run test
-     apple:
-       runs-on: macos-latest
-       steps:
-         - uses: actions/checkout@v4
-         - run: cd apple && xcodebuild test -scheme TickCloneShared -destination 'platform=macOS'
+         - run: cd apps/desktop && npm ci && npm run test
    ```
-2. Add status badge to `README.md`.
+2. Ensure CI installs Tauri system dependencies for Linux (webkit2gtk, etc.).
 
 **DONE WHEN**
-- [ ] Pushing to `main` triggers all three jobs (server, tauri, apple).
+- [ ] Pushing to `main` triggers both jobs (server-test, tauri-test).
 - [ ] All jobs pass on a clean checkout.
 - [ ] PR checks block merge if any job fails.
 
 ---
 
-## Module 15: Theming & Accessibility (+ui)
+### Task 43 (B) +ci
+blockedBy: [42]
 
----
-
-### Task 56 (C) +ui +svelte
-**PURPOSE** — Implements dark/light theme toggling and system-preference detection in the Tauri app.
+**PURPOSE** — Implements Tauri app bundling for all desktop platforms in CI.
 
 **WHAT TO DO**
-1. Create `tauri-app/src/lib/stores/theme.ts`:
-   - `theme` writable store: `'light' | 'dark' | 'system'`. Default: `'system'`.
-   - On init, detect system preference via `window.matchMedia('(prefers-color-scheme: dark)')`.
-   - On change, set `document.documentElement.dataset.theme` to `'light'` or `'dark'`.
-   - Persist choice in local Tauri settings (via a `get_setting`/`set_setting` command pair using the `settings` table).
-2. Define CSS custom properties in `tauri-app/src/app.css`:
-   - `[data-theme="dark"]`: background `#1E1E2E`, surface `#313244`, text `#CDD6F4`, primary `#89B4FA`, danger `#F38BA8`, etc. (Catppuccin Mocha palette).
-   - `[data-theme="light"]`: background `#EFF1F5`, surface `#CCD0DA`, text `#4C4F69`, primary `#1E66F5`, danger `#D20F39`, etc. (Catppuccin Latte palette).
-3. Update all components to use `var(--bg)`, `var(--surface)`, `var(--text)`, etc. instead of hardcoded colors.
-4. Add theme toggle (sun/moon icon) in the sidebar footer.
+1. Create `.github/workflows/release.yml`:
+   ```yaml
+   name: Release
+   on:
+     push:
+       tags: ['v*']
+   jobs:
+     build-desktop:
+       strategy:
+         matrix:
+           include:
+             - os: macos-latest
+               target: aarch64-apple-darwin
+             - os: macos-latest
+               target: x86_64-apple-darwin
+             - os: ubuntu-latest
+               target: x86_64-unknown-linux-gnu
+             - os: windows-latest
+               target: x86_64-pc-windows-msvc
+       runs-on: ${{ matrix.os }}
+       steps:
+         - uses: actions/checkout@v4
+         - uses: dtolnay/rust-toolchain@stable
+           with: { targets: '${{ matrix.target }}' }
+         - uses: actions/setup-node@v4
+           with: { node-version: '20' }
+         - name: Install Linux dependencies
+           if: matrix.os == 'ubuntu-latest'
+           run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev
+         - run: cd apps/desktop && npm ci && npm run tauri build
+         - uses: actions/upload-artifact@v4
+           with:
+             name: desktop-${{ matrix.target }}
+             path: |
+               apps/desktop/src-tauri/target/release/bundle/dmg/*.dmg
+               apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+               apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+   ```
+2. Outputs: DMG for macOS, AppImage for Linux, NSIS installer for Windows.
 
 **DONE WHEN**
-- [ ] Clicking the theme toggle switches between dark and light themes instantly.
-- [ ] Setting "system" and changing OS dark mode preference updates the app theme.
-- [ ] Theme preference persists across app restarts.
-- [ ] All text has sufficient contrast ratio (≥ 4.5:1) in both themes.
+- [ ] Pushing a `v*` tag triggers builds on all 3 platforms (macOS, Linux, Windows).
+- [ ] Each platform produces its expected artifact (DMG, AppImage, NSIS .exe).
+- [ ] Artifacts are uploaded and downloadable from the GitHub Actions run.
 
 ---
 
-### Task 57 (C) +ui +apple
-**PURPOSE** — Ensures the SwiftUI app respects system appearance and supports Dynamic Type for accessibility.
+### Task 44 (B) +ci
+blockedBy: [42]
+
+**PURPOSE** — Implements Go server Docker image build and push in CI.
 
 **WHAT TO DO**
-1. Verify all SwiftUI views use semantic colors (`Color.primary`, `Color.secondary`, `Color.accentColor`) and system materials (`.background(.thinMaterial)`) instead of hardcoded colors.
-2. Ensure all text uses `Font.body`, `Font.headline`, `Font.caption`, etc. (Dynamic Type responsive) — no fixed `Font.system(size:)` calls.
-3. Add `accessibilityLabel` and `accessibilityHint` to all interactive elements:
-   - Checkboxes: `"Complete task: <title>"`.
-   - Priority buttons: `"Set priority to high"`.
-   - Sidebar items: `"List: <name>, <count> tasks"`.
-4. Test with Accessibility Inspector: verify all elements are reachable via VoiceOver.
+1. Add a job to `.github/workflows/release.yml`:
+   ```yaml
+     build-server:
+       runs-on: ubuntu-latest
+       permissions:
+         packages: write
+       steps:
+         - uses: actions/checkout@v4
+         - uses: docker/login-action@v3
+           with:
+             registry: ghcr.io
+             username: ${{ github.actor }}
+             password: ${{ secrets.GITHUB_TOKEN }}
+         - uses: docker/build-push-action@v5
+           with:
+             context: ./services/server
+             push: true
+             tags: |
+               ghcr.io/${{ github.repository }}/server:${{ github.ref_name }}
+               ghcr.io/${{ github.repository }}/server:latest
+   ```
+2. Ensure the `services/server/Dockerfile` (from Task 4) builds correctly in CI.
+3. Tag images with both the version tag and `latest`.
 
 **DONE WHEN**
-- [ ] The app renders correctly in both light and dark mode without any invisible or unreadable text.
-- [ ] Increasing Dynamic Type to the largest setting does not cause text truncation or overlapping.
-- [ ] VoiceOver can navigate every interactive element with meaningful labels.
+- [ ] Pushing a `v*` tag builds and pushes the server Docker image to GitHub Container Registry.
+- [ ] `docker pull ghcr.io/<repo>/server:latest` works.
+- [ ] The pushed image runs correctly (`docker run -e DATABASE_URL=... <image>` starts the server).
 
 ---
 
-## Module 16: Performance (+perf)
+## Module 15: Documentation (+docs)
 
 ---
 
-### Task 58 (C) +perf +tauri
-**PURPOSE** — Ensures the Tauri app handles large datasets (10,000+ tasks) without UI lag.
+### Task 45 (B) +docs
+blockedBy: [0, 4, 14, 32]
+
+**PURPOSE** — Creates project documentation including architecture diagram, quickstart guide, and sync protocol explanation.
 
 **WHAT TO DO**
-1. Create a Tauri command `seed_benchmark_data(state, task_count: u32) -> Result<(), String>`:
-   - Creates 10 lists, `task_count` tasks distributed across lists, 20% with subtasks, 30% with tags, 10% with recurrence rules.
-   - Uses a transaction with batched inserts (500 per batch).
-2. In `TaskList.svelte`, implement virtual scrolling: only render visible task rows + a buffer of 20 above/below. Use a simple implementation: calculate total height, translate visible rows to correct positions.
-3. In `CalendarView.svelte`, lazy-load tasks only for the visible month range (already done if Task 24 was implemented correctly — verify).
-4. Add `EXPLAIN QUERY PLAN` checks in Rust tests for the 5 most common queries to verify they use indexes (no full table scans).
+1. Create `README.md` in project root with:
+   - Architecture overview diagram (ASCII art) showing: Tauri Desktop App -> SQLite (local) -> Sync Client -> Go Server -> PostgreSQL.
+   - Tech stack table matching the PRD header.
+   - Quick start for development:
+     ```
+     cp .env.example .env
+     docker compose up -d db
+     cd services/server && go run ./cmd/server
+     cd apps/desktop && npm run tauri dev
+     ```
+   - Quick start for self-hosting:
+     ```
+     cp .env.example .env
+     docker compose up -d
+     ```
+   - Sync protocol explanation: describe the per-field vector clock approach, last-write-wins resolution, push/pull cycle, and conflict handling.
+   - SMTP configuration guide for magic link auth.
+   - Contributing guide (code style, PR process, testing requirements).
+2. Keep documentation concise. Each section should be under 50 lines.
 
 **DONE WHEN**
-- [ ] After seeding 10,000 tasks, `invoke('get_tasks_by_list', ...)` for a list with 500 tasks returns in < 100ms.
-- [ ] Scrolling through a list of 500 tasks maintains 60fps (no visible stutter in dev tools performance tab).
-- [ ] All 5 critical queries use indexes (verified by `EXPLAIN QUERY PLAN` showing `USING INDEX`).
+- [ ] README.md exists with all sections listed above.
+- [ ] A new developer can follow the quickstart and have a running app in under 10 minutes.
+- [ ] The sync protocol section explains conflict resolution clearly enough that a developer can implement a new client.
 
 ---
 
-### Task 59 (C) +perf +server
-**PURPOSE** — Adds database query optimization and connection pool tuning to the Go server for production readiness.
+### Task 46 (B) +docs
+blockedBy: [6, 7, 8, 9, 12]
+
+**PURPOSE** — Creates API documentation for the Go server endpoints using OpenAPI/Swagger.
 
 **WHAT TO DO**
-1. In `pool.go`, add pool configuration: `pool_min_conns=5`, `pool_max_conn_lifetime=1h`, `pool_max_conn_idle_time=30m`.
-2. Add prepared statement caching: create a `Queries` struct in `server/internal/database/queries.go` that holds prepared `pgx.PreparedStatement` references for the 10 most-used queries (list tasks, get lists, search sync log, etc.).
-3. Add `EXPLAIN ANALYZE` logging in development mode: if `LOG_LEVEL=debug`, log query plans for any query taking > 50ms.
-4. Create `server/migrations/003_indexes.up.sql`: add any missing indexes identified by slow query analysis. At minimum add `idx_sync_log_user_device` on `sync_log(user_id, device_id, timestamp)`.
+1. Install `github.com/swaggo/echo-swagger` and `github.com/swaggo/swag/cmd/swag` in the Go server.
+2. Add Swagger annotations to all handler functions in `services/server/internal/handlers/`:
+   - Document all request/response schemas, status codes, authentication requirements.
+   - Group endpoints by tag: "Lists", "Tasks", "Tags", "Auth", "Sync".
+3. Generate Swagger docs: `swag init -g cmd/server/main.go -o docs/`.
+4. Mount Swagger UI at `/api/docs` using `echo-swagger` middleware.
+5. Ensure the generated `swagger.json` is committed to `services/server/docs/`.
 
 **DONE WHEN**
-- [ ] The connection pool is configured with min/max/idle settings (verified by log output on startup).
-- [ ] In debug mode, queries > 50ms log their `EXPLAIN ANALYZE` output.
-- [ ] The `003_indexes` migration runs cleanly.
+- [ ] Navigating to `http://localhost:8080/api/docs` shows the Swagger UI with all endpoints documented.
+- [ ] Each endpoint has request/response examples.
+- [ ] The "Try it out" feature works for unauthenticated endpoints (health, auth).
+- [ ] `services/server/docs/swagger.json` is valid OpenAPI 3.0.
 
 ---
 
-This PRD contains **59 tasks**: 31 priority (A), 19 priority (B), 9 priority (C).
+## Module 16: Server Rate Limiting & Hardening (+server)
 
-**Recommended execution order (critical path):**
-1. Tasks 1–3 (schema) — unblocks everything
-2. Tasks 4–5 (server foundation) — then 6–8 (CRUD) — then 9–11 (auth + recurrence)
-3. Tasks 14–18 (Tauri shell + IPC) in parallel with 27–30 (Apple shell + DB)
-4. Tasks 19–25 (Svelte UI) in parallel with 31–37 (SwiftUI UI)
-5. Tasks 12–13 (sync server) → 38–41 (sync clients)
-6. Remaining modules in priority order
+---
+
+### Task 47 (B) +server
+blockedBy: [9, 10]
+
+**PURPOSE** — Adds rate limiting to the server to prevent abuse of auth endpoints and sync operations.
+
+**WHAT TO DO**
+1. Add `golang.org/x/time/rate` to `go.mod`.
+2. Create `services/server/internal/middleware/rate_limiter.go`:
+   - Per-IP rate limiter using a sync.Map of `*rate.Limiter` instances.
+   - Auth endpoints (`/api/auth/*`): 5 requests per minute — WHY: prevents brute-force token guessing; legitimate users need at most 1-2 magic link requests per session.
+   - Sync endpoints (`/api/sync/*`): 60 requests per minute — WHY: supports 1 sync per second burst while preventing excessive polling.
+   - General API endpoints: 120 requests per minute — WHY: covers rapid UI interactions (creating tasks, updating fields) without throttling normal use.
+   - Cleanup stale limiter entries every 10 minutes — WHY: prevents unbounded memory growth from unique IPs.
+3. Return 429 Too Many Requests with `Retry-After` header when rate exceeded.
+4. Apply middleware in `main.go` with different configurations per route group.
+
+**DONE WHEN**
+- [ ] Sending 6 requests to `/api/auth/magic-link` within 1 minute returns 429 on the 6th.
+- [ ] Sync endpoints allow 60 requests per minute before throttling.
+- [ ] The `Retry-After` header is present on 429 responses.
+- [ ] Stale rate limiter entries are cleaned up (verified via log output).
+
+---
+
+### Task 48 (B) +server
+blockedBy: [5]
+
+**PURPOSE** — Adds request validation and input sanitization middleware to prevent injection and malformed data.
+
+**WHAT TO DO**
+1. Create `services/server/internal/middleware/validator.go`:
+   - Use `github.com/go-playground/validator/v10` for struct validation.
+   - Add custom validation rules: `uuid` for UUID fields, `rrule` for RRULE strings, `hexcolor` for hex color codes.
+2. Add validation tags to all model structs in `services/server/internal/models/`:
+   - List: `name` required, max 255, `color` optional hexcolor.
+   - Task: `title` required, max 1000 (WHY: 1000 chars covers verbose task descriptions without allowing abuse), `priority` gte=0 lte=3, `status` gte=0 lte=1.
+   - Tag: `name` required, max 100.
+3. Create a helper `func BindAndValidate(c echo.Context, v interface{}) error` that binds JSON and validates, returning 400 with field-level error details.
+4. Apply to all handler functions.
+
+**DONE WHEN**
+- [ ] `POST /api/lists` with `{"name":""}` returns 400 with error details mentioning "name".
+- [ ] `POST /api/lists` with `{"name":"x","color":"not-a-color"}` returns 400 mentioning "color".
+- [ ] `POST /api/lists/:listId/tasks` with `{"title":"x","priority":5}` returns 400 mentioning "priority".
+- [ ] Valid requests continue to work as before.
+
+---
+
+## Module 17: Advanced Svelte UI (+svelte)
+
+---
+
+### Task 49 (B) +svelte
+blockedBy: [21, 24]
+
+**PURPOSE** — Implements drag-and-drop for task reordering and cross-list task moving in the Svelte UI.
+
+**WHAT TO DO**
+1. Install `sortablejs` in `apps/desktop`: `npm install sortablejs @types/sortablejs`.
+2. Create `apps/desktop/src/lib/services/drag-drop.ts`:
+   - `initSortable(element, options)` wrapper that creates a SortableJS instance.
+   - On reorder within same list: compute new `sort_order` values for affected tasks, call `editTask(id, { sortOrder })` for each.
+   - On cross-list drop: call `moveTask(id, newListId, sortOrder)`.
+3. Integrate into `TaskList.svelte`:
+   - Wrap the task list container with SortableJS.
+   - Visual feedback: dragged task has slight opacity, drop target shows insertion line.
+   - Subtasks are dragged with their parent (group behavior).
+4. Integrate into `CalendarView.svelte`:
+   - Allow dragging tasks between day cells to reschedule.
+   - On drop: call `editTask(id, { dueDate: targetDate })`.
+
+**DONE WHEN**
+- [ ] Dragging a task within a list reorders it persistently (survives app restart).
+- [ ] Dragging a task from the task list to a different list in the sidebar moves it.
+- [ ] Dragging a task between calendar days updates its due date.
+- [ ] Parent tasks drag with their subtasks.
+
+---
+
+### Task 50 (B) +svelte
+blockedBy: [22]
+
+**PURPOSE** — Implements context menus for tasks and lists, providing quick access to common actions.
+
+**WHAT TO DO**
+1. Create `apps/desktop/src/lib/components/ContextMenu.svelte`:
+   - Generic context menu component: positioned at cursor, closes on click outside or Escape.
+   - Accepts `items: { label: string, icon?: string, action: () => void, danger?: boolean }[]`.
+2. Add task context menu (right-click on task row):
+   - "Set Priority" submenu: None / Low / Medium / High.
+   - "Move to List" submenu: list of all lists.
+   - "Add Tag" submenu: list of all tags.
+   - "Duplicate Task" — creates a copy with "(copy)" appended to title.
+   - "Delete Task" (red) — soft-delete with confirmation.
+3. Add list context menu (right-click on sidebar list):
+   - "Rename" — inline edit mode.
+   - "Change Color" — color picker popover.
+   - "Delete List" (red) — soft-delete with confirmation. Disabled for Inbox.
+
+**DONE WHEN**
+- [ ] Right-clicking a task shows the context menu at the cursor position.
+- [ ] Setting priority via context menu updates the task immediately.
+- [ ] "Duplicate Task" creates a new task with the same fields and "(copy)" title.
+- [ ] Right-clicking the Inbox list shows "Delete List" as disabled/grayed out.
+
+---
+
+### Task 51 (C) +svelte
+blockedBy: [21]
+
+**PURPOSE** — Implements a "Week" view that shows the current 7 days with tasks, providing an intermediate between Today and Calendar views.
+
+**WHAT TO DO**
+1. Create a Tauri command `get_tasks_in_week(state, start_date: String) -> Result<Vec<Task>, String>`:
+   - Fetches tasks for 7 days starting from `start_date`.
+2. Create `apps/desktop/src/lib/components/WeekView.svelte`:
+   - 7-column layout, one column per day.
+   - Each column header: day name + date (e.g., "Mon 22").
+   - Tasks listed vertically within each column, sorted by priority then sort_order.
+   - Navigation: previous/next week arrows, "This Week" button.
+   - Tasks are draggable between columns to reschedule.
+3. Add "Week" navigation item in sidebar between "Today" and "Calendar".
+
+**DONE WHEN**
+- [ ] Week view shows 7 days starting from Monday of the current week.
+- [ ] Tasks appear in the correct day column based on due_date.
+- [ ] Dragging a task from one day column to another updates its due_date.
+- [ ] Navigating to next/previous week loads the correct tasks.
+
+---
+
+### Task 52 (C) +svelte
+blockedBy: [20]
+
+**PURPOSE** — Implements list color picker and icon selection for visual customization.
+
+**WHAT TO DO**
+1. Create `apps/desktop/src/lib/components/ColorPicker.svelte`:
+   - Grid of 12 predefined colors (WHY: 12 colors covers the common color wheel segments; too many creates decision fatigue): red, orange, amber, yellow, lime, green, teal, cyan, blue, indigo, violet, pink.
+   - Each color shown as a 24px circle, selected state has a checkmark overlay.
+   - Clicking calls the callback with hex value.
+2. Integrate into list creation and editing flows:
+   - When creating a new list, show the color picker.
+   - In list context menu "Change Color", show the color picker.
+3. Update sidebar list items to use the selected color for the circle indicator.
+
+**DONE WHEN**
+- [ ] Creating a new list shows a color picker with 12 options.
+- [ ] Selected color persists and displays correctly in the sidebar.
+- [ ] Changing a list's color via context menu updates the sidebar immediately.
+
+---
+
+## Module 18: Notification & Reminder System (+notify)
+
+---
+
+### Task 53 (B) +notify +tauri
+blockedBy: [17]
+
+**PURPOSE** — Implements desktop notifications for task reminders so users don't miss due tasks.
+
+**WHAT TO DO**
+1. Enable the `notification` plugin in Tauri 2: add `tauri-plugin-notification` to `src-tauri/Cargo.toml`.
+2. Create `src-tauri/src/services/reminder.rs`:
+   - `pub fn check_due_tasks(conn: &Connection) -> Vec<Task>` — queries tasks due within the next 15 minutes (WHY: 15min lookahead gives users time to prepare without being too far in advance) that haven't been notified (add `notified_at TEXT` column to `tasks` table or use a separate `notifications` table).
+   - `pub fn mark_notified(conn: &Connection, task_id: &str)` — prevents duplicate notifications.
+3. Create a Tauri background task that runs `check_due_tasks` every 60 seconds (WHY: 60s polling interval balances CPU usage with notification timeliness; a task due in 15min will be caught within at most 1 min of entering the window).
+4. When due tasks are found, send desktop notifications with: task title, due time, and a "View" action that focuses the app and selects the task.
+5. Create `apps/desktop/src/lib/stores/notifications.ts`: track notification preferences (enable/disable, lookahead time).
+
+**DONE WHEN**
+- [ ] A task due in 10 minutes triggers a desktop notification with the task title.
+- [ ] The same task does not trigger duplicate notifications.
+- [ ] Clicking the notification focuses the app window.
+- [ ] Notifications can be disabled in settings.
+
+---
+
+### Task 54 (C) +notify +svelte
+blockedBy: [53]
+
+**PURPOSE** — Adds an in-app notification center showing upcoming and missed reminders.
+
+**WHAT TO DO**
+1. Create `apps/desktop/src/lib/components/NotificationCenter.svelte`:
+   - Bell icon in the top toolbar with badge count of unread notifications.
+   - Dropdown panel listing recent notifications: task title, due time, "Overdue" tag if past due.
+   - Clicking a notification navigates to the task.
+   - "Mark all read" button.
+2. Store notifications in `apps/desktop/src/lib/stores/notifications.ts`:
+   - In-memory list of notification events, persisted to the `settings` table.
+   - Max 50 notifications retained — WHY: keeps memory and storage bounded; older notifications lose relevance quickly in a task manager.
+
+**DONE WHEN**
+- [ ] Bell icon shows a badge count when there are unread notifications.
+- [ ] Clicking the bell shows the notification list.
+- [ ] Clicking a notification item opens the corresponding task in TaskDetail.
+- [ ] "Mark all read" clears the badge count.
+
+---
+
+## Module 19: Multi-window & System Tray (+system)
+
+---
+
+### Task 55 (C) +system +tauri
+blockedBy: [14, 21]
+
+**PURPOSE** — Implements system tray integration for quick task capture without opening the main window.
+
+**WHAT TO DO**
+1. Enable the `tray-icon` plugin in Tauri 2: add `tauri-plugin-tray-icon` to `src-tauri/Cargo.toml`.
+2. Create a system tray icon with a context menu:
+   - "Open TickClone" — shows/focuses the main window.
+   - "Quick Add Task" — opens a small floating window (300x100px — WHY: minimal size for a single-line input; avoids disrupting the user's workflow) with just a task title input. On Enter, creates the task in the Inbox and closes the window.
+   - "Today's Tasks" — submenu listing up to 5 tasks due today (WHY: 5 tasks is a quick glanceable summary; more would make the tray menu unwieldy) with checkboxes to complete them inline.
+   - "Quit" — exits the app.
+3. Configure Tauri to keep running in the background when the window is closed (system tray mode).
+
+**DONE WHEN**
+- [ ] A tray icon appears in the system tray on app launch.
+- [ ] "Quick Add Task" opens a minimal floating window and creates a task on Enter.
+- [ ] "Today's Tasks" shows up to 5 due tasks with working completion checkboxes.
+- [ ] Closing the main window keeps the app running in the tray.
+
+---
+
+### Task 56 (C) +system +tauri
+blockedBy: [55]
+
+**PURPOSE** — Implements a global keyboard shortcut for quick task capture from anywhere on the desktop.
+
+**WHAT TO DO**
+1. Enable the `global-shortcut` plugin in Tauri 2: add `tauri-plugin-global-shortcut`.
+2. Register a global shortcut (default: `Ctrl+Shift+A` on Linux/Windows, `Cmd+Shift+A` on macOS — WHY: Ctrl+Shift+A avoids conflicts with common app shortcuts; the "A" stands for "Add").
+3. When triggered:
+   - If the quick-add window exists, focus it.
+   - If not, create it (same floating window as Task 55).
+4. Allow customizing the shortcut in settings.
+
+**DONE WHEN**
+- [ ] Pressing the global shortcut from any application opens the quick-add window.
+- [ ] The quick-add input is focused and ready for typing.
+- [ ] The shortcut can be changed in settings.
+- [ ] The shortcut works even when the main window is closed (tray mode).
+
+---
+
+## Module 20: Undo/Redo System (+undo)
+
+---
+
+### Task 57 (C) +undo +tauri +svelte
+blockedBy: [17, 19]
+
+**PURPOSE** — Implements undo/redo for task operations so users can recover from accidental changes.
+
+**WHAT TO DO**
+1. Create `src-tauri/src/services/undo.rs`:
+   - `pub struct UndoStack` with a bounded `Vec<UndoAction>` (max 50 entries — WHY: 50 actions is approximately 10 minutes of active editing; more would consume excessive memory storing old states).
+   - `UndoAction` enum: `CreateTask { task }`, `DeleteTask { task }`, `UpdateTask { id, old_fields, new_fields }`, `CreateList { list }`, `DeleteList { list, tasks }`, etc.
+   - `pub fn push(action: UndoAction)`, `pub fn undo() -> Option<UndoAction>`, `pub fn redo() -> Option<UndoAction>`.
+2. Modify CRUD commands to record undo actions before applying changes.
+3. Create Tauri commands: `undo() -> Result<String, String>` (returns description), `redo() -> Result<String, String>`.
+4. Create `apps/desktop/src/lib/stores/undo.ts`:
+   - Track `canUndo` and `canRedo` state.
+   - Show a toast notification on undo/redo: "Undone: Delete task 'Buy milk'".
+5. Wire `Ctrl+Z` (undo) and `Ctrl+Shift+Z` (redo) keyboard shortcuts.
+
+**DONE WHEN**
+- [ ] Deleting a task and pressing Ctrl+Z restores it.
+- [ ] Pressing Ctrl+Shift+Z after undo re-deletes it.
+- [ ] A toast shows what was undone/redone.
+- [ ] The undo stack is bounded at 50 actions.
+
+---
+
+## Module 21: Batch Operations (+batch)
+
+---
+
+### Task 58 (C) +batch +svelte
+blockedBy: [21, 22]
+
+**PURPOSE** — Implements multi-select and batch operations for tasks, enabling bulk edits.
+
+**WHAT TO DO**
+1. Add multi-select to `TaskList.svelte`:
+   - `Ctrl+Click` toggles individual task selection.
+   - `Shift+Click` selects a range.
+   - Selected tasks have a highlighted background.
+   - A floating action bar appears when 2+ tasks are selected: "N tasks selected" + action buttons.
+2. Batch actions:
+   - "Set Priority" — applies the same priority to all selected tasks.
+   - "Move to List" — moves all selected tasks to the chosen list.
+   - "Add Tag" — adds the chosen tag to all selected tasks.
+   - "Delete" — soft-deletes all selected tasks with confirmation.
+   - "Complete" — marks all selected tasks as completed.
+3. Create `apps/desktop/src/lib/stores/selection.ts`: `selectedTaskIds` writable store of type `Writable<Set<string>>`.
+
+**DONE WHEN**
+- [ ] Ctrl+clicking two tasks shows the floating action bar with "2 tasks selected".
+- [ ] "Set Priority -> High" on 3 selected tasks updates all 3 priorities.
+- [ ] "Delete" on selected tasks soft-deletes all of them after confirmation.
+- [ ] Shift+clicking selects a contiguous range of tasks.
+
+---
+
+## Module 22: Task Sorting & Filtering (+filter)
+
+---
+
+### Task 59 (B) +filter +svelte
+blockedBy: [19, 21]
+
+**PURPOSE** — Implements advanced sorting and filtering options for the task list view.
+
+**WHAT TO DO**
+1. Create `apps/desktop/src/lib/components/FilterBar.svelte`:
+   - Sort options dropdown: "Manual" (sort_order), "Priority" (high first), "Due Date" (earliest first), "Title" (A-Z), "Created" (newest first).
+   - Filter toggles:
+     - "Show Completed" toggle.
+     - Priority filter: chips for each level (click to toggle).
+     - Tag filter: chips for each tag.
+     - Due date filter: "Overdue", "Today", "This Week", "No Date".
+   - Active filters shown as removable pills below the filter bar.
+2. Create `apps/desktop/src/lib/stores/filters.ts`:
+   - `currentSort`, `currentFilters` stores.
+   - Filtering and sorting happen client-side on the loaded task data (no additional IPC calls — WHY: local filtering is instant and avoids round-trip overhead; the full task list is already in memory).
+3. Integrate into `TaskList.svelte` header area.
+
+**DONE WHEN**
+- [ ] Changing sort to "Priority" reorders tasks with high priority first.
+- [ ] Filtering by "Overdue" shows only tasks with due_date < today.
+- [ ] Combining tag filter + priority filter shows only matching tasks.
+- [ ] Active filter pills are visible and removable.
+
+---
+
+## Module 23: Auto-sync Background Worker (+sync)
+
+---
+
+### Task 60 (B) +sync +tauri
+blockedBy: [28, 29]
+
+**PURPOSE** — Implements a background auto-sync worker that periodically syncs with the server without user intervention.
+
+**WHAT TO DO**
+1. Create `src-tauri/src/sync/worker.rs`:
+   - `pub struct SyncWorker` with configurable interval (default 60s — WHY: same as the sync settings TTL; balances battery life vs. data freshness).
+   - Runs on a separate Tokio task.
+   - `pub fn start(state: AppState, interval_secs: u64)` — spawns a loop that calls `sync_now` logic every `interval_secs`.
+   - Emits Tauri events on sync completion: `sync:complete { pushed, pulled, conflicts }`.
+   - Handles errors gracefully: on network failure, back off exponentially (2s, 4s, 8s, 16s, max 300s — WHY: 300s max backoff prevents the worker from effectively stopping while still reducing load on unreachable servers).
+   - Stops when `auto_sync_enabled` setting is false.
+2. Start the worker on app launch if auto-sync is enabled.
+3. Listen for the `sync:complete` event in Svelte to update the UI (sync status indicator, refresh stores if changes were pulled).
+
+**DONE WHEN**
+- [ ] With auto-sync enabled, the app syncs every 60s without user action.
+- [ ] Network failures trigger exponential backoff (verified by log output).
+- [ ] Disabling auto-sync in settings stops the worker.
+- [ ] The Svelte UI updates when remote changes are pulled.
+
+---
+
+## Module 24: Accessibility (+a11y)
+
+---
+
+### Task 61 (C) +a11y +svelte
+blockedBy: [20, 21, 22]
+
+**PURPOSE** — Ensures the Tauri/Svelte app meets WCAG 2.1 AA accessibility standards.
+
+**WHAT TO DO**
+1. Audit all components for accessibility:
+   - Add `role`, `aria-label`, `aria-expanded`, `aria-selected` attributes to all interactive elements.
+   - Sidebar: `role="navigation"`, list items have `role="option"`, `aria-selected` for active list.
+   - Task list: `role="list"`, each task `role="listitem"`, checkbox `role="checkbox"` with `aria-checked`.
+   - Task detail: form inputs have associated `<label>` elements.
+   - Calendar: day cells have `aria-label="March 22, 2026, 3 tasks"`.
+2. Ensure full keyboard navigation:
+   - Tab order follows logical reading order.
+   - Arrow keys navigate within lists.
+   - Enter/Space activate buttons and checkboxes.
+   - Focus ring is visible on all focusable elements (2px solid outline — WHY: 2px ensures visibility on both light and dark themes per WCAG 2.4.7).
+3. Color contrast: verify all text meets 4.5:1 ratio (AA). Use tools to check both themes.
+4. Screen reader testing: verify all content is announced correctly.
+
+**DONE WHEN**
+- [ ] All interactive elements have appropriate ARIA attributes.
+- [ ] The entire app is navigable via keyboard only (no mouse required).
+- [ ] Focus ring is visible on every focusable element in both themes.
+- [ ] Running axe or Lighthouse accessibility audit shows no critical or serious issues.
+
+---
+
+## Module 25: Onboarding & Empty States (+ux)
+
+---
+
+### Task 62 (C) +ux +svelte
+blockedBy: [20, 21]
+
+**PURPOSE** — Implements first-run onboarding and meaningful empty states to guide new users.
+
+**WHAT TO DO**
+1. Create `apps/desktop/src/lib/components/Onboarding.svelte`:
+   - First-run detection: check for a `onboarding_complete` key in the `settings` table.
+   - 3-step walkthrough overlay (WHY: 3 steps is the sweet spot for onboarding; more causes drop-off):
+     a. "Welcome to TickClone" — brief intro, show the sidebar and explain lists.
+     b. "Quick Add" — highlight the quick-add input, explain NLP date parsing.
+     c. "Stay Synced" — explain optional sync setup.
+   - "Skip" button on each step, "Done" on last step. Sets `onboarding_complete=true`.
+2. Empty states for each view:
+   - Empty task list: illustration + "No tasks yet. Type above to create your first task."
+   - Empty Today view: "Nothing due today. Enjoy your free time!"
+   - Empty Calendar: "No tasks scheduled this month."
+   - Empty search results: "No tasks match your search."
+3. Use simple SVG illustrations (inline, no external dependencies).
+
+**DONE WHEN**
+- [ ] First app launch shows the onboarding walkthrough.
+- [ ] Completing or skipping onboarding persists (does not show again).
+- [ ] Each empty state shows a helpful message and illustration.
+- [ ] Empty states disappear as soon as relevant data exists.
+
+---
+
+## Module 26: Startup Performance (+perf)
+
+---
+
+### Task 63 (C) +perf +tauri
+blockedBy: [15, 19]
+
+**PURPOSE** — Optimizes app startup time to under 2 seconds from launch to interactive.
+
+**WHAT TO DO**
+1. Profile startup with Tauri's built-in timing:
+   - Measure: Rust init -> DB open -> schema check -> Svelte mount -> first data render.
+   - Target: < 500ms for Rust init, < 200ms for DB, < 300ms for Svelte mount, < 500ms for first render. Total < 1500ms with 500ms buffer — WHY: 2s is the threshold where users perceive an app as "slow to start" per Nielsen Norman research.
+2. Optimize DB initialization:
+   - Skip schema creation if tables already exist (check once with a quick query).
+   - Open DB connection with `PRAGMA synchronous=NORMAL` (WHY: NORMAL is safe with WAL mode and faster than FULL; data loss only on OS crash, not app crash).
+3. Optimize Svelte first render:
+   - Load sidebar lists immediately (small dataset, fast query).
+   - Defer loading tasks until a list is selected.
+   - Use skeleton placeholders during initial load.
+4. Add a simple splash screen (app icon + "Loading...") for the first 500ms if data isn't ready.
+
+**DONE WHEN**
+- [ ] Cold start to interactive UI is under 2 seconds on a mid-range machine.
+- [ ] No blank white screen during startup (splash or skeleton shown).
+- [ ] Subsequent launches (warm start) are under 1 second.
+- [ ] Startup timings are logged for performance monitoring.
+
+---
+
+### Task 64 (C) +perf +tauri
+blockedBy: [15]
+
+**PURPOSE** — Implements SQLite database maintenance to prevent performance degradation over time.
+
+**WHAT TO DO**
+1. Create `src-tauri/src/services/maintenance.rs`:
+   - `pub fn vacuum_if_needed(conn: &Connection)` — runs `PRAGMA auto_vacuum=INCREMENTAL` and `PRAGMA incremental_vacuum(100)` on startup if the freelist page count exceeds 1000 pages — WHY: 1000 pages (~4MB) is the threshold where fragmentation starts to noticeably impact read performance.
+   - `pub fn analyze_tables(conn: &Connection)` — runs `ANALYZE` to update query planner statistics. Run once per week (track last run in `settings` table) — WHY: weekly is sufficient because task management data changes gradually; more frequent runs waste startup time.
+   - `pub fn purge_old_data(conn: &Connection, days: u32)` — permanently deletes soft-deleted records older than `days` (default 30 — WHY: 30 days gives users ample time to recover accidentally deleted tasks while preventing unbounded growth). Also deletes old sync_meta entries.
+2. Run maintenance on app startup (non-blocking, background thread).
+
+**DONE WHEN**
+- [ ] Soft-deleted tasks older than 30 days are permanently removed.
+- [ ] `ANALYZE` runs weekly and updates are tracked in settings.
+- [ ] Incremental vacuum runs when fragmentation threshold is exceeded.
+- [ ] Maintenance does not block the UI thread.
+
+---
+
+This PRD contains **65 tasks**: 24 priority (A), 23 priority (B), 18 priority (C).
+
+**Dependency summary (critical path):**
+1. Task 0 (scaffolding) — unblocks everything
+2. Tasks 1-3 (schema) + Task 4 (server bootstrap) — in parallel after Task 0
+3. Task 5 (server DB) -> Tasks 6-10 (server CRUD + auth) -> Task 11 (recurrence)
+4. Task 14 (Tauri shell) -> Task 15 (local DB) -> Tasks 16-18 (Tauri IPC)
+5. Tasks 19-26 (Svelte UI) — after Tauri IPC layer
+6. Tasks 12-13 (sync server) -> Tasks 28-29 (sync client + UI) -> Task 60 (auto-sync)
+7. Tasks 36-41 (testing) -> Tasks 42-44 (CI/CD)
+8. Remaining modules (search, export, theming, performance, notifications, etc.) in priority order
+
+**Recommended parallel tracks:**
+- **Track A (Server):** 0 -> 2 -> 4 -> 5 -> 6,7,8,9 -> 10,11 -> 12,13
+- **Track B (Client):** 0 -> 1 -> 14 -> 15 -> 16,17,18 -> 19 -> 20,21,22 -> 23,24,25,26
+- **Track C (Infra):** 32 (deploy) + 45,46 (docs) once foundation is ready
+- **Track D (Quality):** 36-41 (tests) -> 42-44 (CI/CD) once features stabilize

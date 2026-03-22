@@ -7,6 +7,7 @@
 ## Foundation & Project Scaffolding
 
 ### Task 1 (A) +scaffold
+blockedBy: [none]
 
 **PURPOSE** — Establishes the Tauri 2 + React/TypeScript project skeleton with Rust backend. Every subsequent task depends on this structure existing.
 
@@ -27,6 +28,7 @@
 ---
 
 ### Task 2 (A) +scaffold
+blockedBy: [none]
 
 **PURPOSE** — Defines the persistent settings schema that nearly every feature reads from. Must exist before audio, model, or shortcut managers.
 
@@ -48,8 +50,10 @@
        pub auto_start: bool,                    // default false
        pub start_hidden: bool,                  // default false
        pub history_retention: HistoryRetention, // enum Count(u32) | Days(u32), default Count(100)
+       // WHY Count(100): ~1 week of moderate use at ~15 dictations/day; avoids unbounded DB growth
        pub audio_input_device: Option<String>,
        pub feedback_volume: f32,                // default 0.5
+       // WHY 0.5: midpoint between silent and full volume; audible but not startling in quiet environments
        pub custom_words: Vec<CustomWordEntry>,  // Vec<{from: String, to: String}>
        pub llm_provider: LlmProvider,           // enum Ollama | LlamaCpp, default Ollama
        pub llm_model: Option<String>,
@@ -57,6 +61,7 @@
        pub post_process_mode: PostProcessMode,  // enum Dictation | Proofread | Rewrite | Command
        pub translate_to_english: bool,          // default false
        pub model_unload_timeout_secs: u64,      // default 300
+       // WHY 300s: 5 minutes of inactivity suggests the user is done dictating; keeping the model loaded longer wastes 100MB-3GB of RAM
    }
    ```
 2. Define enums: `OverlayPosition`, `PasteMethod`, `HistoryRetention`, `LlmProvider`, `PostProcessMode` with serde support.
@@ -74,6 +79,7 @@
 ---
 
 ### Task 3 (A) +scaffold
+blockedBy: [none]
 
 **PURPOSE** — Provides the SQLite-backed history database that transcription results are stored in. Required before any transcription can be persisted.
 
@@ -123,6 +129,7 @@
 ## Audio Capture
 
 ### Task 4 (A) +audio
+blockedBy: [1]
 
 **PURPOSE** — Provides the cross-platform audio recording foundation. Without mic capture, no transcription can occur.
 
@@ -160,6 +167,7 @@
 ---
 
 ### Task 5 (A) +audio
+blockedBy: [1, 4]
 
 **PURPOSE** — Resamples recorded audio to 16kHz mono, the exact format Whisper expects. Without this, model inference produces garbage.
 
@@ -170,9 +178,12 @@
    - Otherwise, use `rubato::SincFixedIn` with:
      - `resample_ratio`: `16000.0 / source_rate as f64`
      - `sinc_len`: 256
+     // WHY 256: standard sinc interpolation length for high-quality audio resampling; shorter introduces aliasing, longer adds latency with diminishing returns
      - `f_cutoff`: 0.95
+     // WHY 0.95: passes 95% of the Nyquist bandwidth; prevents aliasing while preserving nearly all speech-frequency content
      - `interpolation`: `SincInterpolationType::Linear`
      - `oversampling_factor`: 256
+     // WHY 256: matches sinc_len for balanced quality/performance in offline resampling (not real-time constrained)
      - `num_channels`: 1
    - Process the samples in chunks matching `input_frames_max()`.
    - Concatenate output chunks into a single `Vec<f32>`.
@@ -189,6 +200,7 @@
 ---
 
 ### Task 6 (B) +audio
+blockedBy: [1, 4]
 
 **PURPOSE** — Voice Activity Detection filters silence so only speech segments are transcribed, reducing latency and improving accuracy.
 
@@ -199,11 +211,14 @@
    pub struct VoiceActivityDetector {
        // internal state for Silero or energy-based
        speech_threshold: f32,   // default 0.5
+       // WHY 0.5: Silero VAD default; lower catches more speech but increases false positives from background noise
        silence_duration_ms: u32, // how long silence before stopping, default 1500
+       // WHY 1500ms: typical pause between sentences is 0.5-1s; 1.5s avoids premature cutoff during natural speech pauses while still stopping promptly after the user finishes
    }
    ```
 3. Implement `VoiceActivityDetector::new(speech_threshold: f32, silence_duration_ms: u32) -> Self`.
 4. Implement `process_frame(&mut self, frame: &[f32], sample_rate: u32) -> VadResult` where `VadResult` is `Speech | Silence | SilenceTimeout`. Process in 30ms frames (480 samples at 16kHz).
+   // WHY 30ms frames: Silero VAD is trained on 30ms windows; matches the model's expected input granularity
 5. Track consecutive silence duration internally. Return `SilenceTimeout` when `silence_duration_ms` is exceeded.
 6. Implement `reset(&mut self)` to clear internal state between recordings.
 
@@ -217,6 +232,7 @@
 ## Whisper Model Management
 
 ### Task 7 (A) +model
+blockedBy: [1]
 
 **PURPOSE** — Defines the model registry: what models are available, their download URLs, sizes, and capabilities. Without this metadata, users can't browse or download models.
 
@@ -264,6 +280,7 @@
 ---
 
 ### Task 8 (A) +model
+blockedBy: [1, 7]
 
 **PURPOSE** — Implements model downloading with progress reporting and resume capability. Users must be able to download multi-GB models reliably.
 
@@ -285,6 +302,7 @@
    - Otherwise, start a fresh download.
    - Stream response body in chunks, appending to the `.partial` file.
    - Every 100ms (throttled), emit a Tauri event `model-download-progress` with `{ model_id, downloaded_bytes, total_bytes, progress_pct }`.
+     // WHY 100ms throttle: fast enough for smooth progress bar updates (10fps) without flooding the IPC channel
    - Update `download_states` to `Downloading { progress }`.
    - On completion, verify file size matches `size_bytes`, then rename `.partial` to target.
    - Update `download_states` to `Downloaded`.
@@ -303,6 +321,7 @@
 ---
 
 ### Task 9 (A) +model
+blockedBy: [1, 2, 7, 8]
 
 **PURPOSE** — Loads a downloaded Whisper GGML model into memory for inference. This is the bridge between model files on disk and the transcription engine.
 
@@ -330,6 +349,7 @@
    - Update status of the previously loaded model to `Downloaded`.
 5. Implement `get_loaded_context(&self) -> Result<Arc<Mutex<Option<LoadedModel>>>>` for the transcription manager to access.
 6. Implement an auto-unload timer: spawn a tokio task that unloads the model after `model_unload_timeout_secs` of inactivity (no transcription requests). Reset the timer on each transcription.
+   // WHY auto-unload: Whisper models consume 100MB-3GB of RAM; freeing after inactivity reclaims memory for other apps
 7. Register Tauri commands: `load_model`, `unload_model`.
 
 **DONE WHEN**
@@ -342,6 +362,7 @@
 ## Transcription Engine
 
 ### Task 10 (A) +transcription
+blockedBy: [4, 5, 7, 8, 9]
 
 **PURPOSE** — Core transcription: takes recorded audio and produces text using the loaded Whisper model. This is the primary value proposition of the app.
 
@@ -368,10 +389,12 @@
    - Get the loaded WhisperContext from model_manager. Error if no model loaded.
    - Resample audio to 16kHz using `resample_to_16khz`.
    - Create `WhisperParams` with `FullParams::new(SamplingStrategy::Greedy { best_of: 1 })`.
+     // WHY Greedy best_of 1: fastest decoding strategy; beam search is 2-5x slower with minimal accuracy gain for real-time dictation
    - Set language: `params.set_language(Some(language))` for specific, or `None` for auto-detect.
    - Set `params.set_translate(translate)` for English translation mode.
    - Set `params.set_print_progress(false)` and `params.set_print_timestamps(false)`.
    - Set `params.set_n_threads(num_cpus::get().min(8) as i32)` — add `num_cpus = "1.16"`.
+     // WHY min(8): diminishing returns beyond 8 threads for Whisper inference; higher thread counts cause contention on most consumer CPUs
    - Run `ctx.full(params, &samples_16k)` inside `std::panic::catch_unwind` to prevent model crashes from killing the app.
    - Extract segments from the result, concatenate text, measure duration.
 3. Implement custom word replacement `apply_custom_words(text: &str, words: &[CustomWordEntry]) -> String` that replaces each `from` pattern with `to` (case-insensitive whole-word matching).
@@ -385,6 +408,7 @@
 ---
 
 ### Task 11 (A) +transcription
+blockedBy: [4, 5, 10, 3]
 
 **PURPOSE** — Orchestrates the full transcription pipeline from hotkey press to text output. Manages the state machine (Idle → Recording → Processing) and prevents race conditions.
 
@@ -421,7 +445,7 @@
      - Resample and transcribe.
      - Apply custom words from settings.
      - Save to history (including WAV file if retention allows).
-     - Paste the text into the focused app (Task 14).
+     - Paste the text into the focused app (Task 12).
      - Emit `transcription-state-changed` with `{ state: "idle" }` and `transcription-complete` with `{ id, text }`.
      - Set state back to `Idle`.
 4. Implement `cancel(&self) -> Result<()>`:
@@ -429,6 +453,7 @@
    - Set state to `Idle`, emit state change.
 5. Implement push-to-talk logic: if `settings.push_to_talk` is true, `start_recording` triggers on key-down and `stop_and_transcribe` triggers on key-up.
 6. Add 30ms debouncing: ignore `start_recording` / `stop_and_transcribe` calls that arrive within 30ms of the previous call.
+   // WHY 30ms debounce: prevents double-triggers from key bounce or shortcut system quirks; imperceptible to users but eliminates race conditions
 7. Register Tauri commands: `start_recording`, `stop_and_transcribe`, `cancel_recording`, `get_transcription_state`.
 
 **DONE WHEN**
@@ -442,6 +467,7 @@
 ## Text Injection
 
 ### Task 12 (A) +clipboard
+blockedBy: [1]
 
 **PURPOSE** — Injects transcribed text into the currently focused application. This is the core UX — text appears where the user's cursor is.
 
@@ -460,7 +486,9 @@
      b. Write `text` (with trailing space if `append_space`) to the system clipboard.
      c. Simulate Cmd+V on macOS (or Ctrl+V on Linux) using `enigo`.
      d. Sleep 50ms to allow paste to complete.
+        // WHY 50ms: minimum delay for the OS to process the paste keystroke; shorter may paste before clipboard is ready
      e. If `preserve_clipboard`, restore the original clipboard contents after a 200ms delay.
+        // WHY 200ms: allows the target app to fully consume the paste event before clipboard is swapped back; shorter risks the app reading the restored clipboard instead
    - **Typing method:**
      a. Use `enigo.key_sequence(text)` to simulate keystrokes.
      b. If `append_space`, type an additional space.
@@ -480,6 +508,7 @@
 ## Global Shortcuts
 
 ### Task 13 (A) +shortcut
+blockedBy: [1, 11]
 
 **PURPOSE** — Registers system-wide keyboard shortcuts so the user can trigger recording from any application. This is the primary interaction mechanism.
 
@@ -516,6 +545,7 @@
 ## Overlay Widget
 
 ### Task 14 (A) +overlay
+blockedBy: [1, 13]
 
 **PURPOSE** — The floating overlay provides visual feedback during recording and transcription. Without it, users have no indication the app is listening.
 
@@ -523,7 +553,8 @@
 1. In `src-tauri/src/overlay.rs`, implement overlay window creation:
    - On macOS, create a Tauri `WebviewWindow` with these properties:
      - Title: empty string.
-     - Size: 172×36 logical pixels.
+     - Size: 172x36 logical pixels.
+       // WHY 172x36: minimum size to fit "Recording..." text + pulsing dot at 13px font; wider wastes screen space, narrower truncates
      - Decorations: false (no title bar).
      - Always on top: true.
      - Transparent: true.
@@ -539,6 +570,7 @@
      - **Processing**: spinning indicator with "Transcribing..." text.
      - **Post-processing**: spinning indicator with "Processing..." text.
    - 300ms fade-out animation on hide.
+     // WHY 300ms: standard animation duration; fast enough to not feel sluggish, slow enough to be perceived as smooth
    - Total height: 36px, border-radius: 18px, font-size: 13px, font-weight: 500.
 3. In the Rust overlay module, implement:
    - `show_overlay(state: &str)` — shows the window and emits event to set visual state.
@@ -559,6 +591,7 @@
 ## Menu Bar / System Tray
 
 ### Task 15 (A) +tray
+blockedBy: [1, 3]
 
 **PURPOSE** — The tray icon provides persistent app presence and quick access to common actions without opening the full window.
 
@@ -579,7 +612,8 @@
    - **Transcribing**: icon with activity indicator (or different tint).
    - Listen for `transcription-state-changed` events to update the icon.
 4. Handle tray icon click (left click on macOS): toggle main window visibility.
-5. Add tray icon assets: create simple 22×22 PNG template images (single color, alpha-masked for macOS).
+5. Add tray icon assets: create simple 22x22 PNG template images (single color, alpha-masked for macOS).
+   // WHY 22x22: standard macOS menu bar icon size; larger icons get clipped, smaller look blurry on non-Retina
 
 **DONE WHEN**
 - [ ] A tray icon appears in the macOS menu bar when the app launches.
@@ -593,6 +627,7 @@
 ## Main Application Window
 
 ### Task 16 (A) +frontend
+blockedBy: [1]
 
 **PURPOSE** — Creates the main application window shell with sidebar navigation. This is the container for settings, history, and model management views.
 
@@ -639,6 +674,7 @@
 ## LLM Post-Processing
 
 ### Task 17 (A) +llm
+blockedBy: [2]
 
 **PURPOSE** — Enables AI-powered text refinement of raw transcriptions using a local LLM. Supports multiple modes: dictation cleanup, proofreading, formal rewriting, and command extraction.
 
@@ -674,6 +710,7 @@
      - POST to `{base_url}/v1/chat/completions` with OpenAI-compatible body.
      - Parse response: `response.choices[0].message.content`.
 3. Implement timeout: 30 second request timeout. On timeout or error, return the original `raw_text` with a warning logged.
+   // WHY 30s timeout: local LLM inference for short text typically completes in 5-15s; 30s accommodates slow hardware or larger models without hanging indefinitely
 4. Wire into `TranscriptionCoordinator`: add `stop_and_post_process(&self)` method that runs transcription then LLM post-processing, stores both `transcription` and `post_processed` in history.
 5. Register Tauri commands: `post_process_text` (for manual re-processing of history entries), `test_llm_connection` (verifies the LLM endpoint is reachable).
 
@@ -688,6 +725,7 @@
 ## Settings UI Pages
 
 ### Task 18 (B) +frontend
+blockedBy: [2, 16]
 
 **PURPOSE** — General settings page for app-wide configuration: autostart, start hidden, overlay preferences.
 
@@ -701,7 +739,7 @@
    // Separated by border-b border-gray-800
    ```
 3. Create reusable control components in `src/components/ui/`:
-   - `Toggle.tsx` — on/off switch (44×24px, bg-blue-500 when on, bg-gray-600 when off).
+   - `Toggle.tsx` — on/off switch (44x24px, bg-blue-500 when on, bg-gray-600 when off).
    - `Select.tsx` — dropdown select with dark styling.
    - `Slider.tsx` — range input with value display.
 4. GeneralSettings layout:
@@ -711,6 +749,7 @@
    - **Overlay position**: Select [Top, Bottom]. "Position of the overlay widget."
    - **Language**: Select from supported UI languages (English only for now).
    - **Model unload timeout**: Slider (60-600 seconds). "Unload model from memory after inactivity."
+     // WHY 60-600 range: below 60s causes excessive reload cycles; above 600s (10min) wastes RAM for users who dictate sporadically
 5. Use a `useSettings` custom hook in `src/hooks/useSettings.ts`:
    ```typescript
    function useSettings() {
@@ -729,6 +768,7 @@
 ---
 
 ### Task 19 (B) +frontend
+blockedBy: [4, 16]
 
 **PURPOSE** — Audio settings page for microphone selection and audio feedback configuration.
 
@@ -742,8 +782,10 @@
 4. The mic test should:
    - Call `start_recording` with the selected device.
    - Listen for audio level events (implement a simple `audio-level` Tauri event in the audio recorder that emits RMS every 100ms during recording).
+     // WHY 100ms RMS interval: 10fps update rate is smooth enough for a level meter while keeping event overhead low
    - Display a real-time horizontal bar that fluctuates with the mic level.
    - Auto-stop after 3 seconds.
+     // WHY 3 seconds: long enough to say a few words and verify the mic works; short enough to not be tedious
 5. Add the `audio-level` event emission to `AudioRecorder::start` — compute RMS of each 100ms chunk and emit `{ level: f32 }` (0.0 to 1.0).
 
 **DONE WHEN**
@@ -755,6 +797,7 @@
 ---
 
 ### Task 20 (B) +frontend
+blockedBy: [13, 16]
 
 **PURPOSE** — Shortcuts settings page for viewing and customizing global keyboard shortcuts.
 
@@ -788,6 +831,7 @@
 ---
 
 ### Task 21 (B) +frontend
+blockedBy: [7, 8, 9, 16]
 
 **PURPOSE** — Model management page where users browse, download, and select Whisper models.
 
@@ -822,6 +866,7 @@
 ---
 
 ### Task 22 (B) +frontend
+blockedBy: [2, 16]
 
 **PURPOSE** — Text processing settings for configuring how transcriptions are cleaned and formatted.
 
@@ -841,6 +886,7 @@
    - Show existing entries loaded from settings.
    - Allow inline editing of both fields.
    - Auto-save on blur (debounced 500ms).
+     // WHY 500ms debounce: prevents rapid-fire saves while the user is still typing; long enough to batch keystrokes, short enough to feel responsive
    - Prevent empty `from` fields.
 
 **DONE WHEN**
@@ -852,6 +898,7 @@
 ---
 
 ### Task 23 (B) +frontend
+blockedBy: [2, 16, 17]
 
 **PURPOSE** — LLM/AI processing settings for configuring local LLM post-processing.
 
@@ -880,12 +927,14 @@
 ---
 
 ### Task 24 (B) +frontend
+blockedBy: [3, 16]
 
 **PURPOSE** — History view showing all past transcriptions with playback and management controls.
 
 **WHAT TO DO**
 1. Create `src/components/settings/HistoryView.tsx`.
 2. Fetch history from `get_history` command with pagination (50 entries per page).
+   // WHY 50 per page: balances initial load speed (~100ms for 50 rows) with scroll depth; most users review only recent entries
 3. Display as a vertical list of cards:
    ```
    [Timestamp - relative, e.g. "2 min ago"]    [Bookmark icon] [Copy icon] [Delete icon]
@@ -918,6 +967,7 @@
 ## Audio Feedback
 
 ### Task 25 (B) +audio
+blockedBy: [1, 4]
 
 **PURPOSE** — Plays audio cues when recording starts and stops, giving the user audible confirmation that the app responded to their shortcut.
 
@@ -935,12 +985,14 @@
    - Use the default output device.
    - Play asynchronously (don't block the caller).
 4. Create or source 3 short audio cue WAV files (< 100ms each):
+   // WHY < 100ms: must finish before mic starts capturing to avoid the beep being transcribed; also feels snappy and non-intrusive
    - `start.wav`: short ascending two-tone beep.
    - `stop.wav`: short descending two-tone beep.
    - `cancel.wav`: single low tone.
    - These can be generated programmatically as sine waves during build, or bundled as static assets.
 5. Wire into `TranscriptionCoordinator`:
    - Play `StartRecording` at the beginning of `start_recording` (with 100ms delay in non-push-to-talk mode to avoid capturing the beep).
+     // WHY 100ms delay: ensures the beep finishes playing before the mic stream starts capturing, preventing the cue from appearing in the transcription
    - Play `StopRecording` when `stop_and_transcribe` is called.
    - Play `Cancel` when `cancel` is called.
 6. Respect `feedback_volume` from settings (0.0 = muted, 1.0 = full volume).
@@ -957,6 +1009,7 @@
 ## Onboarding Flow
 
 ### Task 26 (B) +frontend
+blockedBy: [1, 16, 34]
 
 **PURPOSE** — First-run experience that guides the user through permissions, model download, and initial configuration. Without this, new users face a broken app with no model loaded.
 
@@ -994,6 +1047,7 @@
 ## macOS Platform Integration
 
 ### Task 27 (A) +platform
+blockedBy: [1, 14]
 
 **PURPOSE** — macOS-specific overlay behavior using NSPanel for proper always-on-top, no-focus-steal behavior. Standard Tauri windows activate the app when shown, which would steal focus from the user's active app.
 
@@ -1036,6 +1090,7 @@
 ---
 
 ### Task 28 (B) +platform
+blockedBy: [1, 2, 18]
 
 **PURPOSE** — macOS autostart support so the app launches on login, a common user expectation for utility apps.
 
@@ -1064,6 +1119,7 @@
 ## Linux Platform Support
 
 ### Task 29 (B) +platform
+blockedBy: [1, 12]
 
 **PURPOSE** — Linux-specific text injection using wtype/xdotool depending on display server. Without this, text can't be pasted on Linux.
 
@@ -1096,6 +1152,7 @@
 ---
 
 ### Task 30 (B) +platform
+blockedBy: [1, 15]
 
 **PURPOSE** — Linux system tray support, which behaves differently from macOS (uses different APIs and conventions).
 
@@ -1103,7 +1160,7 @@
 1. In `src-tauri/src/tray.rs`, add Linux-specific handling under `#[cfg(target_os = "linux")]`:
    - Use a standard PNG icon instead of macOS template images.
    - Ensure the icon is visible on common Linux desktop environments (GNOME, KDE, XFCE).
-2. Create a Linux-specific tray icon: `src-tauri/icons/tray/icon-linux.png` — a 22×22 full-color PNG (white icon on transparent background works across most themes).
+2. Create a Linux-specific tray icon: `src-tauri/icons/tray/icon-linux.png` — a 22x22 full-color PNG (white icon on transparent background works across most themes).
 3. Handle the case where the system tray is not available (some GNOME configurations):
    - If tray creation fails, log a warning and continue without tray functionality.
    - The app should still be fully functional via the main window.
@@ -1121,6 +1178,7 @@
 ## Language Support
 
 ### Task 31 (B) +transcription
+blockedBy: [10, 2]
 
 **PURPOSE** — Configures Whisper for multi-language transcription covering the target languages: English, Chinese (Mandarin), Tamil, Malay, Japanese, Korean.
 
@@ -1157,6 +1215,7 @@
 ## Recordings Storage
 
 ### Task 32 (B) +audio
+blockedBy: [3, 5, 11]
 
 **PURPOSE** — Persists audio recordings alongside transcriptions so users can replay and verify what they said.
 
@@ -1187,6 +1246,7 @@
 ## Application Lifecycle
 
 ### Task 33 (B) +scaffold
+blockedBy: [1, 2, 3, 7, 8, 9, 15]
 
 **PURPOSE** — Manages app startup, window visibility, and clean shutdown. Ensures the app behaves as a proper menu-bar utility that can be hidden and revealed.
 
@@ -1223,6 +1283,7 @@
 ## Accessibility & Permissions
 
 ### Task 34 (B) +platform
+blockedBy: [1]
 
 **PURPOSE** — Checks and requests macOS permissions required for the app to function: microphone access (for recording) and accessibility access (for keyboard simulation / text injection).
 
@@ -1274,6 +1335,7 @@
 ## Tauri Configuration
 
 ### Task 35 (A) +scaffold
+blockedBy: [1, 2]
 
 **PURPOSE** — Configures `tauri.conf.json` with the correct permissions, capabilities, and build settings for the app to function properly on both platforms.
 
@@ -1350,6 +1412,7 @@
 ## End-to-End Integration
 
 ### Task 36 (A) +integration
+blockedBy: [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 17, 25]
 
 **PURPOSE** — Wires all backend managers together in the Tauri setup so the app functions as a complete system on startup.
 
@@ -1471,6 +1534,7 @@
 ## Frontend State & Event Wiring
 
 ### Task 37 (A) +frontend
+blockedBy: [1, 16, 36]
 
 **PURPOSE** — Connects the React frontend to all backend events so the UI stays in sync with the transcription state, model downloads, and settings changes.
 
@@ -1521,6 +1585,7 @@
 ## Polish & Edge Cases
 
 ### Task 38 (B) +transcription
+blockedBy: [10, 11]
 
 **PURPOSE** — Handles the edge case where transcription produces empty or garbage output (common with very short recordings or background noise).
 
@@ -1530,6 +1595,7 @@
    - If the result is empty or only whitespace, return `TranscriptionResult` with `text: ""`.
    - Filter common Whisper hallucination patterns: "[BLANK_AUDIO]", "(silence)", "Thank you for watching", repeated phrases. Maintain a list of known hallucination strings.
    - If the recording is less than 0.5 seconds of audio (8000 samples at 16kHz), skip transcription and return empty.
+     // WHY 0.5s / 8000 samples: shorter recordings contain at most a single syllable, which Whisper cannot reliably transcribe; also avoids wasting CPU on accidental hotkey taps
 2. In `TranscriptionCoordinator::stop_and_transcribe`:
    - If transcription result is empty, emit `transcription-state-changed` with `{ state: "idle" }` without pasting or saving.
    - Optionally play the cancel sound to indicate nothing was transcribed.
@@ -1545,6 +1611,7 @@
 ---
 
 ### Task 39 (B) +frontend
+blockedBy: [16]
 
 **PURPOSE** — Toast notification system for transient messages (errors, empty transcription, copy confirmation, etc.).
 
@@ -1556,6 +1623,7 @@
      message: string;
      type: 'info' | 'success' | 'warning' | 'error';
      duration?: number; // ms, default 3000
+     // WHY 3000ms default: long enough to read a short message, short enough to not clutter the screen
    }
    ```
 2. Create `src/hooks/useToast.ts`:
@@ -1590,6 +1658,7 @@
 ---
 
 ### Task 40 (C) +frontend
+blockedBy: [16, 18, 20, 21]
 
 **PURPOSE** — Keyboard navigation and accessibility for the settings UI, ensuring the app is usable without a mouse.
 
@@ -1617,6 +1686,7 @@
 ---
 
 ### Task 41 (C) +audio
+blockedBy: [4, 14]
 
 **PURPOSE** — Real-time audio level visualization in the overlay during recording, giving visual feedback that the mic is picking up sound.
 
@@ -1626,14 +1696,17 @@
      ```rust
      let rms = (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt();
      let level = (rms * 5.0).min(1.0); // scale up for visibility
+     // WHY * 5.0: raw RMS of speech is typically 0.05-0.2; scaling by 5x maps this to the 0.25-1.0 range for visible bar movement
      ```
    - Emit Tauri event `audio-level` with `{ level: f32 }`.
 2. In `src/overlay/Overlay.tsx`, add a level indicator:
    - 5 small dots/bars next to the recording indicator.
    - Animate their height based on the `audio-level` event value.
    - Use CSS transitions for smooth animation (50ms transition).
+     // WHY 50ms transition: matches the 100ms event rate for smooth interpolation without lag
    - Color: white at low levels, transitioning to red at high levels.
 3. Throttle the frontend updates to 10fps (100ms) to avoid excessive re-renders.
+   // WHY 10fps: human eye perceives smooth motion at ~12fps; 10fps is sufficient for a level meter while minimizing React render overhead
 
 **DONE WHEN**
 - [ ] During recording, the overlay shows animated bars that respond to voice volume.
@@ -1644,6 +1717,7 @@
 ---
 
 ### Task 42 (C) +frontend
+blockedBy: [16, 2]
 
 **PURPOSE** — About section showing app version, credits, and links.
 
@@ -1674,6 +1748,7 @@
 ## Build & Distribution
 
 ### Task 43 (B) +build
+blockedBy: [1, 35, 36]
 
 **PURPOSE** — Configures the build pipeline to produce distributable binaries for macOS and Linux.
 
@@ -1735,6 +1810,7 @@
 ---
 
 ### Task 44 (C) +build
+blockedBy: [43]
 
 **PURPOSE** — Code signing for macOS distribution so users don't get Gatekeeper warnings.
 
@@ -1767,6 +1843,7 @@
 ## Performance Optimization
 
 ### Task 45 (C) +performance
+blockedBy: [9, 10]
 
 **PURPOSE** — Enables CoreML acceleration on Apple Silicon Macs for significantly faster Whisper inference (3-5x speedup).
 
@@ -1798,8 +1875,9 @@
 ---
 
 ### Task 46 (C) +performance
+blockedBy: [9, 10, 11]
 
-**PURPOSE** — Reduces memory usage by lazy-loading the model and releasing it after inactivity, since Whisper models can consume 100MB–3GB of RAM.
+**PURPOSE** — Reduces memory usage by lazy-loading the model and releasing it after inactivity, since Whisper models can consume 100MB-3GB of RAM.
 
 **WHAT TO DO**
 1. In `ModelManager`, implement the auto-unload timer (referenced in Task 9):
@@ -1807,6 +1885,7 @@
    // Track last_used: Arc<Mutex<Instant>>
    // On each transcription, update last_used to Instant::now()
    // Spawn a periodic check (every 30s) that:
+   //   // WHY 30s check interval: frequent enough to unload within ~30s of timeout expiry; infrequent enough to add negligible CPU overhead
    //   if Instant::now() - last_used > model_unload_timeout_secs:
    //     unload_model()
    ```
@@ -1825,9 +1904,212 @@
 
 ---
 
+## Transcription Export
+
+### Task 47 (B) +frontend
+blockedBy: [3, 24]
+
+**PURPOSE** — Lets users save transcriptions as files for use outside the app.
+
+**WHAT TO DO**
+1. In the history view (Task 24 area), add an "Export" button next to each transcription entry.
+2. Clicking opens a save dialog (Tauri `dialog::save_file`) with format options: `.txt` (plain text) or `.md` (Markdown with timestamp header).
+3. Markdown format:
+   ```
+   # Transcription — 2026-03-22 14:30
+   **Duration**: 45s | **Model**: whisper-small | **Language**: en
+
+   [transcription text here]
+   ```
+4. Also add "Copy as Markdown" button that copies the formatted text to clipboard.
+5. Add a "Export All" button in the history toolbar that exports all visible (filtered) entries into a single file, separated by `---`.
+
+**DONE WHEN**
+- [ ] Single entry exports to .txt and .md with correct formatting.
+- [ ] "Copy as Markdown" copies to clipboard and shows toast confirmation.
+- [ ] "Export All" bundles multiple entries into one file.
+- [ ] Save dialog remembers last-used directory.
+
+---
+
+### Task 48 (B) +frontend
+blockedBy: [3, 24, 47]
+
+**PURPOSE** — Lets users select multiple history entries and export them together.
+
+**WHAT TO DO**
+1. Add checkbox selection to history list items (click to toggle, Shift+click for range).
+2. When entries are selected, show a floating action bar: "Export Selected (N)" and "Delete Selected (N)".
+3. Export selected uses the same format options as single export (.txt or .md).
+4. Selected entries are exported in chronological order.
+
+**DONE WHEN**
+- [ ] Checkbox selection works with click and Shift+click.
+- [ ] Floating action bar appears/disappears based on selection.
+- [ ] Bulk export produces correctly ordered output.
+
+---
+
+## Testing
+
+### Task 49 (B) +test
+blockedBy: [4, 5, 6]
+
+**PURPOSE** — Verifies audio capture, resampling, and VAD work correctly.
+
+**WHAT TO DO**
+1. Create `src-tauri/src/tests/audio_tests.rs`.
+2. Test `AudioRecorder::resample()` with known WAV files (verify output is 16kHz mono).
+3. Test VAD integration with test audio files (one with speech, one silence-only).
+4. Test `AudioRecorder::start()` and `stop()` don't panic on mock audio device.
+
+**DONE WHEN**
+- [ ] Resampling produces correct sample rate (verify with WAV header).
+- [ ] VAD correctly identifies speech vs. silence in test files.
+- [ ] Tests pass in CI without a real microphone.
+
+---
+
+### Task 50 (B) +test
+blockedBy: [9, 10]
+
+**PURPOSE** — Verifies Whisper inference and text processing work correctly.
+
+**WHAT TO DO**
+1. Create `src-tauri/src/tests/transcription_tests.rs`.
+2. Test `TranscriptionManager::transcribe()` with a known test audio file + tiny model (ship test fixtures).
+3. Verify output text is non-empty and roughly matches expected content.
+4. Test custom word replacement (settings.custom_words).
+5. Test empty/garbage audio handling (should return empty string, not error).
+
+**DONE WHEN**
+- [ ] Transcription of test audio produces expected output.
+- [ ] Custom word replacement works correctly.
+- [ ] Empty audio returns gracefully.
+
+---
+
+### Task 51 (B) +test
+blockedBy: [4, 5, 10, 11, 12, 17]
+
+**PURPOSE** — Verifies the full pipeline from audio to clipboard.
+
+**WHAT TO DO**
+1. Create `src-tauri/src/tests/integration_tests.rs`.
+2. Simulate: load test audio → feed to transcription → apply custom words → write to clipboard.
+3. Verify clipboard contains expected text.
+4. Test with and without LLM post-processing (mock LLM response).
+
+**DONE WHEN**
+- [ ] Full pipeline produces correct clipboard content from test audio.
+- [ ] LLM post-processing path works with mocked LLM.
+
+---
+
+### Task 52 (C) +test
+blockedBy: [16, 18, 24]
+
+**PURPOSE** — Verifies React UI components render correctly.
+
+**WHAT TO DO**
+1. Set up vitest with @testing-library/react in the frontend.
+2. Test settings pages render with default values.
+3. Test history view renders with mock data.
+4. Test overlay component state transitions (idle → recording → processing → done).
+
+**DONE WHEN**
+- [ ] All component tests pass.
+- [ ] No console errors during test runs.
+
+---
+
+## CI/CD
+
+### Task 53 (B) +build
+blockedBy: [1, 35]
+
+**PURPOSE** — Automated build and test on every push and PR.
+
+**WHAT TO DO**
+1. Create `.github/workflows/ci.yml`.
+2. Matrix: macOS ARM64, macOS x86_64, Ubuntu 22.04.
+3. Steps: install Rust + Node + Bun, `cargo test`, `bun run test`, `bun run build`, `cargo build --release`.
+4. Cache: Rust target dir, Bun modules.
+
+**DONE WHEN**
+- [ ] CI passes on all 3 targets.
+- [ ] Cache reduces build time on subsequent runs.
+
+---
+
+### Task 54 (B) +build
+blockedBy: [35, 43, 53]
+
+**PURPOSE** — Automated binary builds for distribution.
+
+**WHAT TO DO**
+1. Create `.github/workflows/release.yml` triggered on git tag `v*`.
+2. Build Tauri bundles: `.dmg` (macOS), `.AppImage` (Linux).
+3. Upload artifacts to GitHub Release.
+
+**DONE WHEN**
+- [ ] Tagging triggers build.
+- [ ] Release artifacts are downloadable and installable.
+
+---
+
+### Task 55 (C) +build
+blockedBy: [43, 44, 54]
+
+**PURPOSE** — Required for macOS distribution without Gatekeeper warnings.
+
+**WHAT TO DO**
+1. Configure Tauri's built-in signing in `tauri.conf.json` (requires Apple Developer cert).
+2. Add notarization step using `xcrun notarytool` in CI.
+3. Document cert setup in CONTRIBUTING.md.
+
+**DONE WHEN**
+- [ ] Signed DMG installs without Gatekeeper warning.
+- [ ] Notarization succeeds in CI.
+
+---
+
+## Documentation
+
+### Task 56 (B) +docs
+blockedBy: [1, 35, 36]
+
+**PURPOSE** — First thing users see; must explain what the app does and how to install.
+
+**WHAT TO DO**
+1. Create `README.md` with: project description, feature list, screenshot/GIF, installation instructions (download binary or build from source), first-run guide (permissions, model download), keyboard shortcuts reference.
+2. Architecture section: Tauri 2 + React frontend, Rust backend with whisper-rs, Silero VAD, LLM client.
+
+**DONE WHEN**
+- [ ] README renders correctly on GitHub.
+- [ ] Installation instructions work on a clean macOS and Linux system.
+
+---
+
+### Task 57 (C) +docs
+blockedBy: [7, 9]
+
+**PURPOSE** — Helps users choose the right Whisper model for their hardware.
+
+**WHAT TO DO**
+1. Create `docs/model-guide.md` with a table: model name, size, VRAM, speed (RTF), accuracy (WER), recommended hardware.
+2. Include guidance: "Use tiny for low-end hardware, small for most users, medium for accuracy-critical work".
+
+**DONE WHEN**
+- [ ] Guide covers all 6 Whisper model variants.
+- [ ] Recommendations are hardware-specific.
+
+---
+
 ## Error Handling & Resilience
 
-### Task 47 (B) +scaffold
+### Task 58 (B) +scaffold
+blockedBy: [1]
 
 **PURPOSE** — Comprehensive error handling so the app never crashes silently and users understand what went wrong.
 

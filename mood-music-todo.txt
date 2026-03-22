@@ -15,6 +15,8 @@ Architecture:
 
 ### Task 1 (A) +cli
 
+blockedBy: none
+
 **PURPOSE**
 Bootstrap the Go project with CLI framework and global flags.
 
@@ -30,6 +32,8 @@ Bootstrap the Go project with CLI framework and global flags.
 
 ### Task 2 (A) +pipeline
 
+blockedBy: none
+
 **PURPOSE**
 Bootstrap the Python emotion detection package with all required dependencies.
 
@@ -43,6 +47,8 @@ Bootstrap the Python emotion detection package with all required dependencies.
 ---
 
 ### Task 3 (A) +ipc
+
+blockedBy: [1, 2]
 
 **PURPOSE**
 Define the communication contract between Go and Python processes.
@@ -58,11 +64,13 @@ Define the communication contract between Go and Python processes.
 
 ### Task 4 (A) +ipc
 
+blockedBy: [3]
+
 **PURPOSE**
 Manage the Python subprocess lifecycle from Go.
 
 **WHAT TO DO**
-1. Implement Go-side IPC manager: spawn Python subprocess on app start, send capture requests at configured interval, read emotion JSON responses, restart subprocess on crash with exponential backoff (max 3 retries).
+1. Implement Go-side IPC manager: spawn Python subprocess on app start, send capture requests at configured interval, read emotion JSON responses, restart subprocess on crash with exponential backoff (max 3 retries — WHY: 3 retries with exponential backoff covers transient failures like OOM without infinitely restarting a fundamentally broken subprocess).
 
 **DONE WHEN**
 - [ ] Python subprocess starts on app launch
@@ -72,6 +80,8 @@ Manage the Python subprocess lifecycle from Go.
 ---
 
 ### Task 5 (A) +ipc
+
+blockedBy: [3]
 
 **PURPOSE**
 Handle incoming IPC messages on the Python side.
@@ -89,6 +99,8 @@ Handle incoming IPC messages on the Python side.
 
 ### Task 6 (A) +cli
 
+blockedBy: [1]
+
 **PURPOSE**
 Define the TOML configuration schema for all app components.
 
@@ -103,6 +115,8 @@ Define the TOML configuration schema for all app components.
 ---
 
 ### Task 7 (A) +cli
+
+blockedBy: [6]
 
 **PURPOSE**
 Provide interactive configuration for first-time setup.
@@ -122,6 +136,8 @@ Provide interactive configuration for first-time setup.
 
 ### Task 8 (A) +capture
 
+blockedBy: [2]
+
 **PURPOSE**
 Capture webcam frames for emotion detection.
 
@@ -137,6 +153,8 @@ Capture webcam frames for emotion detection.
 
 ### Task 9 (A) +capture
 
+blockedBy: [8]
+
 **PURPOSE**
 Handle macOS camera permissions and backend.
 
@@ -151,6 +169,8 @@ Handle macOS camera permissions and backend.
 
 ### Task 10 (A) +capture
 
+blockedBy: [8]
+
 **PURPOSE**
 Handle Linux camera access and device detection.
 
@@ -164,6 +184,8 @@ Handle Linux camera access and device detection.
 ---
 
 ### Task 11 (A) +capture
+
+blockedBy: [8, 9, 10]
 
 **PURPOSE**
 Verify camera is functional before starting the pipeline.
@@ -184,6 +206,8 @@ Verify camera is functional before starting the pipeline.
 
 ### Task 12 (A) +emotion
 
+blockedBy: [8]
+
 **PURPOSE**
 Isolate face region from webcam frames for emotion analysis.
 
@@ -197,6 +221,8 @@ Isolate face region from webcam frames for emotion analysis.
 ---
 
 ### Task 13 (A) +emotion
+
+blockedBy: [12]
 
 **PURPOSE**
 Run local emotion detection on face images.
@@ -212,6 +238,8 @@ Run local emotion detection on face images.
 
 ### Task 14 (A) +emotion
 
+blockedBy: [13]
+
 **PURPOSE**
 Allow swappable emotion detection backends.
 
@@ -226,11 +254,13 @@ Allow swappable emotion detection backends.
 
 ### Task 15 (A) +emotion
 
+blockedBy: [13]
+
 **PURPOSE**
 Smooth out frame-to-frame emotion noise.
 
 **WHAT TO DO**
-1. Implement sliding window emotion smoother in Python: maintain circular buffer of last N emotion results (default N=5, configurable via `smoothing_window`), compute weighted moving average of emotion scores (recent frames weighted higher), return dominant smoothed emotion.
+1. Implement sliding window emotion smoother in Python: maintain circular buffer of last N emotion results (default N=5 — WHY: smooths out single-frame misdetections while keeping response time under 2 seconds at 3fps capture rate, configurable via `smoothing_window`), compute weighted moving average of emotion scores (recent frames weighted higher), return dominant smoothed emotion.
 
 **DONE WHEN**
 - [ ] Circular buffer of N results maintained
@@ -244,6 +274,8 @@ Smooth out frame-to-frame emotion noise.
 ---
 
 ### Task 16 (A) +mapping
+
+blockedBy: [15]
 
 **PURPOSE**
 Define how raw emotions map to actionable mood states.
@@ -259,6 +291,8 @@ Define how raw emotions map to actionable mood states.
 
 ### Task 17 (A) +mapping
 
+blockedBy: [16]
+
 **PURPOSE**
 Classify smoothed emotions into mood states.
 
@@ -273,11 +307,13 @@ Classify smoothed emotions into mood states.
 
 ### Task 18 (A) +mapping
 
+blockedBy: [17]
+
 **PURPOSE**
 Prevent rapid mood oscillation from triggering constant music changes.
 
 **WHAT TO DO**
-1. Implement mood transition debouncing: require new mood to persist for minimum 3 consecutive windows before triggering playlist change, prevent rapid oscillation between moods.
+1. Implement mood transition debouncing: require new mood to persist for minimum 3 consecutive windows before triggering playlist change — WHY: at default 5-frame smoothing window with ~3fps capture, 3 windows = ~5 seconds, enough to filter transient expressions like a sneeze or yawn without delaying legitimate mood shifts. Prevent rapid oscillation between moods.
 
 **DONE WHEN**
 - [ ] Mood must persist 3 windows before transition fires
@@ -290,6 +326,8 @@ Prevent rapid mood oscillation from triggering constant music changes.
 ---
 
 ### Task 19 (A) +ytmusic
+
+blockedBy: [2]
 
 **PURPOSE**
 Provides authentication for YouTube Music API access. ytmusicapi uses browser cookies (no OAuth needed).
@@ -310,11 +348,13 @@ Provides authentication for YouTube Music API access. ytmusicapi uses browser co
 
 ### Task 20 (A) +ytmusic
 
+blockedBy: [19]
+
 **PURPOSE**
 Enables finding mood-appropriate tracks on YouTube Music.
 
 **WHAT TO DO**
-1. In `YTMusicClient`, implement `search_tracks(query: str, limit: int = 20) -> List[Track]` using `ytmusic.search(query, filter='songs', limit=limit)`.
+1. In `YTMusicClient`, implement `search_tracks(query: str, limit: int = 20) -> List[Track]` using `ytmusic.search(query, filter='songs', limit=limit)` — WHY: limit=20 provides enough variety for a queue without excessive API calls; typical listening session at ~3min/track means 20 tracks covers ~1 hour.
 2. Define `Track` dataclass: `video_id: str, title: str, artist: str, album: str, duration_seconds: int, thumbnail_url: str`.
 3. Implement `get_watch_playlist(video_id: str) -> List[Track]` using `ytmusic.get_watch_playlist(videoId)` -- this returns YouTube Music's "radio" recommendations based on a seed track.
 
@@ -325,6 +365,8 @@ Enables finding mood-appropriate tracks on YouTube Music.
 ---
 
 ### Task 21 (A) +ytmusic
+
+blockedBy: [20, 16]
 
 **PURPOSE**
 Maps detected moods to YouTube Music search queries for track discovery.
@@ -356,6 +398,8 @@ Maps detected moods to YouTube Music search queries for track discovery.
 
 ### Task 22 (A) +mpv
 
+blockedBy: [1]
+
 **PURPOSE**
 Provides the audio playback engine. mpv with yt-dlp backend can play YouTube URLs directly.
 
@@ -376,6 +420,8 @@ Provides the audio playback engine. mpv with yt-dlp backend can play YouTube URL
 
 ### Task 23 (A) +mpv
 
+blockedBy: [22]
+
 **PURPOSE**
 Enables programmatic control of mpv playback from the Go TUI.
 
@@ -394,7 +440,7 @@ Enables programmatic control of mpv playback from the Go TUI.
    - `GetPosition() (float64, error)` -- `{"command": ["get_property", "time-pos"]}`
    - `GetDuration() (float64, error)` -- `{"command": ["get_property", "duration"]}`
    - `GetTitle() (string, error)` -- `{"command": ["get_property", "media-title"]}`
-4. All IPC calls should have a 2-second timeout.
+4. All IPC calls should have a 2-second timeout — WHY: mpv IPC is local Unix socket so responses are near-instant; 2s is generous enough for yt-dlp metadata fetches but catches truly hung connections.
 
 **DONE WHEN**
 - [ ] All playback commands work via IPC
@@ -404,6 +450,8 @@ Enables programmatic control of mpv playback from the Go TUI.
 ---
 
 ### Task 24 (A) +mpv
+
+blockedBy: [20, 22]
 
 **PURPOSE**
 Converts YouTube video IDs to streamable audio URLs for mpv.
@@ -422,11 +470,13 @@ Converts YouTube video IDs to streamable audio URLs for mpv.
 
 ### Task 25 (A) +mpv
 
+blockedBy: [23]
+
 **PURPOSE**
 Keeps the TUI's "Now Playing" widget updated with current track info.
 
 **WHAT TO DO**
-1. In Go, create `mpv/observer.go` that polls mpv IPC every 1 second for: `media-title`, `time-pos`, `duration`, `pause`, `idle-active`.
+1. In Go, create `mpv/observer.go` that polls mpv IPC every 1 second for: `media-title`, `time-pos`, `duration`, `pause`, `idle-active` — WHY: 1-second polling matches progress bar granularity users expect; sub-second would waste CPU, multi-second would make the progress bar visibly jump.
 2. Emit state updates via a Go channel: `NowPlaying { Title string, TimePos float64, Duration float64, Paused bool, Idle bool }`.
 3. The TUI main model subscribes to this channel and updates the Now Playing widget.
 4. When `idle-active` becomes true, trigger the next track from the queue.
@@ -440,14 +490,16 @@ Keeps the TUI's "Now Playing" widget updated with current track info.
 
 ### Task 26 (A) +mpv
 
+blockedBy: [23, 24]
+
 **PURPOSE**
 Pre-fetches next tracks so playback is seamless when the current track ends.
 
 **WHAT TO DO**
 1. In Go, create `queue/manager.go` with `QueueManager` struct holding a `[]Track` slice.
-2. When a mood is detected/changed, Python searches YouTube Music and returns 10 tracks.
+2. When a mood is detected/changed, Python searches YouTube Music and returns 10 tracks — WHY: 10 tracks at ~3min avg = ~30min of playback per mood, balancing queue depth against staleness if mood changes.
 3. Go stores these in the queue. When mpv goes idle (track ends), immediately play the next track from queue.
-4. When queue drops below 3 tracks, request more from Python for the current mood.
+4. When queue drops below 3 tracks, request more from Python for the current mood — WHY: 3 tracks = ~9 minutes buffer, ensuring seamless playback; at ~3min per track, this gives enough runway for a YouTube Music search round-trip.
 5. On mood change, clear the queue and fetch new tracks for the new mood.
 6. Implement `Next()`, `Previous()` (go back in played history), `Current() Track`, `Upcoming() []Track`.
 
@@ -464,6 +516,8 @@ Pre-fetches next tracks so playback is seamless when the current track ends.
 
 ### Task 27 (A) +bridge
 
+blockedBy: [18, 21, 26]
+
 **PURPOSE**
 Wires emotion detection to music selection -- the core feature.
 
@@ -473,7 +527,7 @@ Wires emotion detection to music selection -- the core feature.
 3. On mood change: send search request to Python subprocess with the mood's configured query.
 4. Python returns 10 Track objects via JSON stdout.
 5. Clear current queue, load new tracks, start playing the first one.
-6. Implement debouncing: ignore mood changes within 30 seconds of the last switch (configurable).
+6. Implement debouncing: ignore mood changes within 30 seconds of the last switch (configurable) — WHY: prevents rapid playlist switching that disrupts listening; most mood changes that last <30s are transient and users find constant switching jarring.
 7. Implement `--dry-run` support: log what would play without actually playing.
 
 **DONE WHEN**
@@ -489,6 +543,8 @@ Wires emotion detection to music selection -- the core feature.
 
 ### Task 28 (A) +tui
 
+blockedBy: [1]
+
 **PURPOSE**
 Define the top-level TUI state machine.
 
@@ -502,6 +558,8 @@ Define the top-level TUI state machine.
 ---
 
 ### Task 29 (A) +tui
+
+blockedBy: [28]
 
 **PURPOSE**
 Lay out the main dashboard with all widget zones.
@@ -517,11 +575,13 @@ Lay out the main dashboard with all widget zones.
 
 ### Task 30 (A) +tui
 
+blockedBy: [29, 5]
+
 **PURPOSE**
 Show a live ASCII representation of the webcam feed.
 
 **WHAT TO DO**
-1. Implement ASCII webcam preview widget: receive base64 JPEG from Python, decode to image, downscale to fit widget dimensions, convert to ASCII art using luminance-to-character mapping (` .:-=+*#%@`), render in TUI with 4-frame-per-second refresh.
+1. Implement ASCII webcam preview widget: receive base64 JPEG from Python, decode to image, downscale to fit widget dimensions, convert to ASCII art using luminance-to-character mapping (` .:-=+*#%@`), render in TUI with 4-frame-per-second refresh — WHY: 4fps is the minimum for perceived fluid motion in ASCII art; higher adds CPU load without visible improvement at terminal character resolution.
 
 **DONE WHEN**
 - [ ] ASCII preview renders at 4 FPS
@@ -530,6 +590,8 @@ Show a live ASCII representation of the webcam feed.
 ---
 
 ### Task 31 (A) +tui
+
+blockedBy: [29, 15]
 
 **PURPOSE**
 Visualize emotion detection probabilities in real time.
@@ -545,6 +607,8 @@ Visualize emotion detection probabilities in real time.
 
 ### Task 32 (A) +tui
 
+blockedBy: [29, 17]
+
 **PURPOSE**
 Display the current mood state prominently.
 
@@ -558,6 +622,8 @@ Display the current mood state prominently.
 ---
 
 ### Task 33 (A) +tui
+
+blockedBy: [29, 25]
 
 **PURPOSE**
 Show the currently playing track with progress from mpv IPC.
@@ -573,6 +639,8 @@ Show the currently playing track with progress from mpv IPC.
 ---
 
 ### Task 34 (A) +tui
+
+blockedBy: [33, 26]
 
 **PURPOSE**
 Enable keyboard-driven playback control routed through mpv IPC.
@@ -590,11 +658,13 @@ Enable keyboard-driven playback control routed through mpv IPC.
 
 ### Task 35 (A) +tui
 
+blockedBy: [29, 18]
+
 **PURPOSE**
 Show historical mood transitions for user awareness.
 
 **WHAT TO DO**
-1. Implement mood history timeline widget: scrollable vertical list showing last 30 mood transitions with timestamps, mood label, confidence, and trigger emotion, newest at top.
+1. Implement mood history timeline widget: scrollable vertical list showing last 30 mood transitions with timestamps, mood label, confidence, and trigger emotion, newest at top — WHY: 30 entries covers ~2-4 hours of typical use (mood changes every 5-8 minutes on average), providing useful context without excessive scrolling.
 
 **DONE WHEN**
 - [ ] Last 30 transitions displayed
@@ -605,11 +675,13 @@ Show historical mood transitions for user awareness.
 
 ### Task 36 (A) +tui
 
+blockedBy: [35]
+
 **PURPOSE**
 Compact mood confidence visualization over time.
 
 **WHAT TO DO**
-1. Implement mood history sparkline: horizontal sparkline chart showing mood confidence over last 60 sampling intervals, rendered with unicode braille characters.
+1. Implement mood history sparkline: horizontal sparkline chart showing mood confidence over last 60 sampling intervals — WHY: at default ~10s sampling interval, 60 intervals = ~10 minutes of history, fitting comfortably in a single terminal row while showing meaningful trends. Rendered with unicode braille characters.
 
 **DONE WHEN**
 - [ ] Sparkline renders with braille characters
@@ -618,6 +690,8 @@ Compact mood confidence visualization over time.
 ---
 
 ### Task 37 (A) +tui
+
+blockedBy: [29]
 
 **PURPOSE**
 Allow keyboard navigation between TUI zones.
@@ -633,6 +707,8 @@ Allow keyboard navigation between TUI zones.
 
 ### Task 38 (A) +tui
 
+blockedBy: [29, 22, 19, 11]
+
 **PURPOSE**
 Show live system status for all components.
 
@@ -647,6 +723,8 @@ Show live system status for all components.
 
 ### Task 39 (A) +tui
 
+blockedBy: [28]
+
 **PURPOSE**
 Non-blocking TUI updates from multiple event sources.
 
@@ -660,6 +738,8 @@ Non-blocking TUI updates from multiple event sources.
 ---
 
 ### Task 40 (A) +cli
+
+blockedBy: [27, 38]
 
 **PURPOSE**
 Wire all components into a working end-to-end system.
@@ -680,6 +760,8 @@ Wire all components into a working end-to-end system.
 
 ### Task 41 (B) +emotion
 
+blockedBy: [14]
+
 **PURPOSE**
 Provide cloud-based emotion detection as fallback.
 
@@ -693,6 +775,8 @@ Provide cloud-based emotion detection as fallback.
 ---
 
 ### Task 42 (B) +emotion
+
+blockedBy: [14]
 
 **PURPOSE**
 Provide Google Cloud as alternative cloud backend.
@@ -708,6 +792,8 @@ Provide Google Cloud as alternative cloud backend.
 
 ### Task 43 (B) +emotion
 
+blockedBy: [41, 42]
+
 **PURPOSE**
 Make the emotion backend configurable.
 
@@ -722,11 +808,13 @@ Make the emotion backend configurable.
 
 ### Task 44 (B) +capture
 
+blockedBy: [15]
+
 **PURPOSE**
 Reduce CPU load when mood is stable.
 
 **WHAT TO DO**
-1. Implement adaptive sampling interval: if 5 consecutive frames return same dominant emotion with >0.8 confidence, increase interval by 2x (max 120s); if emotion shifts, reset to base interval -- reduces CPU load during stable moods.
+1. Implement adaptive sampling interval: if 5 consecutive frames return same dominant emotion with >0.8 confidence, increase interval by 2x (max 120s) — WHY: 5 frames at default interval = ~50s of consistent emotion, a strong signal that mood is stable; 0.8 confidence threshold filters out ambiguous readings; 120s max ensures the system still checks in at least every 2 minutes even during deep focus. If emotion shifts, reset to base interval -- reduces CPU load during stable moods.
 
 **DONE WHEN**
 - [ ] Interval increases during stable moods
@@ -737,11 +825,13 @@ Reduce CPU load when mood is stable.
 
 ### Task 45 (B) +capture
 
+blockedBy: [8]
+
 **PURPOSE**
 Allow trading resolution for inference speed.
 
 **WHAT TO DO**
-1. Add camera resolution configuration: `[capture].resolution` accepting "low" (320x240), "medium" (640x480, default), "high" (1280x720) -- lower = faster inference.
+1. Add camera resolution configuration: `[capture].resolution` accepting "low" (320x240), "medium" (640x480, default), "high" (1280x720) -- lower = faster inference — WHY: 640x480 default balances face detection accuracy (DeepFace needs at least ~48x48 face pixels) against inference latency (~200ms at medium vs ~800ms at high on typical hardware).
 
 **DONE WHEN**
 - [ ] Resolution is configurable
@@ -750,6 +840,8 @@ Allow trading resolution for inference speed.
 ---
 
 ### Task 46 (B) +cli
+
+blockedBy: [19]
 
 **PURPOSE**
 Guides the user through ytmusicapi authentication setup.
@@ -769,6 +861,8 @@ Guides the user through ytmusicapi authentication setup.
 
 ### Task 47 (B) +mpv
 
+blockedBy: [26, 34]
+
 **PURPOSE**
 Lets users skip and permanently blacklist tracks they don't want to hear.
 
@@ -787,6 +881,8 @@ Lets users skip and permanently blacklist tracks they don't want to hear.
 
 ### Task 48 (B) +tui
 
+blockedBy: [40]
+
 **PURPOSE**
 Show session-level usage metrics.
 
@@ -800,6 +896,8 @@ Show session-level usage metrics.
 ---
 
 ### Task 49 (B) +tui
+
+blockedBy: [40]
 
 **PURPOSE**
 Show mood trends over multiple sessions.
@@ -815,6 +913,8 @@ Show mood trends over multiple sessions.
 
 ### Task 50 (B) +tui
 
+blockedBy: [30, 12]
+
 **PURPOSE**
 Show face detection quality information.
 
@@ -828,6 +928,8 @@ Show face detection quality information.
 ---
 
 ### Task 51 (B) +emotion
+
+blockedBy: [12]
 
 **PURPOSE**
 Handle scenes with multiple people.
@@ -843,11 +945,13 @@ Handle scenes with multiple people.
 
 ### Task 52 (B) +capture
 
+blockedBy: [8]
+
 **PURPOSE**
 Compensate for poor lighting conditions.
 
 **WHAT TO DO**
-1. Implement ambient lighting compensation: detect mean frame luminance, warn user in status bar if too dark (<30) or too bright (>225), adjust image preprocessing (histogram equalization) before emotion detection.
+1. Implement ambient lighting compensation: detect mean frame luminance, warn user in status bar if too dark (<30 — WHY: below 30/255 luminance, face detection accuracy drops sharply as facial features become indistinguishable from background) or too bright (>225 — WHY: above 225/255, faces wash out and emotion classification degrades from overexposed features), adjust image preprocessing (histogram equalization) before emotion detection.
 
 **DONE WHEN**
 - [ ] Luminance warnings displayed
@@ -856,6 +960,8 @@ Compensate for poor lighting conditions.
 ---
 
 ### Task 53 (B) +tui
+
+blockedBy: [29]
 
 **PURPOSE**
 Let users pause the system without quitting.
@@ -872,11 +978,13 @@ Let users pause the system without quitting.
 
 ### Task 54 (B) +tui
 
+blockedBy: [29, 17]
+
 **PURPOSE**
 Allow manual mood selection when detection is inaccurate.
 
 **WHAT TO DO**
-1. Implement manual mood override: keybinding `1-5` to manually set mood (1=FOCUS, 2=STRESSED, 3=RELAXED, 4=TIRED, 5=ENERGIZED), locks mood for configurable duration (default 10 min), shown as "manual" in mood history.
+1. Implement manual mood override: keybinding `1-5` to manually set mood (1=FOCUS, 2=STRESSED, 3=RELAXED, 4=TIRED, 5=ENERGIZED), locks mood for configurable duration (default 10 min — WHY: 10 minutes matches a typical task focus block; shorter would require frequent re-pressing, longer would ignore genuine mood shifts), shown as "manual" in mood history.
 
 **DONE WHEN**
 - [ ] Number keys set mood manually
@@ -886,6 +994,8 @@ Allow manual mood selection when detection is inaccurate.
 ---
 
 ### Task 55 (B) +cli
+
+blockedBy: [11, 19, 22]
 
 **PURPOSE**
 Headless health check for troubleshooting.
@@ -901,6 +1011,8 @@ Headless health check for troubleshooting.
 
 ### Task 56 (B) +cli
 
+blockedBy: [49]
+
 **PURPOSE**
 Query mood history from the command line.
 
@@ -914,6 +1026,8 @@ Query mood history from the command line.
 ---
 
 ### Task 57 (B) +tui
+
+blockedBy: [29]
 
 **PURPOSE**
 Discoverable keybinding reference.
@@ -929,6 +1043,8 @@ Discoverable keybinding reference.
 
 ### Task 58 (B) +tui
 
+blockedBy: [29]
+
 **PURPOSE**
 Visual customization for user preference.
 
@@ -943,6 +1059,8 @@ Visual customization for user preference.
 
 ### Task 59 (B) +cli
 
+blockedBy: [27]
+
 **PURPOSE**
 Test mood mapping without affecting playback.
 
@@ -955,11 +1073,293 @@ Test mood mapping without affecting playback.
 
 ---
 
+## Mood Analytics
+
+---
+
+### Task 60 (B) +analytics
+
+blockedBy: [49]
+
+**PURPOSE**
+Computes daily/weekly mood statistics from the mood history SQLite database.
+
+**WHAT TO DO**
+1. In Go, create `analytics/aggregator.go`.
+2. Implement `DailyMoodDistribution(date time.Time) -> map[Mood]float64` (percentage of time in each mood).
+3. Implement `WeeklyMoodDistribution(weekStart time.Time) -> map[Mood]float64`.
+4. Implement `HourlyMoodPattern() -> map[int]Mood` (most common mood per hour of day, computed from last 30 days — WHY: 30 days provides enough data for patterns without being skewed by old habits).
+5. Implement `MoodTransitionMatrix() -> map[Mood]map[Mood]int` (how often mood X transitions to mood Y).
+6. Query from the existing mood history table. Cache aggregations with 5-minute TTL — WHY: analytics don't need real-time updates, and recomputing from full history is expensive.
+
+**DONE WHEN**
+- [ ] All four aggregation functions return correct results from test data
+- [ ] Caching works (second call within TTL returns cached result)
+
+---
+
+### Task 61 (B) +analytics
+
+blockedBy: [60, 29]
+
+**PURPOSE**
+Visualizes mood patterns in a dedicated TUI tab.
+
+**WHAT TO DO**
+1. In the Bubble Tea model, add a new tab "Analytics" (keybinding 'A' to switch).
+2. Layout: 3 zones stacked vertically:
+   - Top: "Today's Mood Distribution" — horizontal bar chart showing percentage per mood (colored)
+   - Middle: "Hourly Pattern" — 24-column chart showing dominant mood per hour
+   - Bottom: "This Week" — 7-day sparkline per mood
+3. Use lipgloss for styling (mood colors: FOCUS=blue, STRESSED=red, RELAXED=green, TIRED=yellow, ENERGIZED=purple).
+4. Auto-refresh every 60 seconds — WHY: matches the granularity users would expect for daily analytics.
+
+**DONE WHEN**
+- [ ] Analytics tab renders with all 3 zones
+- [ ] Data updates as mood changes are detected
+- [ ] Tab switches smoothly between Dashboard and Analytics
+
+---
+
+### Task 62 (B) +analytics
+
+blockedBy: [27, 49]
+
+**PURPOSE**
+Tracks which music genres/searches correlate with which moods over time.
+
+**WHAT TO DO**
+1. In SQLite, add table `mood_music_log(id, mood, search_query, video_id, title, artist, timestamp)`.
+2. Log every track played alongside the active mood.
+3. Implement `TopTracksByMood(mood Mood, limit int) -> []Track` (most played tracks during each mood).
+4. Implement `EffectiveQueries(mood Mood) -> []string` (which search queries led to longest mood stability).
+
+**DONE WHEN**
+- [ ] Every played track is logged with mood context
+- [ ] TopTracksByMood returns correct results
+- [ ] Data persists across restarts
+
+---
+
+### Task 63 (C) +analytics
+
+blockedBy: [62]
+
+**PURPOSE**
+Lets users export their mood data for external analysis.
+
+**WHAT TO DO**
+1. Implement `mood-music export` subcommand.
+2. Export formats: CSV (date, time, mood, track, artist) and JSON.
+3. Date range filter: `--from 2026-01-01 --to 2026-03-22`.
+4. Output to stdout or `--output path`.
+
+**DONE WHEN**
+- [ ] CSV export contains all mood-music log entries
+- [ ] Date range filtering works correctly
+
+---
+
+## Testing
+
+---
+
+### Task 64 (A) +testing
+
+blockedBy: [13, 15, 17]
+
+**PURPOSE**
+Validate the emotion detection pipeline with controlled inputs.
+
+**WHAT TO DO**
+1. In Python, create `tests/test_emotion_pipeline.py`.
+2. Unit test face detection: provide mock webcam frames (pre-captured JPEG fixtures of faces with known emotions), verify `no_face` status for blank frames, verify face crop dimensions.
+3. Unit test emotion smoother: feed known emotion sequences through sliding window, verify smoothed output matches expected weighted averages.
+4. Unit test mood classifier: provide synthetic emotion score vectors, verify correct MoodState output for each mood threshold boundary.
+
+**DONE WHEN**
+- [ ] Face detection tests pass with mock frames
+- [ ] Emotion smoother tests verify weighted average correctness
+- [ ] Mood classifier tests cover all 5 mood states and boundary conditions
+
+---
+
+### Task 65 (A) +testing
+
+blockedBy: [23]
+
+**PURPOSE**
+Validate mpv IPC client without requiring a running mpv instance.
+
+**WHAT TO DO**
+1. In Go, create `mpv/ipc_test.go`.
+2. Spin up a mock Unix socket server that speaks mpv JSON IPC protocol.
+3. Test `Play()`, `Pause()`, `SetVolume()`, `GetPosition()` — verify correct JSON commands are sent and responses are parsed.
+4. Test timeout handling: mock server delays response beyond 2 seconds, verify client returns timeout error.
+5. Test connection failure: attempt to connect to nonexistent socket, verify graceful error.
+
+**DONE WHEN**
+- [ ] All IPC commands are tested against mock socket
+- [ ] Timeout and connection error handling verified
+- [ ] Tests run without requiring mpv binary
+
+---
+
+### Task 66 (A) +testing
+
+blockedBy: [20]
+
+**PURPOSE**
+Validate YouTube Music search integration without hitting the real API.
+
+**WHAT TO DO**
+1. In Python, create `tests/test_ytmusic.py`.
+2. Mock `ytmusicapi.YTMusic.search()` to return canned JSON responses matching YouTube Music's actual format.
+3. Test `search_tracks()`: verify Track dataclass fields are correctly populated from mock response.
+4. Test `get_watch_playlist()`: verify related tracks are parsed correctly.
+5. Test auth failure: mock expired auth, verify clear error message.
+
+**DONE WHEN**
+- [ ] Search results correctly parsed from mock responses
+- [ ] Watch playlist parsing verified
+- [ ] Auth failure produces actionable error message
+
+---
+
+### Task 67 (A) +testing
+
+blockedBy: [40]
+
+**PURPOSE**
+Verify the full pipeline works end-to-end with all components mocked.
+
+**WHAT TO DO**
+1. In Go, create `integration_test.go`.
+2. Mock camera input: provide static frame fixture.
+3. Mock Python subprocess: respond to `capture_request` with predetermined emotion, respond to `search_request` with canned Track list.
+4. Mock mpv IPC: record `loadfile` commands received.
+5. Run pipeline: verify mood classification triggers correct search query, correct track URL is sent to mpv.
+6. Test mood transition: change mock emotion mid-test, verify queue clears and new tracks load.
+
+**DONE WHEN**
+- [ ] End-to-end pipeline runs with all mocked components
+- [ ] Mood transition triggers correct music switch
+- [ ] Test completes in under 5 seconds (no real I/O)
+
+---
+
+## CI/CD
+
+---
+
+### Task 68 (B) +cicd
+
+blockedBy: [64, 65, 66]
+
+**PURPOSE**
+Automated build and test verification on every push.
+
+**WHAT TO DO**
+1. Create `.github/workflows/ci.yml`.
+2. Matrix: macOS-latest + ubuntu-latest.
+3. Go steps: checkout, setup Go 1.22+, `go build ./...`, `go test ./...`.
+4. Python steps: checkout, setup Python 3.11+, `pip install -e .`, `python -m pytest tests/`.
+5. Cache Go modules and pip packages for faster runs.
+
+**DONE WHEN**
+- [ ] CI runs on push to main and on PRs
+- [ ] Both macOS and Linux builds pass
+- [ ] Tests run in both Go and Python
+
+---
+
+### Task 69 (B) +cicd
+
+blockedBy: [68]
+
+**PURPOSE**
+Enforce code quality standards automatically.
+
+**WHAT TO DO**
+1. Add lint step to CI workflow.
+2. Go: `golangci-lint run` with default config (includes `govet`, `errcheck`, `staticcheck`).
+3. Python: `ruff check .` with default rules.
+4. Fail CI on any lint error.
+
+**DONE WHEN**
+- [ ] Linting runs in CI for both languages
+- [ ] Lint failures block merge
+
+---
+
+### Task 70 (B) +cicd
+
+blockedBy: [68]
+
+**PURPOSE**
+Automated binary releases with bundled Python dependencies.
+
+**WHAT TO DO**
+1. Create `.github/workflows/release.yml` triggered on version tags (`v*`).
+2. Build Go binaries for darwin-arm64, darwin-amd64, linux-amd64.
+3. Bundle Python `mood-engine` package as a wheel.
+4. Create GitHub Release with binaries and wheel attached.
+5. Include install script that sets up Python venv and installs the wheel.
+
+**DONE WHEN**
+- [ ] Tagging `v0.1.0` triggers release workflow
+- [ ] Binaries and wheel are attached to GitHub Release
+- [ ] Install script creates working setup
+
+---
+
+## Documentation
+
+---
+
+### Task 71 (C) +docs
+
+blockedBy: [40]
+
+**PURPOSE**
+Provide a clear entry point for new users and contributors.
+
+**WHAT TO DO**
+1. Write `README.md` with sections: Overview (one-paragraph description), Demo (placeholder for GIF), Features (bulleted list of all mood states and TUI capabilities), Requirements (mpv, yt-dlp, Python 3.11+, Go 1.22+, webcam), Installation (step-by-step: clone, build Go, install Python deps, run setup), Usage (basic commands), Configuration (link to config.toml schema), Contributing.
+2. Include badges: CI status, Go version, Python version, license.
+
+**DONE WHEN**
+- [ ] README covers all sections listed above
+- [ ] A new user can install and run the app by following the README alone
+
+---
+
+### Task 72 (C) +docs
+
+blockedBy: [40]
+
+**PURPOSE**
+Explain the system architecture for contributors and debugging.
+
+**WHAT TO DO**
+1. Create `docs/architecture.md` with Mermaid diagram showing: Go TUI (Bubble Tea) -> Go IPC Manager -> Python subprocess (stdin/stdout JSON) -> DeepFace + ytmusicapi, Go TUI -> Go mpv Client -> mpv (Unix socket JSON IPC) -> yt-dlp -> YouTube Music.
+2. Document data flow for: emotion detection cycle, mood transition event, track queue management.
+3. List all IPC message types with example payloads.
+
+**DONE WHEN**
+- [ ] Architecture diagram renders correctly in GitHub Markdown
+- [ ] All data flows are documented
+- [ ] IPC message types have example payloads
+
+---
+
 ## Priority C -- Nice to Have
 
 ---
 
-### Task 60 (C) +local
+### Task 73 (C) +local
+
+blockedBy: [22]
 
 **PURPOSE**
 Provide offline playback from local music files.
@@ -973,7 +1373,9 @@ Provide offline playback from local music files.
 
 ---
 
-### Task 61 (C) +local
+### Task 74 (C) +local
+
+blockedBy: [73]
 
 **PURPOSE**
 Automatically categorize local music files by mood.
@@ -987,13 +1389,15 @@ Automatically categorize local music files by mood.
 
 ---
 
-### Task 62 (C) +tui
+### Task 75 (C) +tui
+
+blockedBy: [48]
 
 **PURPOSE**
 Built-in focus/break timer with automatic mood control.
 
 **WHAT TO DO**
-1. Implement focus session timer: keybinding `F` starts Pomodoro-style timer (25min focus / 5min break), auto-set mood to FOCUS during work intervals and RELAXED during breaks, override emotion detection.
+1. Implement focus session timer: keybinding `F` starts Pomodoro-style timer (25min focus / 5min break — WHY: based on the classic Pomodoro technique; 25 minutes is the most widely validated focus interval for sustained concentration), auto-set mood to FOCUS during work intervals and RELAXED during breaks, override emotion detection.
 
 **DONE WHEN**
 - [ ] Timer runs with 25/5 intervals
@@ -1001,7 +1405,9 @@ Built-in focus/break timer with automatic mood control.
 
 ---
 
-### Task 63 (C) +tui
+### Task 76 (C) +tui
+
+blockedBy: [75]
 
 **PURPOSE**
 Show correlation between mood stability and productivity.
@@ -1015,7 +1421,9 @@ Show correlation between mood stability and productivity.
 
 ---
 
-### Task 64 (C) +tui
+### Task 77 (C) +tui
+
+blockedBy: [29]
 
 **PURPOSE**
 Visual confirmation of camera state for privacy.
@@ -1029,7 +1437,9 @@ Visual confirmation of camera state for privacy.
 
 ---
 
-### Task 65 (C) +emotion
+### Task 78 (C) +emotion
+
+blockedBy: [14]
 
 **PURPOSE**
 Switch emotion backends without restarting the app.
@@ -1043,7 +1453,9 @@ Switch emotion backends without restarting the app.
 
 ---
 
-### Task 66 (C) +capture
+### Task 79 (C) +capture
+
+blockedBy: [8]
 
 **PURPOSE**
 Factor ambient light into stress detection on macOS.
@@ -1057,7 +1469,9 @@ Factor ambient light into stress detection on macOS.
 
 ---
 
-### Task 67 (C) +cli
+### Task 80 (C) +cli
+
+blockedBy: [22, 4]
 
 **PURPOSE**
 Run the system headlessly without a TUI.
@@ -1072,7 +1486,9 @@ Run the system headlessly without a TUI.
 
 ---
 
-### Task 68 (C) +tui
+### Task 81 (C) +tui
+
+blockedBy: [29]
 
 **PURPOSE**
 Polished startup experience while components initialize.
