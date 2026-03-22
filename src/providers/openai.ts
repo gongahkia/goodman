@@ -20,6 +20,7 @@ export class OpenAIProvider implements LLMProvider {
 
   constructor(
     private apiKey: string,
+    private defaultModel: string = 'gpt-4o',
     private baseUrl: string = API_URL
   ) {}
 
@@ -28,7 +29,7 @@ export class OpenAIProvider implements LLMProvider {
     options: SummarizeOptions
   ): Promise<Result<Summary, TCGuardError>> {
     const body = {
-      model: options.model || 'gpt-4o',
+      model: options.model || this.defaultModel || 'gpt-4o',
       messages: [
         { role: 'system', content: options.systemPrompt },
         { role: 'user', content: text },

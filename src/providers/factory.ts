@@ -89,20 +89,20 @@ export async function validateProvider(name: string): Promise<boolean> {
 function createProvider(
   name: string,
   apiKey: string,
-  _model: string,
+  model: string,
   baseUrl?: string
 ): LLMProvider | null {
   switch (name) {
     case 'openai':
-      return new OpenAIProvider(apiKey);
+      return new OpenAIProvider(apiKey, model);
     case 'claude':
-      return new ClaudeProvider(apiKey);
+      return new ClaudeProvider(apiKey, model);
     case 'gemini':
-      return new GeminiProvider(apiKey);
+      return new GeminiProvider(apiKey, model);
     case 'ollama':
-      return new OllamaProvider(baseUrl);
+      return new OllamaProvider(baseUrl, model);
     case 'custom':
-      return new CustomEndpointProvider(baseUrl ?? '', apiKey);
+      return new CustomEndpointProvider(baseUrl ?? '', apiKey, model);
     default:
       return null;
   }

@@ -9,7 +9,10 @@ const DEFAULT_BASE_URL = 'http://localhost:11434';
 export class OllamaProvider implements LLMProvider {
   name = 'ollama';
 
-  constructor(private baseUrl: string = DEFAULT_BASE_URL) {}
+  constructor(
+    private baseUrl: string = DEFAULT_BASE_URL,
+    private defaultModel: string = 'llama3.2'
+  ) {}
 
   async summarize(
     text: string,
@@ -18,7 +21,7 @@ export class OllamaProvider implements LLMProvider {
     const url = `${this.baseUrl}/api/chat`;
 
     const body = {
-      model: options.model,
+      model: options.model || this.defaultModel || 'llama3.2',
       messages: [
         { role: 'system', content: options.systemPrompt },
         { role: 'user', content: text },

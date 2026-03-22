@@ -11,14 +11,17 @@ const RETRY_DELAYS = [1000, 3000];
 export class ClaudeProvider implements LLMProvider {
   name = 'claude';
 
-  constructor(private apiKey: string) {}
+  constructor(
+    private apiKey: string,
+    private defaultModel: string = 'claude-sonnet-4-20250514'
+  ) {}
 
   async summarize(
     text: string,
     options: SummarizeOptions
   ): Promise<Result<Summary, TCGuardError>> {
     const body = {
-      model: options.model || 'claude-sonnet-4-20250514',
+      model: options.model || this.defaultModel || 'claude-sonnet-4-20250514',
       max_tokens: options.maxTokens,
       system: options.systemPrompt,
       messages: [{ role: 'user', content: text }],

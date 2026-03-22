@@ -11,13 +11,16 @@ const RETRY_DELAYS = [1000, 3000];
 export class GeminiProvider implements LLMProvider {
   name = 'gemini';
 
-  constructor(private apiKey: string) {}
+  constructor(
+    private apiKey: string,
+    private defaultModel: string = 'gemini-1.5-pro'
+  ) {}
 
   async summarize(
     text: string,
     options: SummarizeOptions
   ): Promise<Result<Summary, TCGuardError>> {
-    const model = options.model || 'gemini-1.5-pro';
+    const model = options.model || this.defaultModel || 'gemini-1.5-pro';
     const url = `${BASE_URL}/models/${model}:generateContent?key=${this.apiKey}`;
 
     const body = {

@@ -22,7 +22,7 @@ export class CustomEndpointProvider implements LLMProvider {
   ): Promise<Result<Summary, TCGuardError>> {
     const url = `${this.baseUrl}/v1/chat/completions`;
     const body = {
-      model: this.model || options.model,
+      model: options.model || this.model || 'default',
       messages: [
         { role: 'system', content: options.systemPrompt },
         { role: 'user', content: text },
