@@ -157,10 +157,10 @@ blockedBy: [4]
 6. Return `DetectedElement[]` where `DetectedElement = { element: HTMLElement; type: 'checkbox'; confidence: number; keywords: string[]; nearestLink: string | null }`.
 
 **DONE WHEN**
-- [ ] Detects a standard `<input type="checkbox"> <label>I agree to the <a href="/terms">Terms</a></label>` pattern with confidence >= 0.8
-- [ ] Detects checkbox + T&C link separated by a `<div>` wrapper with confidence >= 0.6
-- [ ] Does NOT detect unrelated checkboxes (e.g., "Remember me", "Subscribe to newsletter") — confidence stays below threshold
-- [ ] Returns the nearest T&C link URL in `nearestLink` when one is found
+- [x] Detects a standard `<input type="checkbox"> <label>I agree to the <a href="/terms">Terms</a></label>` pattern with confidence >= 0.8
+- [x] Detects checkbox + T&C link separated by a `<div>` wrapper with confidence >= 0.6
+- [x] Does NOT detect unrelated checkboxes (e.g., "Remember me", "Subscribe to newsletter") — confidence stays below threshold
+- [x] Returns the nearest T&C link URL in `nearestLink` when one is found
 
 ### Task 6 (A) +detection
 blockedBy: [4]
