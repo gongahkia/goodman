@@ -1,15 +1,22 @@
-import { getStorage, setStorage } from '@shared/storage';
+import {
+  getDomainNotificationPreference,
+  getStorage,
+  setStorage,
+} from '@shared/storage';
 import type { PendingNotification } from '@shared/storage';
 import type { SummaryDiff } from './summary-diff';
 
 export async function notifyChange(
   domain: string,
   diff: SummaryDiff
-): Promise<void> {
+): Promise<boolean> {
   const settingsResult = await getStorage('settings');
-  if (!settingsResult.ok) return;
+  if (!settingsResult.ok) return false;
 
-  if (!settingsResult.data.notifyOnChange) return;
+  if (!settingsResult.data.notifyOnChange) return false;
+
+  const domainPreference = await getDomainNotificationPreference(domain);
+  if (!domainPreference) return false;
 
   try {
     await chrome.action.setBadgeText({ text: '!' });
@@ -19,7 +26,7 @@ export async function notifyChange(
   }
 
   const notificationsResult = await getStorage('pendingNotifications');
-  if (!notificationsResult.ok) return;
+  if (!notificationsResult.ok) return false;
 
   const notifications = [...notificationsResult.data];
   notifications.push({
@@ -30,6 +37,7 @@ export async function notifyChange(
   });
 
   await setStorage('pendingNotifications', notifications);
+  return true;
 }
 
 export async function getPendingNotifications(): Promise<PendingNotification[]> {

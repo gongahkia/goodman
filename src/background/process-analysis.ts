@@ -11,6 +11,7 @@ import { cacheSummary, computeTextHash, getCachedSummary } from '@summarizer/cac
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { setPageAnalysisRecord } from '@shared/storage';
+import { syncVersionHistory } from './version-tracking';
 
 export interface ProcessPageAnalysisInput {
   tabId: number;
@@ -46,6 +47,7 @@ export async function processPageAnalysis(
   const cachedSummary = await getCachedSummary(textHash);
   if (cachedSummary) {
     const summary = toSummary(cachedSummary.summary);
+    await syncVersionHistory(input.domain, input.text, summary);
     await setPageAnalysisRecord(
       buildPageAnalysisRecord(input, {
         status: 'ready',
@@ -98,6 +100,7 @@ export async function processPageAnalysis(
   }
 
   await cacheSummary(textHash, summaryResult.data, input.domain);
+  await syncVersionHistory(input.domain, input.text, summaryResult.data);
   await setPageAnalysisRecord(
     buildPageAnalysisRecord(input, {
       status: 'ready',
