@@ -217,10 +217,10 @@ blockedBy: [5, 6, 7]
 6. Deduplicate: if two detections refer to overlapping DOM regions (one is ancestor of another), keep only the higher-confidence one.
 
 **DONE WHEN**
-- [ ] In `normal` mode, a checkbox detection with raw 0.55 confidence passes (above 0.5 threshold)
-- [ ] In `conservative` mode, same detection is filtered out (below 0.7 threshold)
-- [ ] Overlapping detections (e.g., checkbox inside a detected modal) produce only one result
-- [ ] Output is sorted by confidence descending
+- [x] In `normal` mode, a checkbox detection with raw 0.55 confidence passes (above 0.5 threshold)
+- [x] In `conservative` mode, same detection is filtered out (below 0.7 threshold)
+- [x] Overlapping detections (e.g., checkbox inside a detected modal) produce only one result
+- [x] Output is sorted by confidence descending
 
 # ============================================================
 # TEXT EXTRACTION
