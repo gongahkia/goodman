@@ -709,10 +709,10 @@ blockedBy: [26]
 6. If no previous version exists, return `{ changed: false, previousVersion: null, currentHash }` (first visit, not a "change").
 
 **DONE WHEN**
-- [ ] Returns `changed: false` when text matches the stored hash
-- [ ] Returns `changed: true` when text differs, with the previous version attached
-- [ ] Returns `changed: false` with `previousVersion: null` on first visit to a domain
-- [ ] Hash comparison is O(1), not full text comparison
+- [x] Returns `changed: false` when text matches the stored hash
+- [x] Returns `changed: true` when text differs, with the previous version attached
+- [x] Returns `changed: false` with `previousVersion: null` on first visit to a domain
+- [x] Hash comparison is O(1), not full text comparison
 
 ### Task 28 (B) +versioning
 blockedBy: [27]
@@ -740,11 +740,11 @@ blockedBy: [27]
 6. Compute `totalChanges` as the sum of additions + removals + changes.
 
 **DONE WHEN**
-- [ ] Detects an added paragraph as an addition
-- [ ] Detects a removed paragraph as a removal
-- [ ] Detects a reworded paragraph as a change
-- [ ] `totalChanges` accurately counts the number of changed sections
-- [ ] Identical texts return zero changes
+- [x] Detects an added paragraph as an addition
+- [x] Detects a removed paragraph as a removal
+- [x] Detects a reworded paragraph as a change
+- [x] `totalChanges` accurately counts the number of changed sections
+- [x] Identical texts return zero changes
 
 ### Task 29 (B) +versioning
 blockedBy: [28, 22]
@@ -769,10 +769,10 @@ blockedBy: [28, 22]
 5. Compare key points by fuzzy string matching (Jaccard similarity > 0.5 = same point) — WHY: LLM rewording means exact string matching would incorrectly mark paraphrased points as "new".
 
 **DONE WHEN**
-- [ ] A new `arbitration_clause` red flag appears in `addedRedFlags`
-- [ ] A removed `auto_renewal` flag appears in `removedRedFlags`
-- [ ] Severity change from `medium` to `high` is captured
-- [ ] Paraphrased key points are matched as the same, not flagged as new
+- [x] A new `arbitration_clause` red flag appears in `addedRedFlags`
+- [x] A removed `auto_renewal` flag appears in `removedRedFlags`
+- [x] Severity change from `medium` to `high` is captured
+- [x] Paraphrased key points are matched as the same, not flagged as new
 
 ### Task 30 (B) +versioning
 blockedBy: [26, 29]
@@ -791,10 +791,10 @@ blockedBy: [26, 29]
 6. Style with CSS classes scoped under `.tc-guard-timeline`.
 
 **DONE WHEN**
-- [ ] Timeline shows all versions for a domain in reverse chronological order
-- [ ] Change annotations between versions are accurate
-- [ ] Clicking a version node displays that version's summary
-- [ ] Domain with only one version shows "First recorded version" instead of diff annotations
+- [x] Timeline shows all versions for a domain in reverse chronological order
+- [x] Change annotations between versions are accurate
+- [x] Clicking a version node displays that version's summary
+- [x] Domain with only one version shows "First recorded version" instead of diff annotations
 
 ### Task 31 (B) +versioning
 blockedBy: [27, 29]
@@ -813,10 +813,10 @@ blockedBy: [27, 29]
 6. Respect the `notifyOnChange` user setting — if disabled, skip badge and notification.
 
 **DONE WHEN**
-- [ ] Badge shows "!" when a tracked domain's T&C changes
-- [ ] Popup displays the change notification banner with accurate red flag count
-- [ ] Notification is cleared after the user views it
-- [ ] Notification is suppressed when `notifyOnChange` is `false`
+- [x] Badge shows "!" when a tracked domain's T&C changes
+- [x] Popup displays the change notification banner with accurate red flag count
+- [x] Notification is cleared after the user views it
+- [x] Notification is suppressed when `notifyOnChange` is `false`
 
 # ============================================================
 # OVERLAY UI

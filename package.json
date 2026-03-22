@@ -22,6 +22,7 @@
   "devDependencies": {
     "@crxjs/vite-plugin": "2.0.0-beta.33",
     "@types/chrome": "^0.1.38",
+    "@types/diff": "^8.0.0",
     "@types/webextension-polyfill": "^0.12.5",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
@@ -33,6 +34,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
+    "diff": "^8.0.3",
     "pdfjs-dist": "^5.5.207",
     "webextension-polyfill": "^0.12.0"
   }
