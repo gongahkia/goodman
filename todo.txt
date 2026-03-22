@@ -199,9 +199,9 @@ blockedBy: [4]
 7. Return a single `DetectedElement` with `type: 'fullpage'` and confidence based on combined signals.
 
 **DONE WHEN**
-- [ ] Detects `https://example.com/terms` containing 5000 characters of legal text with confidence >= 0.7
-- [ ] Does NOT flag a blog post that mentions "terms" a few times
-- [ ] URL path match alone scores at least 0.4 confidence (combined with content, reaches threshold)
+- [x] Detects `https://example.com/terms` containing 5000 characters of legal text with confidence >= 0.7
+- [x] Does NOT flag a blog post that mentions "terms" a few times
+- [x] URL path match alone scores at least 0.4 confidence (combined with content, reaches threshold)
 
 ### Task 8 (A) +detection
 blockedBy: [5, 6, 7]
