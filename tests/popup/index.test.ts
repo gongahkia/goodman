@@ -52,7 +52,7 @@ describe('popup index', () => {
   });
 
   it('renders persisted ready analysis on load', async () => {
-    mockStorage.pageAnalysisByUrl = {
+    mockStorage.pageAnalysis = {
       'https://example.com/checkout': readyAnalysis(),
     };
 
@@ -67,7 +67,7 @@ describe('popup index', () => {
   });
 
   it('renders provider setup state from persisted analysis', async () => {
-    mockStorage.pageAnalysisByUrl = {
+    mockStorage.pageAnalysis = {
       'https://example.com/checkout': {
         ...readyAnalysis(),
         status: 'needs_provider',
@@ -85,7 +85,7 @@ describe('popup index', () => {
   });
 
   it('refreshes persisted analysis after a manual analyze', async () => {
-    mockStorage.pageAnalysisByUrl = {
+    mockStorage.pageAnalysis = {
       'https://example.com/checkout': {
         ...readyAnalysis(),
         status: 'no_detection',
@@ -93,7 +93,7 @@ describe('popup index', () => {
       },
     };
     chrome.tabs.sendMessage.mockImplementation(async () => {
-      mockStorage.pageAnalysisByUrl = {
+      mockStorage.pageAnalysis = {
         'https://example.com/checkout': readyAnalysis(),
       };
       return { ok: true };
@@ -128,7 +128,7 @@ describe('popup index', () => {
         viewed: false,
       },
     ];
-    mockStorage.pageAnalysisByUrl = {
+    mockStorage.pageAnalysis = {
       'https://example.com/checkout': readyAnalysis(),
     };
 
@@ -157,7 +157,7 @@ describe('popup index', () => {
         viewed: false,
       },
     ];
-    mockStorage.pageAnalysisByUrl = {
+    mockStorage.pageAnalysis = {
       'https://example.com/checkout': readyAnalysis(),
     };
 
@@ -186,7 +186,7 @@ describe('popup index', () => {
         viewed: false,
       },
     ];
-    mockStorage.pageAnalysisByUrl = {
+    mockStorage.pageAnalysis = {
       'https://example.com/checkout': readyAnalysis(),
     };
 

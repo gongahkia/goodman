@@ -38,6 +38,15 @@ describe('shared storage', () => {
     }
   });
 
+  it('returns an empty page-analysis tab index by default', async () => {
+    const result = await getStorage('pageAnalysisTabs');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual({});
+    }
+  });
+
   it('persists page analysis records by tab id', async () => {
     const record = makePageAnalysisRecord();
 

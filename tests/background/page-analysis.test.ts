@@ -77,7 +77,10 @@ describe('background page analysis contracts', () => {
     const onRemoved = getTabRemovedListener();
     await onRemoved(record.tabId);
     expect(
-      (mockStorage.pageAnalysis as Record<string, PageAnalysisRecord>)[String(record.tabId)]
+      (mockStorage.pageAnalysis as Record<string, PageAnalysisRecord>)[record.url]
+    ).toBeUndefined();
+    expect(
+      (mockStorage.pageAnalysisTabs as Record<string, string>)[String(record.tabId)]
     ).toBeUndefined();
   });
 });

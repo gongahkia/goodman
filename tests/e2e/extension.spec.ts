@@ -133,8 +133,8 @@ async function waitForUrlAnalysis(url: string): Promise<Record<string, unknown>>
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const result = await withWorker(async (worker) => {
       return (await worker.evaluate(async (targetUrl) => {
-        const { pageAnalysisByUrl } = await chrome.storage.local.get(['pageAnalysisByUrl']);
-        return (pageAnalysisByUrl as Record<string, unknown> | undefined)?.[targetUrl] ?? null;
+        const { pageAnalysis } = await chrome.storage.local.get(['pageAnalysis']);
+        return (pageAnalysis as Record<string, unknown> | undefined)?.[targetUrl] ?? null;
       }, url)) as Record<string, unknown> | null;
     });
 

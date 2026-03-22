@@ -46,7 +46,7 @@ export interface StorageSchema {
   settings: Settings;
   cache: Record<string, CachedSummary>;
   pageAnalysis: Record<string, PageAnalysisRecord>;
-  pageAnalysisByUrl: Record<string, PageAnalysisRecord>;
+  pageAnalysisTabs: Record<string, string>;
   versionHistory: Record<string, VersionEntry[]>;
   domainNotificationPreferences: Record<string, boolean>;
   pendingNotifications: PendingNotification[];
@@ -76,7 +76,7 @@ const STORAGE_DEFAULTS: StorageSchema = {
   settings: DEFAULT_SETTINGS,
   cache: {},
   pageAnalysis: {},
-  pageAnalysisByUrl: {},
+  pageAnalysisTabs: {},
   versionHistory: {},
   domainNotificationPreferences: {},
   pendingNotifications: [],
@@ -110,35 +110,45 @@ export async function setStorage<K extends keyof StorageSchema>(
 export async function getPageAnalysis(
   tabId: number
 ): Promise<PageAnalysisRecord | null> {
-  const result = await getStorage('pageAnalysis');
-  if (!result.ok) return null;
+  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
+    getStorage('pageAnalysis'),
+    getStorage('pageAnalysisTabs'),
+  ]);
+  if (!pageAnalysisResult.ok || !pageAnalysisTabsResult.ok) return null;
 
-  return result.data[getPageAnalysisKey(tabId)] ?? null;
+  const pageKey = pageAnalysisTabsResult.data[String(tabId)];
+  if (!pageKey) return null;
+
+  return pageAnalysisResult.data[pageKey] ?? null;
 }
 
 export async function setPageAnalysisRecord(
   record: PageAnalysisRecord
 ): Promise<Result<void, Error>> {
-  const [pageAnalysisResult, pageAnalysisByUrlResult] = await Promise.all([
+  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
     getStorage('pageAnalysis'),
-    getStorage('pageAnalysisByUrl'),
+    getStorage('pageAnalysisTabs'),
   ]);
   if (!pageAnalysisResult.ok) return pageAnalysisResult;
-  if (!pageAnalysisByUrlResult.ok) return pageAnalysisByUrlResult;
+  if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
 
+  const pageKey = getPageAnalysisKey(record.url);
   const pageAnalysis = {
     ...pageAnalysisResult.data,
-    [getPageAnalysisKey(record.tabId)]: record,
+    [pageKey]: record,
   };
-  const pageAnalysisByUrl = {
-    ...pageAnalysisByUrlResult.data,
-    [record.url]: record,
-  };
+  const pageAnalysisTabs =
+    record.tabId >= 0
+      ? {
+          ...pageAnalysisTabsResult.data,
+          [String(record.tabId)]: pageKey,
+        }
+      : pageAnalysisTabsResult.data;
 
   try {
     await browser.storage.local.set({
       pageAnalysis,
-      pageAnalysisByUrl,
+      pageAnalysisTabs,
     });
     return ok(undefined);
   } catch (e) {
@@ -149,37 +159,54 @@ export async function setPageAnalysisRecord(
 export async function removePageAnalysis(
   tabId: number
 ): Promise<Result<void, Error>> {
-  const result = await getStorage('pageAnalysis');
-  if (!result.ok) return result;
+  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
+    getStorage('pageAnalysis'),
+    getStorage('pageAnalysisTabs'),
+  ]);
+  if (!pageAnalysisResult.ok) return pageAnalysisResult;
+  if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
 
-  const pageAnalysis = { ...result.data };
-  delete pageAnalysis[getPageAnalysisKey(tabId)];
+  const pageAnalysis = { ...pageAnalysisResult.data };
+  const pageAnalysisTabs = { ...pageAnalysisTabsResult.data };
+  const tabKey = String(tabId);
+  const pageKey = pageAnalysisTabs[tabKey];
 
-  return setStorage('pageAnalysis', pageAnalysis);
+  delete pageAnalysisTabs[tabKey];
+  if (
+    pageKey &&
+    !Object.values(pageAnalysisTabs).some((mappedPageKey) => mappedPageKey === pageKey)
+  ) {
+    delete pageAnalysis[pageKey];
+  }
+
+  try {
+    await browser.storage.local.set({
+      pageAnalysis,
+      pageAnalysisTabs,
+    });
+    return ok(undefined);
+  } catch (e) {
+    return err(e instanceof Error ? e : new Error(String(e)));
+  }
 }
 
 export async function getPageAnalysisByUrl(
   url: string
 ): Promise<PageAnalysisRecord | null> {
-  const result = await getStorage('pageAnalysisByUrl');
+  const result = await getStorage('pageAnalysis');
   if (!result.ok) return null;
 
-  return result.data[url] ?? null;
+  return result.data[getPageAnalysisKey(url)] ?? null;
 }
 
 export async function setPageAnalysisByUrl(
   url: string,
   record: PageAnalysisRecord
 ): Promise<Result<void, Error>> {
-  const result = await getStorage('pageAnalysisByUrl');
-  if (!result.ok) return result;
-
-  const pageAnalysisByUrl = {
-    ...result.data,
-    [url]: record,
-  };
-
-  return setStorage('pageAnalysisByUrl', pageAnalysisByUrl);
+  return setPageAnalysisRecord({
+    ...record,
+    url,
+  });
 }
 
 export async function getDomainNotificationPreference(
@@ -206,6 +233,6 @@ export async function setDomainNotificationPreference(
   return setStorage('domainNotificationPreferences', preferences);
 }
 
-function getPageAnalysisKey(tabId: number): string {
-  return String(tabId);
+function getPageAnalysisKey(url: string): string {
+  return url;
 }

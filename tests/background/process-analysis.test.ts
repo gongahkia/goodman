@@ -156,7 +156,7 @@ describe('processPageAnalysis', () => {
 
     const storedRecord = (
       mockStorage.pageAnalysis as Record<string, { status: string }>
-    )['3'];
+    )['https://example.com'];
     expect(storedRecord.status).toBe('needs_provider');
   });
 });
