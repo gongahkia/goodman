@@ -865,10 +865,10 @@ blockedBy: [32]
 7. Use `position: fixed` so the overlay stays in place during scroll.
 
 **DONE WHEN**
-- [ ] Overlay appears to the right of a centered checkbox
-- [ ] Overlay flips to the left when the checkbox is near the right viewport edge
-- [ ] Overlay shifts upward when the checkbox is near the bottom of the viewport
-- [ ] Overlay maintains 8px minimum margin from all viewport edges
+- [x] Overlay appears to the right of a centered checkbox
+- [x] Overlay flips to the left when the checkbox is near the right viewport edge
+- [x] Overlay shifts upward when the checkbox is near the bottom of the viewport
+- [x] Overlay maintains 8px minimum margin from all viewport edges
 
 ### Task 34 (B) +ui
 blockedBy: [32]
@@ -885,10 +885,10 @@ blockedBy: [32]
 5. Apply the theme class (`tc-theme-light` or `tc-theme-dark`) to the shadow DOM root.
 
 **DONE WHEN**
-- [ ] Light mode overlay has white background and dark text
-- [ ] Dark mode overlay has dark background and light text
-- [ ] `auto` mode correctly follows the system preference
-- [ ] Theme persists from user settings across page loads
+- [x] Light mode overlay has white background and dark text
+- [x] Dark mode overlay has dark background and light text
+- [x] `auto` mode correctly follows the system preference
+- [x] Theme persists from user settings across page loads
 
 ### Task 35 (B) +ui
 blockedBy: [32]
@@ -905,11 +905,11 @@ blockedBy: [32]
 5. Listen for background message to re-show overlay (triggered by extension icon click).
 
 **DONE WHEN**
-- [ ] Close button dismisses the overlay with a fade-out animation
-- [ ] Trigger icon remains visible after dismissal
-- [ ] Clicking the trigger icon re-opens the overlay with a slide-in animation
-- [ ] Escape key dismisses the overlay when it has focus
-- [ ] Re-opened overlay shows cached summary (no loading state)
+- [x] Close button dismisses the overlay with a fade-out animation
+- [x] Trigger icon remains visible after dismissal
+- [x] Clicking the trigger icon re-opens the overlay with a slide-in animation
+- [x] Escape key dismisses the overlay when it has focus
+- [x] Re-opened overlay shows cached summary (no loading state)
 
 # ============================================================
 # POPUP & SETTINGS UI
@@ -1089,10 +1089,10 @@ blockedBy: [32]
 4. Sanitize LLM output: if the LLM returns HTML in the summary or red flag descriptions, strip tags before rendering.
 
 **DONE WHEN**
-- [ ] Injecting `<img onerror="alert(1)">` in T&C text does NOT execute JavaScript
-- [ ] LLM response containing `<script>` tags renders as plain text
-- [ ] Overlay styles do not leak into the host page
-- [ ] Host page styles do not affect the overlay
+- [x] Injecting `<img onerror="alert(1)">` in T&C text does NOT execute JavaScript
+- [x] LLM response containing `<script>` tags renders as plain text
+- [x] Overlay styles do not leak into the host page
+- [x] Host page styles do not affect the overlay
 
 # ============================================================
 # TESTING
