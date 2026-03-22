@@ -423,10 +423,10 @@ blockedBy: [14]
 6. Implement the same retry logic as Task 15.
 
 **DONE WHEN**
-- [ ] Sending T&C text to Claude returns a valid `Summary` JSON object
-- [ ] `validateApiKey()` correctly validates keys
-- [ ] The `anthropic-version` header is set correctly
-- [ ] Rate limit and error responses are handled gracefully
+- [x] Sending T&C text to Claude returns a valid `Summary` JSON object
+- [x] `validateApiKey()` correctly validates keys
+- [x] The `anthropic-version` header is set correctly
+- [x] Rate limit and error responses are handled gracefully
 
 ### Task 17 (B) +providers
 blockedBy: [14]
