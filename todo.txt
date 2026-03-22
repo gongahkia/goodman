@@ -258,10 +258,10 @@ blockedBy: [2]
 6. If the page contains links to additional T&C documents (e.g., "Privacy Policy" linked from "Terms of Service"), return metadata about them but do not follow them automatically.
 
 **DONE WHEN**
-- [ ] Given a URL like `https://example.com/terms`, fetches and returns the legal text content
-- [ ] Strips navigation, headers, and footers from the extracted page
-- [ ] Returns text from `<main>` when present, falling back to `<body>` when not
-- [ ] Handles 404 and network errors gracefully, returning an error message string
+- [x] Given a URL like `https://example.com/terms`, fetches and returns the legal text content
+- [x] Strips navigation, headers, and footers from the extracted page
+- [x] Returns text from `<main>` when present, falling back to `<body>` when not
+- [x] Handles 404 and network errors gracefully, returning an error message string
 
 ### Task 11 (B) +extraction
 blockedBy: [10]
