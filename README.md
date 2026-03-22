@@ -4,11 +4,11 @@ TC Guard is a Manifest V3 browser extension for understanding Terms and Conditio
 
 ## Product Position
 
-TC Guard is currently a privacy-first, bring-your-own-provider product. It is not a zero-config consumer app yet.
+TC Guard is currently a privacy-first, bring-your-own-provider product aimed at technical users and power users. It is not a zero-config consumer app yet.
 
-- It does automatic detection and shared popup/history state out of the box.
-- It requires provider configuration before remote summarization can succeed.
-- Its clearest differentiator is version tracking: first-seen terms are stored silently, and later meaningful changes can trigger notifications.
+- It does automatic detection and persists explicit page-analysis state out of the box.
+- It requires provider configuration before remote summarization, version history, and change alerts can succeed.
+- Its clearest differentiator once configured is version tracking: first-seen terms are stored silently, and later meaningful changes can trigger notifications.
 
 ## What Ships Today
 
@@ -16,7 +16,7 @@ TC Guard is currently a privacy-first, bring-your-own-provider product. It is no
 - Consent surface detection for checkboxes, banners/modals, and full-page legal text.
 - Extraction routing for inline text, linked legal pages, and PDFs.
 - Background analysis pipeline with cache lookup, single-shot summarization, and chunked summarization for long text.
-- Persisted `PageAnalysisRecord` state keyed by tab so the popup can reopen into the latest known result.
+- Persisted `PageAnalysisRecord` state keyed by page URL, plus a tab-to-page index for active-tab lookups.
 - Popup states for `idle`, `analyzing`, `no_detection`, `extraction_failed`, `needs_provider`, `error`, and `ready`.
 - Per-domain version history, summary diffs, text diffs, and notification gating.
 - Per-domain notification preferences plus global notification enable/disable.
@@ -26,9 +26,9 @@ TC Guard is currently a privacy-first, bring-your-own-provider product. It is no
 
 1. The content script auto-runs on page load and after relevant DOM mutations.
 2. Detection candidates are scored, then the best candidate is resolved to inline, linked, or PDF text.
-3. The background worker normalizes the text, computes a hash, checks cache, and either reuses a cached summary or calls the configured provider.
-4. The background worker persists `PageAnalysisRecord`, updates version history, computes summary/text diffs, and decides whether a notification should fire.
-5. The page overlay renders when a usable summary exists. The popup reads the persisted page-analysis record for the active tab instead of relying on popup-local memory.
+3. Deterministic states like `no_detection`, `extraction_failed`, and `needs_provider` are persisted immediately into shared storage; provider-backed analysis is handed to the background worker.
+4. The background worker computes a hash, checks cache, calls the configured provider when needed, persists `PageAnalysisRecord`, updates version history, computes summary/text diffs, and decides whether a notification should fire.
+5. The page overlay renders when a usable summary exists. The popup reads the persisted page-analysis record for the active page instead of relying on popup-local memory.
 
 More detail lives in [docs/ARCHITECTURE.md](/Users/gongahkia/Desktop/coding/projects/goodman/docs/ARCHITECTURE.md).
 
@@ -56,6 +56,8 @@ Load the built `dist/` directory as an unpacked extension in Chrome or Chromium.
 
 For Ollama, the extension expects a reachable local endpoint, defaulting to `http://localhost:11434`.
 
+Without provider setup, the extension can still detect likely consent surfaces and persist `no_detection` or `needs_provider` states, but it cannot produce summaries, version history, or change alerts.
+
 ## Privacy And Tradeoffs
 
 - No app telemetry or analytics are built into the extension.
@@ -69,7 +71,7 @@ If you need to explain this project in an interview, the strongest framing is:
 
 - The product goal is informed consent at the point of agreement, not generic legal research.
 - MV3 boundaries are deliberate: content script for detection and extraction, background worker for provider calls and persistent orchestration, popup for reconstructed state and controls.
-- The key tradeoff is privacy versus onboarding friction: no hosted backend means users keep control, but they must configure a provider.
+- The key tradeoff is privacy versus onboarding friction: no hosted backend means users keep control, but they must configure a provider before summaries and change tracking become useful.
 - Version tracking is the differentiator because it turns one-off summarization into an ongoing monitoring workflow for domains the user revisits.
 
 ## Development

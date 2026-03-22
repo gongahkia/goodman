@@ -43,9 +43,9 @@ TC Guard is a Manifest V3 extension with three important contexts:
 - `src/content/`
   Detects consent UI, resolves text sources, and renders the overlay when a summary is available.
 - `src/background/`
-  Owns persistent analysis state, provider execution, cache lookups, version tracking, and notification decisions.
+  Owns provider execution, cache lookups, version tracking, notification decisions, and active-tab cleanup.
 - `src/popup/`
-  Rehydrates from persisted page-analysis state for the active tab and exposes settings/history controls.
+  Rehydrates from persisted page-analysis state for the current page and exposes settings/history controls.
 
 MV3 matters here because the service worker can be suspended. For that reason, persistent state must live in `chrome.storage.local`, not in background module globals.
 
@@ -65,13 +65,16 @@ The content script starts automatically on load and also watches for relevant DO
 
 ### 2. Shared page-analysis state
 
-The content script and background worker communicate through typed messages.
+The content script, popup, and background worker converge through shared storage plus typed messages.
 
-- If nothing relevant is found, the content script persists `no_detection`.
-- If a legal surface is found but usable text is not extracted, it persists `extraction_failed`.
-- If text is extracted, the content script sends `PROCESS_PAGE_ANALYSIS` to the background worker.
+- `pageAnalysis` is the canonical `PageAnalysisRecord` map keyed by page URL.
+- `pageAnalysisTabs` maps live tab ids to those canonical page keys for active-tab lookups and cleanup.
+- If nothing relevant is found, the content script persists `no_detection` directly.
+- If a legal surface is found but usable text is not extracted, it persists `extraction_failed` directly.
+- If a provider is missing, the content script persists `needs_provider` directly.
+- If text is extracted and a configured provider is available, the content script sends `PROCESS_PAGE_ANALYSIS` to the background worker.
 
-The background worker stores a `PageAnalysisRecord` keyed by tab id so overlay, popup, and later manual refreshes can converge on the same state.
+This split keeps the cheap deterministic states page-local while leaving provider-backed orchestration in the service worker.
 
 ### 3. Background analysis pipeline
 
@@ -108,7 +111,7 @@ For a valid extracted text input it:
 
 The popup no longer treats itself as the source of truth.
 
-- On open, it queries the active tab and then requests `GET_PAGE_ANALYSIS`.
+- On open, it queries the active tab, prunes stale page-analysis state, and reads the persisted record for the current page URL.
 - It renders explicit UI for:
   - `idle`
   - `analyzing`
@@ -158,6 +161,7 @@ interface StorageSchema {
   settings: Settings;
   cache: Record<string, CachedSummary>;
   pageAnalysis: Record<string, PageAnalysisRecord>;
+  pageAnalysisTabs: Record<string, string>;
   versionHistory: Record<string, VersionEntry[]>;
   domainNotificationPreferences: Record<string, boolean>;
   pendingNotifications: PendingNotification[];
@@ -167,10 +171,12 @@ interface StorageSchema {
 
 Important notes:
 
-- `pageAnalysis` is keyed by tab id string.
+- `pageAnalysis` is keyed by a canonical page key derived from the full URL.
+- `pageAnalysisTabs` maps active tab ids to those page keys.
 - `versionHistory` is keyed by domain.
 - `domainNotificationPreferences` defaults to enabled per domain unless explicitly disabled.
 - `pendingNotifications` drives badge/banner behavior.
+- stale page-analysis entries are pruned by TTL and capped globally and per domain.
 
 ## Message Contracts That Matter
 
@@ -178,18 +184,14 @@ The runtime now depends most heavily on these message types from `src/shared/mes
 
 - `DETECT_TC`
   Popup to content script. Manual re-run trigger for the active tab.
-- `SAVE_PAGE_ANALYSIS`
-  Content script to background. Persists `no_detection` and `extraction_failed` states.
 - `PROCESS_PAGE_ANALYSIS`
   Content script to background. Runs the real analysis pipeline and persists final state.
-- `GET_PAGE_ANALYSIS`
-  Popup to background. Rehydrates the latest known result for the active tab.
 - `GET_SETTINGS` and `SAVE_SETTINGS`
   Shared settings contract.
 - `FETCH_URL`
-  Background fetch proxy for linked legal pages.
+  Background fetch proxy for linked legal pages and PDFs.
 
-The older `SUMMARIZE` contract still exists, but the primary user flow now runs through `PROCESS_PAGE_ANALYSIS`.
+The older `GET_PAGE_ANALYSIS`, `SAVE_PAGE_ANALYSIS`, and `SUMMARIZE` contracts still exist for compatibility and tests, but the primary user flow now runs through shared storage plus `PROCESS_PAGE_ANALYSIS`.
 
 ## Engineering Boundaries
 
@@ -214,8 +216,8 @@ background / content / popup
 In practice, the most important engineering convention to defend is not the diagram itself but the ownership boundary:
 
 - `shared/` defines types, storage helpers, and messaging primitives.
-- `content/` owns page-local detection and extraction only.
-- `background/` owns durable state transitions.
+- `content/` owns page-local detection, extraction, and deterministic state writes.
+- `background/` owns provider-backed state transitions and long-lived orchestration.
 - `popup/` reads and controls state; it should not invent its own parallel truth.
 
 ## Privacy Model
@@ -230,11 +232,19 @@ The privacy story is deliberate but not cost-free.
 
 This is why the product is honest today as a privacy-first power-user tool rather than a frictionless mainstream consumer app.
 
+## Test-Only Runtime Note
+
+The repository includes a hidden `fixture` provider used only for deterministic end-to-end tests.
+
+- It is not exposed in the shipped settings UI.
+- It exists to make `ready`-state browser tests deterministic without depending on a remote provider.
+- It is not part of the product story or intended user onboarding path.
+
 ## Interview Framing
 
 If you are asked to explain the design in an interview, the strongest story is:
 
 - The project uses MV3 boundaries for a reason: content scripts cannot safely own provider calls or durable state.
-- The meaningful architecture change was introducing persisted per-tab analysis state so popup and page UI stop drifting apart.
+- The meaningful architecture change was introducing persisted shared page-analysis state keyed by page URL, with a tab index, so popup and page UI stop drifting apart.
 - The real product moat is not summarization alone; it is turning summaries into longitudinal domain history with meaningful change alerts.
 - The main tradeoff left unresolved is onboarding: privacy-first BYO-provider setup versus a future hosted default path.
