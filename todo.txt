@@ -297,11 +297,11 @@ blockedBy: [9, 10]
 6. Return the array of chunks.
 
 **DONE WHEN**
-- [ ] A 20,000-word document produces 5-6 chunks of approximately 4000 tokens each
-- [ ] No chunk exceeds `maxTokens`
-- [ ] Chunks split at paragraph boundaries, not mid-sentence
-- [ ] Adjacent chunks overlap by approximately `overlapTokens`
-- [ ] A short document (< 4000 tokens) returns a single chunk
+- [x] A 20,000-word document produces 5-6 chunks of approximately 4000 tokens each
+- [x] No chunk exceeds `maxTokens`
+- [x] Chunks split at paragraph boundaries, not mid-sentence
+- [x] Adjacent chunks overlap by approximately `overlapTokens`
+- [x] A short document (< 4000 tokens) returns a single chunk
 
 ### Task 13 (A) +extraction
 blockedBy: none
