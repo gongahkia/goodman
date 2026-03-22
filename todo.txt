@@ -1120,10 +1120,10 @@ blockedBy: [5, 6, 7, 8]
    - Test: overlapping detections deduplicated.
 
 **DONE WHEN**
-- [ ] All detection unit tests pass with `pnpm test`
-- [ ] Tests cover all three detection types (checkbox, modal, fullpage)
-- [ ] Scoring threshold tests verify all three sensitivity levels
-- [ ] Tests use mock DOM (jsdom), not real browser
+- [x] All detection unit tests pass with `pnpm test`
+- [x] Tests cover all three detection types (checkbox, modal, fullpage)
+- [x] Scoring threshold tests verify all three sensitivity levels
+- [x] Tests use mock DOM (jsdom), not real browser
 
 ### Task 46 (B) +testing
 blockedBy: [9, 10, 12, 13]
