@@ -13,21 +13,13 @@ export interface RelatedLink {
   label: string;
 }
 
+const FETCH_TIMEOUT_MS = 500;
+
 export async function extractLinkedText(
   url: string
 ): Promise<Result<LinkedTextResult, Error>> {
   try {
-    const response = await sendToBackground({
-      type: 'FETCH_URL',
-      payload: { url },
-    });
-
-    const result = response as { ok: boolean; data?: string; error?: string };
-    if (!result.ok || !result.data) {
-      return err(new Error(result.error ?? 'Failed to fetch URL'));
-    }
-
-    const html = result.data;
+    const html = await fetchHtml(url);
     const text = extractMainContent(html);
     const normalized = normalizeText(text);
     const relatedLinks = extractRelatedLinks(html, url);
@@ -36,6 +28,45 @@ export async function extractLinkedText(
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
   }
+}
+
+async function fetchHtml(url: string): Promise<string> {
+  const requestUrl = resolveUrl(url);
+
+  try {
+    const response = await fetchWithTimeout<{
+      ok: boolean;
+      data?: string;
+      error?: string;
+    }>({
+      type: 'FETCH_URL',
+      payload: { url: requestUrl, responseType: 'text' },
+    });
+
+    if (response.ok && response.data) {
+      return response.data;
+    }
+  } catch {
+    // Fall through to direct fetch for same-origin URLs.
+  }
+
+  const directResponse = await fetch(requestUrl);
+  if (!directResponse.ok) {
+    throw new Error(`Failed to fetch URL: HTTP ${directResponse.status}`);
+  }
+
+  return directResponse.text();
+}
+
+async function fetchWithTimeout<T>(
+  message: Parameters<typeof sendToBackground>[0]
+): Promise<T> {
+  return Promise.race([
+    sendToBackground(message) as Promise<T>,
+    new Promise<T>((_, reject) => {
+      setTimeout(() => reject(new Error('Background fetch timed out')), FETCH_TIMEOUT_MS);
+    }),
+  ]);
 }
 
 function extractMainContent(html: string): string {
@@ -85,4 +116,12 @@ function extractRelatedLinks(html: string, baseUrl: string): RelatedLink[] {
   }
 
   return links;
+}
+
+function resolveUrl(url: string): string {
+  try {
+    return new URL(url, window.location.href).href;
+  } catch {
+    return url;
+  }
 }

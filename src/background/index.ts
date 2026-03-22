@@ -25,7 +25,7 @@ onMessage(
   (msg: Message, sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
     switch (msg.type) {
       case 'FETCH_URL':
-        return handleFetchUrl(msg.payload.url);
+        return handleFetchUrl(msg.payload.url, msg.payload.responseType);
       case 'GET_SETTINGS':
         return handleGetSettings();
       case 'SAVE_SETTINGS':
@@ -44,9 +44,17 @@ onMessage(
   }
 );
 
-async function handleFetchUrl(url: string): Promise<MessageResponse> {
+async function handleFetchUrl(
+  url: string,
+  responseType: 'text' | 'base64' = 'text'
+): Promise<MessageResponse> {
   try {
     const response = await fetch(url);
+    if (responseType === 'base64') {
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return { ok: true, data: bytesToBase64(bytes) };
+    }
+
     const html = await response.text();
     return { ok: true, data: html };
   } catch {
@@ -151,4 +159,12 @@ function resolveTabId(
   }
 
   return null;
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
 }

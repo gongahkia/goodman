@@ -17,7 +17,7 @@ export interface ExtractTextMessage {
 
 export interface FetchURLMessage {
   type: 'FETCH_URL';
-  payload: { url: string };
+  payload: { url: string; responseType?: 'text' | 'base64' };
 }
 
 export interface SummarizeMessage {
