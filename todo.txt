@@ -31,9 +31,9 @@ blockedBy: none
 6. Configure ESLint + Prettier. Add a `.eslintrc.cjs` with `@typescript-eslint` rules. Add `.prettierrc` with `singleQuote: true, semi: true`.
 
 **DONE WHEN**
-- [ ] `pnpm dev` launches Vite and produces a loadable Chrome extension in `dist/`
-- [ ] `pnpm build` produces a production build with no TypeScript errors
-- [ ] All directories listed above exist and contain a placeholder `index.ts`
+- [x] `pnpm dev` launches Vite and produces a loadable Chrome extension in `dist/`
+- [x] `pnpm build` produces a production build with no TypeScript errors
+- [x] All directories listed above exist and contain a placeholder `index.ts`
 
 ### Task 1 (A) +scaffold
 blockedBy: [0]
