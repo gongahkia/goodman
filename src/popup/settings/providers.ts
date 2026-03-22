@@ -1,5 +1,6 @@
 import { getStorage, setStorage } from '@shared/storage';
 import type { Settings, ProviderConfig } from '@shared/messages';
+import { validateProvider } from '@providers/factory';
 
 const PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as const;
 const PROVIDER_LABELS: Record<string, string> = {
@@ -88,9 +89,22 @@ function renderProviderConfig(
     const testBtn = document.createElement('button');
     testBtn.style.cssText = 'border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:12px;background:#2563eb;color:white';
     testBtn.textContent = 'Test';
-    testBtn.addEventListener('click', () => {
+    testBtn.addEventListener('click', async () => {
       testBtn.textContent = 'Testing...';
-      setTimeout(() => { testBtn.textContent = 'Test'; }, 2000);
+      testBtn.disabled = true;
+      try {
+        const valid = await validateProvider(name);
+        testBtn.textContent = valid ? 'Valid' : 'Invalid';
+        testBtn.style.background = valid ? '#16a34a' : '#dc2626';
+      } catch {
+        testBtn.textContent = 'Error';
+        testBtn.style.background = '#dc2626';
+      }
+      setTimeout(() => {
+        testBtn.textContent = 'Test';
+        testBtn.style.background = '#2563eb';
+        testBtn.disabled = false;
+      }, 2000);
     });
 
     keyRow.appendChild(keyInput);
