@@ -1,0 +1,43 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Chrome
+        run: pnpm build
+
+      - name: Package Chrome
+        run: cd dist && zip -r ../tc-guard-chrome-${{ github.ref_name }}.zip .
+
+      - name: Build Firefox
+        run: pnpm build:firefox
+
+      - name: Package Firefox
+        run: cd dist && zip -r ../tc-guard-firefox-${{ github.ref_name }}.xpi .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            tc-guard-chrome-${{ github.ref_name }}.zip
+            tc-guard-firefox-${{ github.ref_name }}.xpi

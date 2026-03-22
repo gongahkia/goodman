@@ -1263,10 +1263,10 @@ blockedBy: [50]
 4. Add a `release` GitHub Actions workflow: on tag push (`v*`), build both packages, create a GitHub Release, attach the zip and xpi as assets.
 
 **DONE WHEN**
-- [ ] `pnpm package:chrome` produces a valid zip file
-- [ ] `pnpm package:firefox` produces a valid xpi file
-- [ ] GitHub Release is created on version tag push with both packages attached
-- [ ] Package filenames include the version number
+- [x] `pnpm package:chrome` produces a valid zip file
+- [x] `pnpm package:firefox` produces a valid xpi file
+- [x] GitHub Release is created on version tag push with both packages attached
+- [x] Package filenames include the version number
 
 ### Task 52 (C) +cicd
 blockedBy: [51]
