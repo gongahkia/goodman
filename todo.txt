@@ -446,9 +446,9 @@ blockedBy: [14]
 5. Implement retry logic matching other providers.
 
 **DONE WHEN**
-- [ ] Sending T&C text to Gemini returns a valid `Summary` JSON object
-- [ ] `validateApiKey()` returns true for valid Google AI API keys
-- [ ] JSON mode is enabled in the request
+- [x] Sending T&C text to Gemini returns a valid `Summary` JSON object
+- [x] `validateApiKey()` returns true for valid Google AI API keys
+- [x] JSON mode is enabled in the request
 
 ### Task 18 (B) +providers
 blockedBy: [14]
@@ -467,10 +467,10 @@ blockedBy: [14]
 5. In `validateApiKey()`, check connectivity by calling `listModels()` (Ollama has no API key).
 
 **DONE WHEN**
-- [ ] Connects to a local Ollama instance and returns a valid `Summary`
-- [ ] `listModels()` returns the list of installed models
-- [ ] `validateApiKey()` returns `true` when Ollama is running and `false` when it is not
-- [ ] Custom `baseUrl` is respected (for non-default ports)
+- [x] Connects to a local Ollama instance and returns a valid `Summary`
+- [x] `listModels()` returns the list of installed models
+- [x] `validateApiKey()` returns `true` when Ollama is running and `false` when it is not
+- [x] Custom `baseUrl` is respected (for non-default ports)
 
 ### Task 19 (C) +providers
 blockedBy: [14]
@@ -485,9 +485,9 @@ blockedBy: [14]
 5. In `validateApiKey()`, attempt a `GET {baseUrl}/v1/models` call; if it fails, try a minimal chat completion as fallback.
 
 **DONE WHEN**
-- [ ] Works with LM Studio running on `http://localhost:1234`
-- [ ] Works with a cloud-hosted OpenAI-compatible endpoint
-- [ ] Handles endpoints that do not support `/v1/models` (falls back gracefully)
+- [x] Works with LM Studio running on `http://localhost:1234`
+- [x] Works with a cloud-hosted OpenAI-compatible endpoint
+- [x] Handles endpoints that do not support `/v1/models` (falls back gracefully)
 
 ### Task 20 (A) +providers
 blockedBy: [15, 16, 17, 18, 19]
