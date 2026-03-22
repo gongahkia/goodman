@@ -179,10 +179,10 @@ blockedBy: [4]
 6. Return `DetectedElement[]` with `type: 'modal' | 'banner'`.
 
 **DONE WHEN**
-- [ ] Detects a OneTrust-style cookie banner (fixed bottom, "Accept All" button) with confidence >= 0.7
-- [ ] Detects a modal dialog with "Terms of Service" heading and "I Agree" button with confidence >= 0.8
-- [ ] Does NOT flag a standard navigation bar or footer as a consent banner
-- [ ] Distinguishes between `type: 'modal'` (overlay) and `type: 'banner'` (fixed bar)
+- [x] Detects a OneTrust-style cookie banner (fixed bottom, "Accept All" button) with confidence >= 0.7
+- [x] Detects a modal dialog with "Terms of Service" heading and "I Agree" button with confidence >= 0.8
+- [x] Does NOT flag a standard navigation bar or footer as a consent banner
+- [x] Distinguishes between `type: 'modal'` (overlay) and `type: 'banner'` (fixed bar)
 
 ### Task 7 (B) +detection
 blockedBy: [4]
