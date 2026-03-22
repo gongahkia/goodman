@@ -321,10 +321,10 @@ blockedBy: none
 7. Trim leading/trailing whitespace.
 
 **DONE WHEN**
-- [ ] Input with `<b>bold</b>` tags outputs plain text without tags
-- [ ] Three consecutive blank lines collapse to one blank line
-- [ ] "Last updated: January 1, 2026" line is extracted as metadata, removed from body
-- [ ] Output has no leading/trailing whitespace
+- [x] Input with `<b>bold</b>` tags outputs plain text without tags
+- [x] Three consecutive blank lines collapse to one blank line
+- [x] "Last updated: January 1, 2026" line is extracted as metadata, removed from body
+- [x] Output has no leading/trailing whitespace
 
 # ============================================================
 # LLM INTEGRATION
