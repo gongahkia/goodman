@@ -1,6 +1,7 @@
 import type { ScoredDetection } from '@content/detectors/scoring';
 import type { Summary } from '@providers/types';
 import { getTheme } from './theme';
+import { positionOverlay } from './positioning';
 import { getOverlayStyles } from './styles';
 
 let currentOverlay: HTMLElement | null = null;
@@ -9,7 +10,8 @@ let cachedSummary: Summary | null = null;
 
 export function createOverlay(
   detection: ScoredDetection,
-  summary: Summary
+  summary: Summary,
+  themePreference: 'auto' | 'light' | 'dark'
 ): HTMLElement {
   removeOverlay();
   cachedSummary = summary;
@@ -25,7 +27,7 @@ export function createOverlay(
   style.textContent = getOverlayStyles();
   shadow.appendChild(style);
 
-  const themeClass = `tc-theme-${getTheme('auto')}`;
+  const themeClass = `tc-theme-${getTheme(themePreference)}`;
   const container = document.createElement('div');
   container.className = `tc-guard-overlay ${themeClass}`;
   container.setAttribute('role', 'complementary');
@@ -39,6 +41,7 @@ export function createOverlay(
 
   shadow.appendChild(container);
   document.body.appendChild(host);
+  positionOverlay(host, detection.element);
   currentOverlay = host;
 
   return host;

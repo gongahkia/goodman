@@ -17,9 +17,9 @@ export function getOverlayStyles(): string {
       --tc-duration-normal: 200ms;
       --tc-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
 
-      position: fixed;
-      top: 20px;
-      right: 20px;
+      position: absolute;
+      top: 0;
+      left: 0;
       max-width: 380px;
       max-height: 500px;
       overflow-y: auto;

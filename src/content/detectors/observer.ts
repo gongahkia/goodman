@@ -53,10 +53,17 @@ function isRelevantMutation(mutation: MutationRecord): boolean {
   if (mutation.type !== 'childList') return false;
 
   for (const node of mutation.addedNodes) {
-    if (node.nodeType === Node.ELEMENT_NODE) {
+    if (
+      node.nodeType === Node.ELEMENT_NODE &&
+      !isOverlayNode(node as Element)
+    ) {
       return true;
     }
   }
 
   return false;
+}
+
+function isOverlayNode(node: Element): boolean {
+  return node.id === 'tc-guard-overlay-host';
 }
