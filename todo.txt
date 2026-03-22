@@ -1194,10 +1194,10 @@ blockedBy: [26, 27, 28, 29]
    - Test: severity change is captured.
 
 **DONE WHEN**
-- [ ] All version tracking tests pass
-- [ ] Tests mock `chrome.storage.local` (use a simple in-memory implementation)
-- [ ] Diff tests verify all change types (add, remove, modify)
-- [ ] Summary diff tests verify red flag comparison logic
+- [x] All version tracking tests pass
+- [x] Tests mock `chrome.storage.local` (use a simple in-memory implementation)
+- [x] Diff tests verify all change types (add, remove, modify)
+- [x] Summary diff tests verify red flag comparison logic
 
 ### Task 49 (C) +testing
 blockedBy: [45, 46, 47, 48]
