@@ -135,9 +135,9 @@ blockedBy: [2]
 6. Export `stopObserver()` to disconnect when the tab is closing.
 
 **DONE WHEN**
-- [ ] Observer detects a dynamically injected checkbox (via `document.body.appendChild`) within 600ms
-- [ ] Observer does not fire for irrelevant DOM changes (e.g., text content updates in unrelated elements)
-- [ ] Debounce batches rapid mutations into a single callback invocation
+- [x] Observer detects a dynamically injected checkbox (via `document.body.appendChild`) within 600ms
+- [x] Observer does not fire for irrelevant DOM changes (e.g., text content updates in unrelated elements)
+- [x] Debounce batches rapid mutations into a single callback invocation
 
 ### Task 5 (A) +detection
 blockedBy: [4]
