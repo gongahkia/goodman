@@ -1,16 +1,19 @@
 import type { Summary } from '@providers/types';
 import { sendToBackground } from '@shared/messaging';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
+import type { PendingNotification } from '@shared/storage';
 import { renderHistoryPanel } from '@popup/history';
 import { renderCacheSettings } from '@popup/settings/cache';
 import { renderDetectionSettings } from '@popup/settings/detection';
 import { renderNotificationSettings } from '@popup/settings/notifications';
 import { renderProviderSettings } from '@popup/settings/providers';
+import { getPendingNotifications } from '@versioning/notifications';
 
 interface PopupState {
   tabId: number | null;
   domain: string;
   analysis: PageAnalysisRecord | null;
+  pendingNotifications: PendingNotification[];
   loading: boolean;
   error: string | null;
 }
@@ -19,6 +22,7 @@ const state: PopupState = {
   tabId: null,
   domain: '',
   analysis: null,
+  pendingNotifications: [],
   loading: false,
   error: null,
 };
@@ -41,7 +45,7 @@ async function init(): Promise<void> {
     }
   }
 
-  await refreshPageAnalysis();
+  await refreshPopupState();
   render(app);
 }
 
@@ -49,6 +53,10 @@ function render(container: HTMLElement): void {
   container.textContent = '';
 
   container.appendChild(createHeader());
+  const notificationBanner = createNotificationBanner();
+  if (notificationBanner) {
+    container.appendChild(notificationBanner);
+  }
 
   if (state.loading) {
     container.appendChild(createLoadingState('Analyzing this page...'));
@@ -142,6 +150,48 @@ function createIdleState(): HTMLElement {
     'Analyze This Page',
     handleAnalyze
   );
+}
+
+function createNotificationBanner(): HTMLElement | null {
+  if (state.pendingNotifications.length === 0) {
+    return null;
+  }
+
+  const currentDomain = getCurrentDomain();
+  const currentDomainNotification = state.pendingNotifications.find(
+    (notification) => notification.domain === currentDomain
+  );
+
+  const banner = document.createElement('div');
+  banner.style.cssText =
+    'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;padding:12px;border-radius:var(--tc-radius-md);background:#eff6ff;border:1px solid #bfdbfe';
+
+  const copy = document.createElement('div');
+
+  const heading = document.createElement('p');
+  heading.style.cssText = 'font-weight:600;margin-bottom:4px;color:#1d4ed8';
+  heading.textContent = currentDomainNotification
+    ? `Terms changed on ${currentDomainNotification.domain}`
+    : 'Tracked T&C changes detected';
+
+  const body = document.createElement('p');
+  body.style.cssText = 'font-size:13px;line-height:1.5;color:#1e3a8a';
+  body.textContent = currentDomainNotification
+    ? formatCurrentDomainNotification(currentDomainNotification)
+    : formatGenericNotificationSummary(state.pendingNotifications);
+
+  copy.appendChild(heading);
+  copy.appendChild(body);
+
+  const cta = createButton('Open History', () => {
+    showHistory(resolveNotificationTargetDomain());
+  });
+  cta.style.padding = '6px 12px';
+  cta.style.flexShrink = '0';
+
+  banner.appendChild(copy);
+  banner.appendChild(cta);
+  return banner;
 }
 
 function createLoadingState(label: string): HTMLElement {
@@ -361,7 +411,9 @@ function createFooter(): HTMLElement {
     'display:flex;gap:8px;justify-content:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--tc-border)';
 
   footer.appendChild(createFooterButton('Settings', showSettings));
-  footer.appendChild(createFooterButton('History', showHistory));
+  footer.appendChild(createFooterButton('History', () => {
+    showHistory();
+  }));
   return footer;
 }
 
@@ -398,7 +450,7 @@ async function handleAnalyze(): Promise<void> {
       payload: { tabId: state.tabId },
     })) as { ok?: boolean; error?: string } | undefined;
 
-    await refreshPageAnalysis();
+    await refreshPopupState();
     if (response && response.ok === false && !state.analysis) {
       state.error = response.error ?? 'Could not analyze this page.';
     }
@@ -469,7 +521,7 @@ function showSettings(): void {
   void renderProviderSettings(contentDiv);
 }
 
-function showHistory(): void {
+function showHistory(initialDomain?: string): void {
   const app = document.getElementById('app');
   if (!app) return;
 
@@ -478,7 +530,7 @@ function showHistory(): void {
 
   const contentDiv = document.createElement('div');
   app.appendChild(contentDiv);
-  void renderHistoryPanel(contentDiv, state.analysis?.domain ?? state.domain);
+  void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain());
 }
 
 function createBackButton(): HTMLButtonElement {
@@ -487,11 +539,16 @@ function createBackButton(): HTMLButtonElement {
     'background:none;border:none;color:var(--tc-accent);cursor:pointer;font-size:14px;margin-bottom:12px';
   back.textContent = '← Back';
   back.addEventListener('click', () => {
-    void refreshPageAnalysis().then(() => {
+    void refreshPopupState().then(() => {
       renderCurrentApp();
     });
   });
   return back;
+}
+
+async function refreshPopupState(): Promise<void> {
+  await refreshPageAnalysis();
+  await refreshNotifications();
 }
 
 async function refreshPageAnalysis(): Promise<void> {
@@ -523,6 +580,10 @@ async function refreshPageAnalysis(): Promise<void> {
   }
 }
 
+async function refreshNotifications(): Promise<void> {
+  state.pendingNotifications = await getPendingNotifications();
+}
+
 function renderCurrentApp(): void {
   const app = document.getElementById('app');
   if (app) {
@@ -538,6 +599,44 @@ function formatConfidence(value: number | null): string {
 function formatToken(value: string | null): string {
   if (!value) return 'n/a';
   return value.replace(/_/g, ' ');
+}
+
+function getCurrentDomain(): string {
+  return state.analysis?.domain ?? state.domain;
+}
+
+function resolveNotificationTargetDomain(): string {
+  const currentDomain = getCurrentDomain();
+  const currentDomainNotification = state.pendingNotifications.find(
+    (notification) => notification.domain === currentDomain
+  );
+
+  return (
+    currentDomainNotification?.domain ??
+    state.pendingNotifications[0]?.domain ??
+    currentDomain
+  );
+}
+
+function formatCurrentDomainNotification(
+  notification: PendingNotification
+): string {
+  if (notification.addedRedFlags > 0) {
+    const noun = notification.addedRedFlags === 1 ? 'red flag' : 'red flags';
+    const verb = notification.addedRedFlags === 1 ? 'was' : 'were';
+    return `${notification.addedRedFlags} new ${noun} ${verb} added since the last saved version.`;
+  }
+
+  return 'A tracked T&C change was detected for this domain.';
+}
+
+function formatGenericNotificationSummary(
+  notifications: PendingNotification[]
+): string {
+  const count = notifications.length;
+  return count === 1
+    ? '1 tracked domain has a new terms change ready for review.'
+    : `${count} tracked domains have new terms changes ready for review.`;
 }
 
 function bootstrap(): void {
