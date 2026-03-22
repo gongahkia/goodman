@@ -11,6 +11,7 @@ import { normalizeText } from '@content/extractors/normalizer';
 import { computeTextHash } from '@summarizer/cache';
 import { createOverlay, removeOverlay } from '@content/ui/overlay';
 import { getStorage } from '@shared/storage';
+import type { PageAnalysisRecord } from '@shared/page-analysis';
 import type { Summary } from '@providers/types';
 
 let analysisInFlight = false;
@@ -83,6 +84,15 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   if (scored.length === 0) {
     removeOverlay();
     lastRenderedTextHash = null;
+    await savePageAnalysisState({
+      status: 'no_detection',
+      sourceType: null,
+      detectionType: null,
+      confidence: null,
+      textHash: null,
+      summary: null,
+      error: null,
+    });
     return { ok: true, data: [] };
   }
 
@@ -93,6 +103,15 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   if (normalized.text.length < 50) {
     removeOverlay();
     lastRenderedTextHash = null;
+    await savePageAnalysisState({
+      status: 'no_detection',
+      sourceType: resolvedText.sourceType,
+      detectionType: best.type,
+      confidence: best.weightedConfidence,
+      textHash: null,
+      summary: null,
+      error: null,
+    });
     return { ok: true, data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })) };
   }
 
@@ -105,8 +124,16 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   }
 
   const summaryResponse = await sendToBackground({
-    type: 'SUMMARIZE',
-    payload: { text: normalized.text, provider: providerName },
+    type: 'PROCESS_PAGE_ANALYSIS',
+    payload: {
+      text: normalized.text,
+      provider: providerName,
+      url: window.location.href,
+      domain: window.location.hostname,
+      sourceType: resolvedText.sourceType,
+      detectionType: best.type,
+      confidence: best.weightedConfidence,
+    },
   });
 
   const result = summaryResponse as { ok: boolean; data?: Summary; error?: string };
@@ -123,4 +150,19 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
     ok: true,
     data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
   };
+}
+
+async function savePageAnalysisState(
+  record: Omit<PageAnalysisRecord, 'tabId' | 'url' | 'domain' | 'updatedAt'>
+): Promise<void> {
+  await sendToBackground({
+    type: 'SAVE_PAGE_ANALYSIS',
+    payload: {
+      tabId: -1,
+      ...record,
+      url: window.location.href,
+      domain: window.location.hostname,
+      updatedAt: Date.now(),
+    },
+  });
 }

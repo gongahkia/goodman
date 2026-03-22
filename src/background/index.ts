@@ -2,6 +2,7 @@ import { onMessage } from '@shared/messaging';
 import type {
   Message,
   MessageResponse,
+  ProcessPageAnalysisMessage,
   Settings,
 } from '@shared/messages';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
@@ -13,12 +14,13 @@ import {
   setStorage,
 } from '@shared/storage';
 import type { Runtime } from 'webextension-polyfill';
+import { processPageAnalysis } from './process-analysis';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 
 registerTabCleanup();
 
 onMessage(
-  (msg: Message, _sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
+  (msg: Message, sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
     switch (msg.type) {
       case 'FETCH_URL':
         return handleFetchUrl(msg.payload.url);
@@ -29,7 +31,9 @@ onMessage(
       case 'GET_PAGE_ANALYSIS':
         return handleGetPageAnalysis(msg.payload.tabId);
       case 'SAVE_PAGE_ANALYSIS':
-        return handleSavePageAnalysis(msg.payload);
+        return handleSavePageAnalysis(msg.payload, sender);
+      case 'PROCESS_PAGE_ANALYSIS':
+        return handleProcessPageAnalysis(msg.payload, sender);
       case 'SUMMARIZE':
         return handleSummarize(msg.payload);
       default:
@@ -74,14 +78,44 @@ async function handleGetPageAnalysis(tabId: number): Promise<MessageResponse> {
 }
 
 async function handleSavePageAnalysis(
-  record: PageAnalysisRecord
+  record: PageAnalysisRecord,
+  sender: Runtime.MessageSender
 ): Promise<MessageResponse> {
-  const result = await setPageAnalysisRecord(record);
+  const tabId = resolveTabId(record.tabId, sender);
+  if (tabId === null) {
+    return { ok: false, error: 'Could not resolve tab id' };
+  }
+
+  const result = await setPageAnalysisRecord({
+    ...record,
+    tabId,
+  });
   if (!result.ok) {
     return { ok: false, error: 'Could not save page analysis' };
   }
 
   return { ok: true, data: null };
+}
+
+async function handleProcessPageAnalysis(
+  payload: ProcessPageAnalysisMessage['payload'],
+  sender: Runtime.MessageSender
+): Promise<MessageResponse> {
+  const tabId = sender.tab?.id;
+  if (typeof tabId !== 'number') {
+    return { ok: false, error: 'Could not resolve tab id' };
+  }
+
+  const result = await processPageAnalysis({
+    tabId,
+    ...payload,
+  });
+
+  if (!result.ok) {
+    return { ok: false, error: result.error ?? 'Failed to process page analysis' };
+  }
+
+  return { ok: true, data: result.data };
 }
 
 async function handleSummarize(
@@ -100,4 +134,19 @@ function registerTabCleanup(): void {
   chrome.tabs.onRemoved.addListener(async (tabId: number) => {
     await removePageAnalysis(tabId);
   });
+}
+
+function resolveTabId(
+  fallbackTabId: number,
+  sender: Runtime.MessageSender
+): number | null {
+  if (typeof sender.tab?.id === 'number') {
+    return sender.tab.id;
+  }
+
+  if (fallbackTabId >= 0) {
+    return fallbackTabId;
+  }
+
+  return null;
 }

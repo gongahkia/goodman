@@ -3,8 +3,8 @@ import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
 import { InvalidResponseError } from '@shared/errors';
 import type { Summary, RedFlag } from '@providers/types';
-import { singleShotSummarize } from './singleshot';
-import { getActiveProvider } from '@providers/factory';
+import { singleShotSummarize, singleShotSummarizeWithProvider } from './singleshot';
+import { getActiveProvider, getProviderByName } from '@providers/factory';
 import { SYSTEM_PROMPT } from '@providers/prompts';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import { computeSeverity } from './severity';
@@ -14,11 +14,27 @@ const MAX_CONCURRENT = 3;
 export async function chunkedSummarize(
   chunks: string[]
 ): Promise<Result<Summary, TCGuardError>> {
+  return chunkedSummarizeInternal(chunks);
+}
+
+export async function chunkedSummarizeWithProvider(
+  chunks: string[],
+  providerName: string
+): Promise<Result<Summary, TCGuardError>> {
+  return chunkedSummarizeInternal(chunks, providerName);
+}
+
+async function chunkedSummarizeInternal(
+  chunks: string[],
+  providerName?: string
+): Promise<Result<Summary, TCGuardError>> {
   if (chunks.length === 1) {
-    return singleShotSummarize(chunks[0] ?? '');
+    return providerName
+      ? singleShotSummarizeWithProvider(chunks[0] ?? '', providerName)
+      : singleShotSummarize(chunks[0] ?? '');
   }
 
-  const partials = await mapPhase(chunks);
+  const partials = await mapPhase(chunks, providerName);
   const errors = partials.filter((r) => !r.ok);
   if (errors.length === partials.length) {
     return err(
@@ -30,18 +46,23 @@ export async function chunkedSummarize(
     .filter((r): r is { ok: true; data: Summary } => r.ok)
     .map((r) => r.data);
 
-  return reducePhase(summaries);
+  return reducePhase(summaries, providerName);
 }
 
 async function mapPhase(
-  chunks: string[]
+  chunks: string[],
+  providerName?: string
 ): Promise<Array<Result<Summary, TCGuardError>>> {
   const results: Array<Result<Summary, TCGuardError>> = [];
 
   for (let i = 0; i < chunks.length; i += MAX_CONCURRENT) {
     const batch = chunks.slice(i, i + MAX_CONCURRENT);
     const batchResults = await Promise.all(
-      batch.map((chunk) => singleShotSummarize(chunk))
+      batch.map((chunk) =>
+        providerName
+          ? singleShotSummarizeWithProvider(chunk, providerName)
+          : singleShotSummarize(chunk)
+      )
     );
     results.push(...batchResults);
   }
@@ -50,7 +71,8 @@ async function mapPhase(
 }
 
 async function reducePhase(
-  summaries: Summary[]
+  summaries: Summary[],
+  providerName?: string
 ): Promise<Result<Summary, TCGuardError>> {
   const allRedFlags = deduplicateRedFlags(summaries.flatMap((s) => s.redFlags));
   const allKeyPoints = deduplicateStrings(summaries.flatMap((s) => s.keyPoints));
@@ -58,7 +80,9 @@ async function reducePhase(
 
   const mergePrompt = `Merge these partial T&C summaries into a single cohesive 2-3 sentence summary:\n\n${combinedSummary}`;
 
-  const providerResult = await getActiveProvider();
+  const providerResult = providerName
+    ? await getProviderByName(providerName)
+    : await getActiveProvider();
   if (!providerResult.ok) {
     return ok({
       summary: combinedSummary,
