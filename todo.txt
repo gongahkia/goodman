@@ -80,9 +80,9 @@ blockedBy: [1]
 4. In `src/content/index.ts`, register a listener for messages from background.
 
 **DONE WHEN**
-- [ ] Content script can send a `FETCH_URL` message to background and receive the fetched HTML back
-- [ ] Popup can send `GET_SETTINGS` to background and receive the settings object
-- [ ] TypeScript compiler rejects messages with wrong payload types
+- [x] Content script can send a `FETCH_URL` message to background and receive the fetched HTML back
+- [x] Popup can send `GET_SETTINGS` to background and receive the settings object
+- [x] TypeScript compiler rejects messages with wrong payload types
 
 ### Task 3 (A) +scaffold
 blockedBy: [2]
