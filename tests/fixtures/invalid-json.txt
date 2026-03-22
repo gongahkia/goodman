@@ -1,0 +1,2 @@
+This is not valid JSON. The AI returned free text instead of a JSON object.
+Here are some terms and conditions that were found on the page.

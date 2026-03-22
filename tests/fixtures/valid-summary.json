@@ -1,0 +1,17 @@
+{
+  "summary": "This service collects your data and shares it with third parties.",
+  "keyPoints": [
+    "Data is shared with advertisers",
+    "No deletion rights",
+    "Auto-renewing subscription"
+  ],
+  "redFlags": [
+    {
+      "category": "data_selling",
+      "description": "Your data is sold to third parties.",
+      "severity": "high",
+      "quote": "We may sell your personal information to selected partners."
+    }
+  ],
+  "severity": "high"
+}
