@@ -1,0 +1,57 @@
+{
+  "manifest_version": 3,
+  "name": "TC Guard",
+  "description": "Automatically detect, summarize, and track Terms & Conditions changes",
+  "version": "1.0.0",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "service-worker-loader.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "js": [
+        "assets/index.ts-BdaaINNY.js"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html",
+    "default_icon": {
+      "16": "icons/tc-guard-16.png",
+      "48": "icons/tc-guard-48.png",
+      "128": "icons/tc-guard-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/tc-guard-16.png",
+    "48": "icons/tc-guard-48.png",
+    "128": "icons/tc-guard-128.png"
+  },
+  "default_locale": "en",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "web_accessible_resources": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "resources": [
+        "assets/index.ts-BdaaINNY.js"
+      ],
+      "use_dynamic_url": false
+    }
+  ]
+}

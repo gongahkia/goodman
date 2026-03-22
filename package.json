@@ -1,0 +1,38 @@
+{
+  "name": "tc-guard",
+  "version": "1.0.0",
+  "description": "Automatically detect, summarize, and track Terms & Conditions changes",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:firefox": "BUILD_TARGET=firefox vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "eslint src/ --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "package:chrome": "pnpm build && cd dist && zip -r ../tc-guard-chrome-v$npm_package_version.zip .",
+    "package:firefox": "pnpm build:firefox && cd dist && zip -r ../tc-guard-firefox-v$npm_package_version.xpi ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.32.1",
+  "devDependencies": {
+    "@crxjs/vite-plugin": "2.0.0-beta.33",
+    "@types/chrome": "^0.1.38",
+    "@types/webextension-polyfill": "^0.12.5",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^10.1.0",
+    "jsdom": "^29.0.1",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.0"
+  },
+  "dependencies": {
+    "webextension-polyfill": "^0.12.0"
+  }
+}
