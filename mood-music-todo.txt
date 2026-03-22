@@ -1,0 +1,1085 @@
+## mood-music — Emotion-Driven Music Player (YouTube Music + mpv)
+
+Architecture:
+- Go: TUI (Bubble Tea) + mpv IPC client (JSON over Unix socket)
+- Python: emotion detection (DeepFace/OpenCV) + music search (ytmusicapi)
+- IPC between Go and Python: JSON over stdin/stdout
+- Playback: mpv with yt-dlp backend, controlled via JSON IPC over Unix socket
+- Config: TOML at `~/.config/mood-music/config.toml`
+
+---
+
+## Core Setup
+
+---
+
+### Task 1 (A) +cli
+
+**PURPOSE**
+Bootstrap the Go project with CLI framework and global flags.
+
+**WHAT TO DO**
+1. Initialize Go module `mood-music` with Bubble Tea TUI framework and Cobra CLI.
+2. Define root command with `--config`, `--log-level`, `--sampling-interval` global flags.
+
+**DONE WHEN**
+- [ ] `mood-music --help` prints usage with all global flags
+- [ ] Config file path is overridable via `--config`
+
+---
+
+### Task 2 (A) +pipeline
+
+**PURPOSE**
+Bootstrap the Python emotion detection package with all required dependencies.
+
+**WHAT TO DO**
+1. Set up Python package `mood-engine` with pyproject.toml containing deps: opencv-python-headless, deepface, numpy, Pillow, ytmusicapi.
+
+**DONE WHEN**
+- [ ] `pip install -e .` installs all dependencies
+- [ ] Python package is importable
+
+---
+
+### Task 3 (A) +ipc
+
+**PURPOSE**
+Define the communication contract between Go and Python processes.
+
+**WHAT TO DO**
+1. Define IPC protocol between Go and Python: Go spawns Python `mood-engine` as long-running child process, bidirectional JSON-over-stdin/stdout with message types: `capture_request`, `emotion_result`, `health_check`, `shutdown`, `search_request`, `search_result`.
+
+**DONE WHEN**
+- [ ] Protocol schema is documented and both sides agree on message format
+- [ ] New `search_request` and `search_result` message types are defined for YouTube Music queries
+
+---
+
+### Task 4 (A) +ipc
+
+**PURPOSE**
+Manage the Python subprocess lifecycle from Go.
+
+**WHAT TO DO**
+1. Implement Go-side IPC manager: spawn Python subprocess on app start, send capture requests at configured interval, read emotion JSON responses, restart subprocess on crash with exponential backoff (max 3 retries).
+
+**DONE WHEN**
+- [ ] Python subprocess starts on app launch
+- [ ] Crash recovery works with exponential backoff
+- [ ] Max retries respected
+
+---
+
+### Task 5 (A) +ipc
+
+**PURPOSE**
+Handle incoming IPC messages on the Python side.
+
+**WHAT TO DO**
+1. Implement Python-side IPC event loop: read JSON from stdin, dispatch to webcam capture + emotion detection pipeline, write JSON results to stdout, handle SIGTERM gracefully.
+2. Handle `search_request` messages by querying ytmusicapi and returning `search_result` with Track objects.
+
+**DONE WHEN**
+- [ ] Python reads and dispatches all message types
+- [ ] Graceful shutdown on SIGTERM
+- [ ] search_request returns YouTube Music results
+
+---
+
+### Task 6 (A) +cli
+
+**PURPOSE**
+Define the TOML configuration schema for all app components.
+
+**WHAT TO DO**
+1. Create config file schema at `~/.config/mood-music/config.toml` with sections: `[capture]` (interval_seconds, camera_index, resolution), `[emotion]` (model_backend, confidence_threshold, smoothing_window), `[ytmusic]` (auth_file_path), `[mpv]` (socket_path, ytdl_format, volume_default), `[mapping]` (mood presets), `[mood_queries]` (per-mood search query lists), `[tui]` (theme, layout).
+
+**DONE WHEN**
+- [ ] Config file parses without error
+- [ ] All sections have sensible defaults
+- [ ] YouTube Music and mpv sections are present and functional
+
+---
+
+### Task 7 (A) +cli
+
+**PURPOSE**
+Provide interactive configuration for first-time setup.
+
+**WHAT TO DO**
+1. Implement `mood-music configure` subcommand: interactive Bubble Tea form to set camera index, sampling interval, mpv preferences, and mood-to-query mapping preferences, write to config.toml.
+
+**DONE WHEN**
+- [ ] Interactive form covers all configurable fields
+- [ ] Config file is written correctly
+
+---
+
+## Webcam Capture
+
+---
+
+### Task 8 (A) +capture
+
+**PURPOSE**
+Capture webcam frames for emotion detection.
+
+**WHAT TO DO**
+1. Implement webcam capture module in Python using OpenCV: open camera by index from config, capture single frame as numpy array, release camera between captures to minimize resource hold, return base64-encoded JPEG.
+
+**DONE WHEN**
+- [ ] Single frame capture works by camera index
+- [ ] Camera is released between captures
+- [ ] Returns base64-encoded JPEG
+
+---
+
+### Task 9 (A) +capture
+
+**PURPOSE**
+Handle macOS camera permissions and backend.
+
+**WHAT TO DO**
+1. Implement macOS camera access using AVFoundation via OpenCV backend (`cv2.CAP_AVFOUNDATION`), handle permission prompt gracefully by detecting authorization status and surfacing user-friendly error if denied.
+
+**DONE WHEN**
+- [ ] macOS camera opens via AVFoundation
+- [ ] Permission denial shows user-friendly error
+
+---
+
+### Task 10 (A) +capture
+
+**PURPOSE**
+Handle Linux camera access and device detection.
+
+**WHAT TO DO**
+1. Implement Linux camera access using V4L2 via OpenCV backend (`cv2.CAP_V4L2`), auto-detect `/dev/video*` devices if camera_index not configured.
+
+**DONE WHEN**
+- [ ] Linux camera opens via V4L2
+- [ ] Auto-detection finds available cameras
+
+---
+
+### Task 11 (A) +capture
+
+**PURPOSE**
+Verify camera is functional before starting the pipeline.
+
+**WHAT TO DO**
+1. Add camera health check: on startup, attempt to open and read one frame, return camera resolution and FPS capability in health_check response, fail fast with descriptive error if no camera found.
+
+**DONE WHEN**
+- [ ] Health check runs on startup
+- [ ] Returns resolution and FPS info
+- [ ] Clear error if no camera found
+
+---
+
+## Emotion Detection
+
+---
+
+### Task 12 (A) +emotion
+
+**PURPOSE**
+Isolate face region from webcam frames for emotion analysis.
+
+**WHAT TO DO**
+1. Implement face detection preprocessing in Python using OpenCV Haar cascades or DeepFace built-in detector: crop frame to face region, reject frames with no face detected (return `no_face` status).
+
+**DONE WHEN**
+- [ ] Face region is cropped from frame
+- [ ] No-face frames return `no_face` status
+
+---
+
+### Task 13 (A) +emotion
+
+**PURPOSE**
+Run local emotion detection on face images.
+
+**WHAT TO DO**
+1. Implement local emotion detection using DeepFace with MobileNet backend: accept cropped face image, run `DeepFace.analyze(actions=['emotion'])`, return emotion dict with probabilities for angry, disgust, fear, happy, sad, surprise, neutral.
+
+**DONE WHEN**
+- [ ] Emotion probabilities returned for all 7 emotions
+- [ ] Works with MobileNet backend
+
+---
+
+### Task 14 (A) +emotion
+
+**PURPOSE**
+Allow swappable emotion detection backends.
+
+**WHAT TO DO**
+1. Implement emotion model abstraction: factory accepting backend string ("deepface_mobilenet" | "deepface_opencv" | "cloud_aws" | "cloud_google"), returning unified interface `detect(frame_bytes) -> EmotionResult` with emotion_label, confidence, all_scores dict.
+
+**DONE WHEN**
+- [ ] Factory creates correct backend by string
+- [ ] All backends return unified EmotionResult
+
+---
+
+### Task 15 (A) +emotion
+
+**PURPOSE**
+Smooth out frame-to-frame emotion noise.
+
+**WHAT TO DO**
+1. Implement sliding window emotion smoother in Python: maintain circular buffer of last N emotion results (default N=5, configurable via `smoothing_window`), compute weighted moving average of emotion scores (recent frames weighted higher), return dominant smoothed emotion.
+
+**DONE WHEN**
+- [ ] Circular buffer of N results maintained
+- [ ] Weighted moving average computed
+- [ ] Dominant smoothed emotion returned
+
+---
+
+## Mood Classification
+
+---
+
+### Task 16 (A) +mapping
+
+**PURPOSE**
+Define how raw emotions map to actionable mood states.
+
+**WHAT TO DO**
+1. Define mood taxonomy mapping emotions to mood states: FOCUS (neutral high + happy moderate), STRESSED (angry + fear + disgust above threshold), RELAXED (happy high + neutral), TIRED (sad high + neutral), ENERGIZED (surprise + happy high) -- configurable thresholds in config.toml.
+
+**DONE WHEN**
+- [ ] All 5 moods have defined emotion thresholds
+- [ ] Thresholds are configurable in config.toml
+
+---
+
+### Task 17 (A) +mapping
+
+**PURPOSE**
+Classify smoothed emotions into mood states.
+
+**WHAT TO DO**
+1. Implement mood classifier in Python: accept smoothed emotion scores, apply taxonomy thresholds from config, return current MoodState enum with confidence score.
+
+**DONE WHEN**
+- [ ] Classifier returns MoodState with confidence
+- [ ] Config thresholds are applied
+
+---
+
+### Task 18 (A) +mapping
+
+**PURPOSE**
+Prevent rapid mood oscillation from triggering constant music changes.
+
+**WHAT TO DO**
+1. Implement mood transition debouncing: require new mood to persist for minimum 3 consecutive windows before triggering playlist change, prevent rapid oscillation between moods.
+
+**DONE WHEN**
+- [ ] Mood must persist 3 windows before transition fires
+- [ ] Rapid oscillation is suppressed
+
+---
+
+## YouTube Music Integration
+
+---
+
+### Task 19 (A) +ytmusic
+
+**PURPOSE**
+Provides authentication for YouTube Music API access. ytmusicapi uses browser cookies (no OAuth needed).
+
+**WHAT TO DO**
+1. Add `ytmusicapi` to Python dependencies in `requirements.txt`.
+2. In `music_client.py`, implement `YTMusicClient` class wrapping `ytmusicapi.YTMusic`.
+3. Implement `setup()` that runs `ytmusicapi.setup(filepath='headers_auth.json')` to guide user through cookie extraction from browser.
+4. Implement `is_authenticated() -> bool` that checks if `headers_auth.json` exists and is valid.
+5. Store auth file at `~/.config/mood-music/headers_auth.json`.
+
+**DONE WHEN**
+- [ ] ytmusicapi can search YouTube Music after setup
+- [ ] Auth persists across restarts
+- [ ] Clear error message if auth is expired/invalid
+
+---
+
+### Task 20 (A) +ytmusic
+
+**PURPOSE**
+Enables finding mood-appropriate tracks on YouTube Music.
+
+**WHAT TO DO**
+1. In `YTMusicClient`, implement `search_tracks(query: str, limit: int = 20) -> List[Track]` using `ytmusic.search(query, filter='songs', limit=limit)`.
+2. Define `Track` dataclass: `video_id: str, title: str, artist: str, album: str, duration_seconds: int, thumbnail_url: str`.
+3. Implement `get_watch_playlist(video_id: str) -> List[Track]` using `ytmusic.get_watch_playlist(videoId)` -- this returns YouTube Music's "radio" recommendations based on a seed track.
+
+**DONE WHEN**
+- [ ] Search returns Track objects with all fields populated
+- [ ] get_watch_playlist returns related tracks for a given video_id
+
+---
+
+### Task 21 (A) +ytmusic
+
+**PURPOSE**
+Maps detected moods to YouTube Music search queries for track discovery.
+
+**WHAT TO DO**
+1. In config.toml, define default mood-to-query mappings:
+   ```toml
+   [mood_queries]
+   FOCUS = ["lo-fi beats study", "ambient focus music", "deep concentration"]
+   STRESSED = ["calm relaxing music", "peaceful piano", "nature sounds relaxation"]
+   RELAXED = ["chill vibes playlist", "acoustic relaxing", "soft indie"]
+   TIRED = ["upbeat morning energy", "wake up playlist", "energetic pop"]
+   ENERGIZED = ["workout motivation", "high energy electronic", "running playlist"]
+   ```
+2. In `MoodMusicBridge`, implement `get_search_queries(mood: Mood) -> List[str]` that reads from config.
+3. On mood change, randomly select one query from the mood's list to avoid repetition.
+4. Allow users to override queries per mood in config.
+
+**DONE WHEN**
+- [ ] Each mood maps to configurable search queries
+- [ ] Random selection avoids playing the same search results repeatedly
+- [ ] User overrides in config.toml are respected
+
+---
+
+## mpv Playback Engine
+
+---
+
+### Task 22 (A) +mpv
+
+**PURPOSE**
+Provides the audio playback engine. mpv with yt-dlp backend can play YouTube URLs directly.
+
+**WHAT TO DO**
+1. In Go, create `mpv/client.go` with `MpvClient` struct.
+2. Implement `Start() error` that spawns `mpv --idle --no-video --input-ipc-server=/tmp/mood-music-mpv.sock --really-quiet --ytdl-format=bestaudio` as a child process.
+3. Implement `Stop()` that sends quit command via IPC then kills process.
+4. Implement `IsRunning() bool` that checks if the mpv process is alive.
+5. On app startup, check if mpv and yt-dlp are installed (`which mpv`, `which yt-dlp`). Show clear error if missing.
+6. Handle mpv crashes by restarting automatically.
+
+**DONE WHEN**
+- [ ] mpv starts in idle mode with IPC socket on app launch
+- [ ] mpv is killed cleanly on app shutdown
+- [ ] Missing mpv/yt-dlp binaries produce clear error messages
+
+---
+
+### Task 23 (A) +mpv
+
+**PURPOSE**
+Enables programmatic control of mpv playback from the Go TUI.
+
+**WHAT TO DO**
+1. In `mpv/ipc.go`, implement IPC communication over Unix socket at `/tmp/mood-music-mpv.sock`.
+2. Use JSON IPC protocol: send `{"command": [...]}` lines, read `{"data": ..., "error": "success"}` responses.
+3. Implement these methods:
+   - `Play(url string) error` -- `{"command": ["loadfile", url, "replace"]}`
+   - `Pause() error` -- `{"command": ["set_property", "pause", true]}`
+   - `Resume() error` -- `{"command": ["set_property", "pause", false]}`
+   - `TogglePause() error` -- `{"command": ["cycle", "pause"]}`
+   - `Skip() error` -- `{"command": ["playlist-next"]}`
+   - `SetVolume(pct int) error` -- `{"command": ["set_property", "volume", pct]}`
+   - `GetVolume() (int, error)` -- `{"command": ["get_property", "volume"]}`
+   - `Seek(seconds float64) error` -- `{"command": ["seek", seconds, "relative"]}`
+   - `GetPosition() (float64, error)` -- `{"command": ["get_property", "time-pos"]}`
+   - `GetDuration() (float64, error)` -- `{"command": ["get_property", "duration"]}`
+   - `GetTitle() (string, error)` -- `{"command": ["get_property", "media-title"]}`
+4. All IPC calls should have a 2-second timeout.
+
+**DONE WHEN**
+- [ ] All playback commands work via IPC
+- [ ] Timeout errors are handled gracefully
+- [ ] Volume, position, and title queries return correct values
+
+---
+
+### Task 24 (A) +mpv
+
+**PURPOSE**
+Converts YouTube video IDs to streamable audio URLs for mpv.
+
+**WHAT TO DO**
+1. mpv with `--ytdl` natively handles `https://music.youtube.com/watch?v=VIDEO_ID` URLs. So the simplest approach is to pass YouTube URLs directly to mpv's `loadfile` command.
+2. In `YTMusicClient` (Python), implement `get_playback_url(video_id: str) -> str` that returns `https://music.youtube.com/watch?v={video_id}`.
+3. When Go requests tracks from Python, Python returns Track objects including the playback URL.
+4. Go passes this URL directly to `MpvClient.Play(url)`.
+
+**DONE WHEN**
+- [ ] mpv plays audio from YouTube Music URLs via yt-dlp
+- [ ] No separate yt-dlp invocation needed (mpv handles it internally)
+
+---
+
+### Task 25 (A) +mpv
+
+**PURPOSE**
+Keeps the TUI's "Now Playing" widget updated with current track info.
+
+**WHAT TO DO**
+1. In Go, create `mpv/observer.go` that polls mpv IPC every 1 second for: `media-title`, `time-pos`, `duration`, `pause`, `idle-active`.
+2. Emit state updates via a Go channel: `NowPlaying { Title string, TimePos float64, Duration float64, Paused bool, Idle bool }`.
+3. The TUI main model subscribes to this channel and updates the Now Playing widget.
+4. When `idle-active` becomes true, trigger the next track from the queue.
+
+**DONE WHEN**
+- [ ] TUI shows current track title, progress bar, and play/pause state
+- [ ] State updates within 1 second of changes
+- [ ] Track advancement triggers when current track ends
+
+---
+
+### Task 26 (A) +mpv
+
+**PURPOSE**
+Pre-fetches next tracks so playback is seamless when the current track ends.
+
+**WHAT TO DO**
+1. In Go, create `queue/manager.go` with `QueueManager` struct holding a `[]Track` slice.
+2. When a mood is detected/changed, Python searches YouTube Music and returns 10 tracks.
+3. Go stores these in the queue. When mpv goes idle (track ends), immediately play the next track from queue.
+4. When queue drops below 3 tracks, request more from Python for the current mood.
+5. On mood change, clear the queue and fetch new tracks for the new mood.
+6. Implement `Next()`, `Previous()` (go back in played history), `Current() Track`, `Upcoming() []Track`.
+
+**DONE WHEN**
+- [ ] Seamless playback between tracks (no silence gaps > 2 seconds)
+- [ ] Mood changes clear queue and load new tracks
+- [ ] Queue auto-refills when running low
+
+---
+
+## Mood-to-Music Bridge
+
+---
+
+### Task 27 (A) +bridge
+
+**PURPOSE**
+Wires emotion detection to music selection -- the core feature.
+
+**WHAT TO DO**
+1. In Go, create `bridge/mood_music.go` with `MoodMusicBridge` struct.
+2. Subscribe to mood change events from the emotion pipeline.
+3. On mood change: send search request to Python subprocess with the mood's configured query.
+4. Python returns 10 Track objects via JSON stdout.
+5. Clear current queue, load new tracks, start playing the first one.
+6. Implement debouncing: ignore mood changes within 30 seconds of the last switch (configurable).
+7. Implement `--dry-run` support: log what would play without actually playing.
+
+**DONE WHEN**
+- [ ] Mood change triggers new music search and playback within 5 seconds
+- [ ] Debouncing prevents rapid switching
+- [ ] dry-run mode logs without playing
+
+---
+
+## TUI
+
+---
+
+### Task 28 (A) +tui
+
+**PURPOSE**
+Define the top-level TUI state machine.
+
+**WHAT TO DO**
+1. Implement Bubble Tea main model with app states: STARTUP (camera + mpv + ytmusic check), DASHBOARD (main view), SETTINGS, SETUP_FLOW.
+
+**DONE WHEN**
+- [ ] All app states are reachable
+- [ ] State transitions work correctly
+
+---
+
+### Task 29 (A) +tui
+
+**PURPOSE**
+Lay out the main dashboard with all widget zones.
+
+**WHAT TO DO**
+1. Build TUI dashboard layout with 5 zones: top bar (app title + current mood badge + clock), left column (ASCII webcam preview + emotion bars), center column (now playing + track info + playback controls), right column (mood history timeline), bottom bar (status messages + keybindings).
+
+**DONE WHEN**
+- [ ] All 5 zones render correctly
+- [ ] Layout adapts to terminal size
+
+---
+
+### Task 30 (A) +tui
+
+**PURPOSE**
+Show a live ASCII representation of the webcam feed.
+
+**WHAT TO DO**
+1. Implement ASCII webcam preview widget: receive base64 JPEG from Python, decode to image, downscale to fit widget dimensions, convert to ASCII art using luminance-to-character mapping (` .:-=+*#%@`), render in TUI with 4-frame-per-second refresh.
+
+**DONE WHEN**
+- [ ] ASCII preview renders at 4 FPS
+- [ ] Widget scales to available space
+
+---
+
+### Task 31 (A) +tui
+
+**PURPOSE**
+Visualize emotion detection probabilities in real time.
+
+**WHAT TO DO**
+1. Implement emotion probability bar chart widget: horizontal bars for each emotion (angry, happy, sad, neutral, surprise, fear, disgust), width proportional to probability, color-coded (happy=green, angry=red, sad=blue, neutral=gray, fear=yellow, surprise=cyan).
+
+**DONE WHEN**
+- [ ] All 7 emotion bars render with correct proportions
+- [ ] Color coding is applied
+
+---
+
+### Task 32 (A) +tui
+
+**PURPOSE**
+Display the current mood state prominently.
+
+**WHAT TO DO**
+1. Implement current mood badge widget: large colored label showing current mood state (FOCUS/STRESSED/RELAXED/TIRED/ENERGIZED) with emoji-free icon using unicode block elements, pulsing border animation on mood transition.
+
+**DONE WHEN**
+- [ ] Mood badge shows current state with color
+- [ ] Pulsing animation on transition
+
+---
+
+### Task 33 (A) +tui
+
+**PURPOSE**
+Show the currently playing track with progress from mpv IPC.
+
+**WHAT TO DO**
+1. Implement "Now Playing" widget: subscribe to `NowPlaying` channel from mpv observer, display current track title, artist, album, with elapsed/total time progress bar.
+
+**DONE WHEN**
+- [ ] Track title, artist, album display correctly from mpv IPC data
+- [ ] Progress bar updates in real time
+- [ ] Paused state is visually indicated
+
+---
+
+### Task 34 (A) +tui
+
+**PURPOSE**
+Enable keyboard-driven playback control routed through mpv IPC.
+
+**WHAT TO DO**
+1. Implement playback control keybindings in TUI: Space=toggle pause via `MpvClient.TogglePause()`, n=next track via `QueueManager.Next()` then `MpvClient.Play()`, p=previous via `QueueManager.Previous()` then `MpvClient.Play()`, +/- for volume via `MpvClient.SetVolume()`, rendered as interactive footer controls.
+
+**DONE WHEN**
+- [ ] Space toggles pause via mpv IPC
+- [ ] n/p navigate tracks through queue manager and mpv
+- [ ] +/- adjust volume via mpv IPC
+- [ ] Footer shows available controls
+
+---
+
+### Task 35 (A) +tui
+
+**PURPOSE**
+Show historical mood transitions for user awareness.
+
+**WHAT TO DO**
+1. Implement mood history timeline widget: scrollable vertical list showing last 30 mood transitions with timestamps, mood label, confidence, and trigger emotion, newest at top.
+
+**DONE WHEN**
+- [ ] Last 30 transitions displayed
+- [ ] Scrollable list works
+- [ ] Newest entries at top
+
+---
+
+### Task 36 (A) +tui
+
+**PURPOSE**
+Compact mood confidence visualization over time.
+
+**WHAT TO DO**
+1. Implement mood history sparkline: horizontal sparkline chart showing mood confidence over last 60 sampling intervals, rendered with unicode braille characters.
+
+**DONE WHEN**
+- [ ] Sparkline renders with braille characters
+- [ ] Shows last 60 intervals
+
+---
+
+### Task 37 (A) +tui
+
+**PURPOSE**
+Allow keyboard navigation between TUI zones.
+
+**WHAT TO DO**
+1. Implement Tab key to cycle focus between webcam preview, now playing, mood history, and playback controls zones.
+
+**DONE WHEN**
+- [ ] Tab cycles focus between zones
+- [ ] Focused zone is visually highlighted
+
+---
+
+### Task 38 (A) +tui
+
+**PURPOSE**
+Show live system status for all components.
+
+**WHAT TO DO**
+1. Add real-time status bar: show camera status (active/inactive), mpv status (playing/paused/idle/not running), ytmusicapi auth status (authenticated/expired/missing), current sampling interval, Python subprocess health.
+
+**DONE WHEN**
+- [ ] All component statuses displayed
+- [ ] Status updates in real time
+
+---
+
+### Task 39 (A) +tui
+
+**PURPOSE**
+Non-blocking TUI updates from multiple event sources.
+
+**WHAT TO DO**
+1. Implement async event architecture in Go: use channels for emotion results (from IPC), mpv state updates (from observer polling), user input (from Bubble Tea), tick events (sampling timer) -- non-blocking TUI updates.
+
+**DONE WHEN**
+- [ ] All event sources feed through channels
+- [ ] TUI never blocks on any single source
+
+---
+
+### Task 40 (A) +cli
+
+**PURPOSE**
+Wire all components into a working end-to-end system.
+
+**WHAT TO DO**
+1. Wire end-to-end pipeline: startup -> dependency check (mpv, yt-dlp) -> ytmusicapi auth check -> camera check -> spawn mpv -> begin sampling loop -> emotion detection -> mood classification -> mood transition -> ytmusicapi search via Python -> mpv playback -> TUI refresh.
+
+**DONE WHEN**
+- [ ] Full pipeline runs from startup to music playback
+- [ ] All components are connected
+- [ ] Failures at any stage produce clear errors
+
+---
+
+## Priority B -- Enhancements
+
+---
+
+### Task 41 (B) +emotion
+
+**PURPOSE**
+Provide cloud-based emotion detection as fallback.
+
+**WHAT TO DO**
+1. Implement cloud emotion API fallback -- AWS Rekognition: accept frame bytes, call `DetectFaces` with `Attributes=ALL`, parse emotion scores from response, normalize to same EmotionResult schema.
+
+**DONE WHEN**
+- [ ] AWS Rekognition returns normalized EmotionResult
+- [ ] Works as drop-in replacement for local detection
+
+---
+
+### Task 42 (B) +emotion
+
+**PURPOSE**
+Provide Google Cloud as alternative cloud backend.
+
+**WHAT TO DO**
+1. Implement cloud emotion API fallback -- Google Cloud Vision: call `annotate` with `FACE_DETECTION` feature, parse emotion likelihoods (VERY_UNLIKELY to VERY_LIKELY), map to 0.0-1.0 scores.
+
+**DONE WHEN**
+- [ ] Google Cloud Vision returns normalized scores
+- [ ] Likelihood mapping is accurate
+
+---
+
+### Task 43 (B) +emotion
+
+**PURPOSE**
+Make the emotion backend configurable.
+
+**WHAT TO DO**
+1. Add `[emotion].backend` config option: "local" (default), "aws", "google" -- factory selects implementation, cloud backends require credentials in config or env vars.
+
+**DONE WHEN**
+- [ ] Config option selects backend
+- [ ] Cloud backends require credentials
+
+---
+
+### Task 44 (B) +capture
+
+**PURPOSE**
+Reduce CPU load when mood is stable.
+
+**WHAT TO DO**
+1. Implement adaptive sampling interval: if 5 consecutive frames return same dominant emotion with >0.8 confidence, increase interval by 2x (max 120s); if emotion shifts, reset to base interval -- reduces CPU load during stable moods.
+
+**DONE WHEN**
+- [ ] Interval increases during stable moods
+- [ ] Interval resets on emotion shift
+- [ ] Max interval respected
+
+---
+
+### Task 45 (B) +capture
+
+**PURPOSE**
+Allow trading resolution for inference speed.
+
+**WHAT TO DO**
+1. Add camera resolution configuration: `[capture].resolution` accepting "low" (320x240), "medium" (640x480, default), "high" (1280x720) -- lower = faster inference.
+
+**DONE WHEN**
+- [ ] Resolution is configurable
+- [ ] Default is medium
+
+---
+
+### Task 46 (B) +cli
+
+**PURPOSE**
+Guides the user through ytmusicapi authentication setup.
+
+**WHAT TO DO**
+1. Create a `setup` subcommand that runs `ytmusicapi.setup(filepath=auth_path)` interactively.
+2. This opens a browser-based flow where the user copies request headers from YouTube Music.
+3. Validate the auth by attempting a search. Print success/failure.
+4. Also check for mpv and yt-dlp installation, printing clear instructions if missing.
+
+**DONE WHEN**
+- [ ] Running `mood-music setup` produces a valid headers_auth.json
+- [ ] Subsequent `mood-music` runs can search YouTube Music
+- [ ] Missing dependencies are clearly reported
+
+---
+
+### Task 47 (B) +mpv
+
+**PURPOSE**
+Lets users skip and permanently blacklist tracks they don't want to hear.
+
+**WHAT TO DO**
+1. Implement keybinding 'b' in TUI that blacklists the current track.
+2. Store blacklisted video_ids in `~/.config/mood-music/blacklist.json`.
+3. When building queue, filter out blacklisted video_ids.
+4. Show brief toast "Track blacklisted" in TUI.
+
+**DONE WHEN**
+- [ ] Pressing 'b' skips and blacklists the current track
+- [ ] Blacklisted tracks never appear in future queues
+- [ ] Blacklist persists across restarts
+
+---
+
+### Task 48 (B) +tui
+
+**PURPOSE**
+Show session-level usage metrics.
+
+**WHAT TO DO**
+1. Implement session statistics overlay: `s` key shows session summary -- total time, mood distribution pie chart (ASCII), tracks played count, average mood stability score.
+
+**DONE WHEN**
+- [ ] Overlay shows all metrics
+- [ ] Pie chart renders in ASCII
+
+---
+
+### Task 49 (B) +tui
+
+**PURPOSE**
+Show mood trends over multiple sessions.
+
+**WHAT TO DO**
+1. Add daily/weekly mood trend view: `t` key shows aggregated mood data from past sessions stored in `~/.local/share/mood-music/history.db` (SQLite), render as line chart with date x-axis.
+
+**DONE WHEN**
+- [ ] SQLite history is queried
+- [ ] Line chart renders with date axis
+
+---
+
+### Task 50 (B) +tui
+
+**PURPOSE**
+Show face detection quality information.
+
+**WHAT TO DO**
+1. Implement face detection confidence display: show face detection bounding box overlaid on ASCII preview, display detection confidence percentage below preview.
+
+**DONE WHEN**
+- [ ] Bounding box overlaid on ASCII preview
+- [ ] Confidence percentage displayed
+
+---
+
+### Task 51 (B) +emotion
+
+**PURPOSE**
+Handle scenes with multiple people.
+
+**WHAT TO DO**
+1. Add multi-face handling: if multiple faces detected, use largest face (closest to camera), display warning in status bar "Multiple faces detected -- using primary".
+
+**DONE WHEN**
+- [ ] Largest face is selected
+- [ ] Warning displayed in status bar
+
+---
+
+### Task 52 (B) +capture
+
+**PURPOSE**
+Compensate for poor lighting conditions.
+
+**WHAT TO DO**
+1. Implement ambient lighting compensation: detect mean frame luminance, warn user in status bar if too dark (<30) or too bright (>225), adjust image preprocessing (histogram equalization) before emotion detection.
+
+**DONE WHEN**
+- [ ] Luminance warnings displayed
+- [ ] Histogram equalization applied
+
+---
+
+### Task 53 (B) +tui
+
+**PURPOSE**
+Let users pause the system without quitting.
+
+**WHAT TO DO**
+1. Add "do not disturb" mode: keybinding `D` pauses emotion detection and queue changes, maintains current playback, display DND badge in top bar, resume with `D` again.
+
+**DONE WHEN**
+- [ ] D toggles DND mode
+- [ ] DND badge displayed
+- [ ] Playback continues but mood detection pauses
+
+---
+
+### Task 54 (B) +tui
+
+**PURPOSE**
+Allow manual mood selection when detection is inaccurate.
+
+**WHAT TO DO**
+1. Implement manual mood override: keybinding `1-5` to manually set mood (1=FOCUS, 2=STRESSED, 3=RELAXED, 4=TIRED, 5=ENERGIZED), locks mood for configurable duration (default 10 min), shown as "manual" in mood history.
+
+**DONE WHEN**
+- [ ] Number keys set mood manually
+- [ ] Lock duration is configurable
+- [ ] Manual entries shown in history
+
+---
+
+### Task 55 (B) +cli
+
+**PURPOSE**
+Headless health check for troubleshooting.
+
+**WHAT TO DO**
+1. Add `mood-music status` subcommand: headless check of camera availability, ytmusicapi auth validity, mpv/yt-dlp installation, Python subprocess health -- useful for troubleshooting.
+
+**DONE WHEN**
+- [ ] All component health is checked
+- [ ] Output is clear and actionable
+
+---
+
+### Task 56 (B) +cli
+
+**PURPOSE**
+Query mood history from the command line.
+
+**WHAT TO DO**
+1. Implement `mood-music history` subcommand: query SQLite history DB, output mood session summaries as formatted table or JSON to stdout.
+
+**DONE WHEN**
+- [ ] History is queryable from CLI
+- [ ] Output available as table or JSON
+
+---
+
+### Task 57 (B) +tui
+
+**PURPOSE**
+Discoverable keybinding reference.
+
+**WHAT TO DO**
+1. Add `?` keybinding for help overlay listing all keybindings grouped by zone (global, playback, mood, navigation).
+
+**DONE WHEN**
+- [ ] Help overlay shows all keybindings
+- [ ] Grouped by zone
+
+---
+
+### Task 58 (B) +tui
+
+**PURPOSE**
+Visual customization for user preference.
+
+**WHAT TO DO**
+1. Implement color theme support: `[tui].theme` in config with "dark" (default), "light", "nord", "catppuccin" palettes, apply to all widgets consistently.
+
+**DONE WHEN**
+- [ ] All 4 themes render correctly
+- [ ] All widgets use theme colors
+
+---
+
+### Task 59 (B) +cli
+
+**PURPOSE**
+Test mood mapping without affecting playback.
+
+**WHAT TO DO**
+1. Add `--dry-run` mode: run full pipeline (camera + emotion detection + ytmusicapi search) but only log what playlist changes and track selections would be made without actually playing via mpv -- useful for testing mood mapping.
+
+**DONE WHEN**
+- [ ] Full pipeline runs without playback
+- [ ] Logs show what would be played
+
+---
+
+## Priority C -- Nice to Have
+
+---
+
+### Task 60 (C) +local
+
+**PURPOSE**
+Provide offline playback from local music files.
+
+**WHAT TO DO**
+1. Implement local music file playback fallback: if ytmusicapi unavailable, scan configured `[local].music_dir`, play files via mpv subprocess with JSON IPC for playback control.
+
+**DONE WHEN**
+- [ ] Local files play via mpv
+- [ ] Falls back when ytmusicapi is unavailable
+
+---
+
+### Task 61 (C) +local
+
+**PURPOSE**
+Automatically categorize local music files by mood.
+
+**WHAT TO DO**
+1. Add local file mood tagging: analyze local audio files using `librosa` (Python) to extract tempo, energy, valence proxies, auto-tag files with mood categories, cache tags in SQLite.
+
+**DONE WHEN**
+- [ ] Audio features extracted via librosa
+- [ ] Mood tags cached in SQLite
+
+---
+
+### Task 62 (C) +tui
+
+**PURPOSE**
+Built-in focus/break timer with automatic mood control.
+
+**WHAT TO DO**
+1. Implement focus session timer: keybinding `F` starts Pomodoro-style timer (25min focus / 5min break), auto-set mood to FOCUS during work intervals and RELAXED during breaks, override emotion detection.
+
+**DONE WHEN**
+- [ ] Timer runs with 25/5 intervals
+- [ ] Mood auto-set during timer
+
+---
+
+### Task 63 (C) +tui
+
+**PURPOSE**
+Show correlation between mood stability and productivity.
+
+**WHAT TO DO**
+1. Add productivity correlation view: if user runs focus sessions, show correlation between detected mood stability and session completion rate as scatter plot in stats overlay.
+
+**DONE WHEN**
+- [ ] Scatter plot renders
+- [ ] Correlation data is accurate
+
+---
+
+### Task 64 (C) +tui
+
+**PURPOSE**
+Visual confirmation of camera state for privacy.
+
+**WHAT TO DO**
+1. Add webcam privacy indicator: when camera is active, display green dot unicode character in top bar; when paused/DND, show red dot -- visual confirmation of camera state.
+
+**DONE WHEN**
+- [ ] Green dot when active
+- [ ] Red dot when paused/DND
+
+---
+
+### Task 65 (C) +emotion
+
+**PURPOSE**
+Switch emotion backends without restarting the app.
+
+**WHAT TO DO**
+1. Implement emotion detection model hot-swap: `mood-music model set <backend>` switches emotion backend without restart, Python subprocess reloads model on next capture request.
+
+**DONE WHEN**
+- [ ] Backend switches without restart
+- [ ] Model reloads on next capture
+
+---
+
+### Task 66 (C) +capture
+
+**PURPOSE**
+Factor ambient light into stress detection on macOS.
+
+**WHAT TO DO**
+1. Add screen brightness context: on macOS, read ambient light sensor via `ioreg`, factor into stress detection (low light + negative emotion = higher stress confidence).
+
+**DONE WHEN**
+- [ ] Ambient light sensor read on macOS
+- [ ] Stress confidence adjusted by lighting
+
+---
+
+### Task 67 (C) +cli
+
+**PURPOSE**
+Run the system headlessly without a TUI.
+
+**WHAT TO DO**
+1. Implement background mode: `mood-music --background` runs without TUI, only emotion detection + mpv playback control, logs to file, controllable via `mood-music ctl pause|resume|status` Unix socket IPC.
+
+**DONE WHEN**
+- [ ] Background mode runs without TUI
+- [ ] Controllable via Unix socket IPC
+- [ ] Logs to file
+
+---
+
+### Task 68 (C) +tui
+
+**PURPOSE**
+Polished startup experience while components initialize.
+
+**WHAT TO DO**
+1. Add startup animation: brief ASCII art logo with fade-in effect on TUI launch while camera and mpv initialize in background.
+
+**DONE WHEN**
+- [ ] Logo renders with fade-in
+- [ ] Initialization happens in background

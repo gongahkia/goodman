@@ -1766,7 +1766,7 @@
 
 ## Performance Optimization
 
-### Task 45 (B) +performance
+### Task 45 (C) +performance
 
 **PURPOSE** — Enables CoreML acceleration on Apple Silicon Macs for significantly faster Whisper inference (3-5x speedup).
 
