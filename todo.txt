@@ -1054,10 +1054,10 @@ blockedBy: [15, 16, 17, 18]
 5. In the overlay, show a fallback message card when summarization fails, with a "Retry" button.
 
 **DONE WHEN**
-- [ ] Network timeout shows a user-friendly message in the overlay
-- [ ] Rate limit error shows retry countdown
-- [ ] "Retry" button re-attempts summarization
-- [ ] No raw error messages or stack traces are ever shown to the user
+- [x] Network timeout shows a user-friendly message in the overlay
+- [x] Rate limit error shows retry countdown
+- [x] "Retry" button re-attempts summarization
+- [x] No raw error messages or stack traces are ever shown to the user
 
 ### Task 43 (A) +security
 blockedBy: [3]
