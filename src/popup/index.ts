@@ -1,5 +1,10 @@
 import { sendToBackground } from '@shared/messaging';
 import type { Summary } from '@providers/types';
+import { renderProviderSettings } from '@popup/settings/providers';
+import { renderDetectionSettings } from '@popup/settings/detection';
+import { renderNotificationSettings } from '@popup/settings/notifications';
+import { renderCacheSettings } from '@popup/settings/cache';
+import { renderHistoryPanel } from '@popup/history';
 
 interface PageState {
   domain: string;
@@ -287,7 +292,42 @@ function showSettings(): void {
   heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
   heading.textContent = 'Settings';
   app.appendChild(heading);
-  app.appendChild(document.createTextNode('Settings panel will load here.'));
+
+  const tabs = ['Providers', 'Detection', 'Notifications', 'Cache'] as const;
+  const tabBar = document.createElement('div');
+  tabBar.style.cssText = 'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--tc-border)';
+
+  const contentDiv = document.createElement('div');
+
+  for (const tab of tabs) {
+    const btn = document.createElement('button');
+    btn.style.cssText = 'background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:500;color:var(--tc-text-secondary)';
+    btn.textContent = tab;
+    btn.addEventListener('click', async () => {
+      for (const child of tabBar.children) {
+        (child as HTMLElement).style.borderBottomColor = 'transparent';
+        (child as HTMLElement).style.color = 'var(--tc-text-secondary)';
+      }
+      btn.style.borderBottomColor = 'var(--tc-accent)';
+      btn.style.color = 'var(--tc-text)';
+      switch (tab) {
+        case 'Providers': await renderProviderSettings(contentDiv); break;
+        case 'Detection': await renderDetectionSettings(contentDiv); break;
+        case 'Notifications': await renderNotificationSettings(contentDiv); break;
+        case 'Cache': await renderCacheSettings(contentDiv); break;
+      }
+    });
+    tabBar.appendChild(btn);
+  }
+
+  app.appendChild(tabBar);
+  app.appendChild(contentDiv);
+
+  // Activate first tab
+  const firstTab = tabBar.children[0] as HTMLElement;
+  firstTab.style.borderBottomColor = 'var(--tc-accent)';
+  firstTab.style.color = 'var(--tc-text)';
+  void renderProviderSettings(contentDiv);
 }
 
 function showHistory(): void {
@@ -299,11 +339,10 @@ function showHistory(): void {
   back.textContent = '← Back';
   back.addEventListener('click', () => { const a = document.getElementById('app'); if (a) render(a); });
   app.appendChild(back);
-  const heading = document.createElement('h2');
-  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
-  heading.textContent = 'Version History';
-  app.appendChild(heading);
-  app.appendChild(document.createTextNode('Version history will load here.'));
+
+  const contentDiv = document.createElement('div');
+  app.appendChild(contentDiv);
+  void renderHistoryPanel(contentDiv, state.domain);
 }
 
 document.addEventListener('DOMContentLoaded', init);
