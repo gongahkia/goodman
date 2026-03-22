@@ -52,10 +52,9 @@ describe('popup index', () => {
   });
 
   it('renders persisted ready analysis on load', async () => {
-    chrome.runtime.sendMessage.mockResolvedValue({
-      ok: true,
-      data: readyAnalysis(),
-    });
+    mockStorage.pageAnalysisByUrl = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
 
     await loadPopupModule();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -68,15 +67,14 @@ describe('popup index', () => {
   });
 
   it('renders provider setup state from persisted analysis', async () => {
-    chrome.runtime.sendMessage.mockResolvedValue({
-      ok: true,
-      data: {
+    mockStorage.pageAnalysisByUrl = {
+      'https://example.com/checkout': {
         ...readyAnalysis(),
         status: 'needs_provider',
         summary: null,
         error: 'OpenAI encountered an error. Try again or switch providers.',
       },
-    });
+    };
 
     await loadPopupModule();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -87,22 +85,19 @@ describe('popup index', () => {
   });
 
   it('refreshes persisted analysis after a manual analyze', async () => {
-    let fetchCount = 0;
-    chrome.runtime.sendMessage.mockImplementation(async () => {
-      fetchCount += 1;
-      return {
-        ok: true,
-        data:
-          fetchCount === 1
-            ? {
-                ...readyAnalysis(),
-                status: 'no_detection',
-                summary: null,
-              }
-            : readyAnalysis(),
+    mockStorage.pageAnalysisByUrl = {
+      'https://example.com/checkout': {
+        ...readyAnalysis(),
+        status: 'no_detection',
+        summary: null,
+      },
+    };
+    chrome.tabs.sendMessage.mockImplementation(async () => {
+      mockStorage.pageAnalysisByUrl = {
+        'https://example.com/checkout': readyAnalysis(),
       };
+      return { ok: true };
     });
-    chrome.tabs.sendMessage.mockResolvedValue({ ok: true });
 
     await loadPopupModule();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -133,10 +128,9 @@ describe('popup index', () => {
         viewed: false,
       },
     ];
-    chrome.runtime.sendMessage.mockResolvedValue({
-      ok: true,
-      data: readyAnalysis(),
-    });
+    mockStorage.pageAnalysisByUrl = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
 
     await loadPopupModule();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -163,10 +157,9 @@ describe('popup index', () => {
         viewed: false,
       },
     ];
-    chrome.runtime.sendMessage.mockResolvedValue({
-      ok: true,
-      data: readyAnalysis(),
-    });
+    mockStorage.pageAnalysisByUrl = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
 
     await loadPopupModule();
     document.dispatchEvent(new Event('DOMContentLoaded'));
@@ -193,10 +186,9 @@ describe('popup index', () => {
         viewed: false,
       },
     ];
-    chrome.runtime.sendMessage.mockResolvedValue({
-      ok: true,
-      data: readyAnalysis(),
-    });
+    mockStorage.pageAnalysisByUrl = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
 
     await loadPopupModule();
     document.dispatchEvent(new Event('DOMContentLoaded'));

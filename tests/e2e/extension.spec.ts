@@ -1,12 +1,8 @@
-/**
- * E2E tests for TC Guard extension
- * These tests launch a persistent Chromium profile with the built extension
- * and validate the packaged popup page, runtime messaging, and persisted
- * background analysis state.
- */
-
+import { createServer, type Server } from 'http';
 import { dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
+import { mkdtemp, rm } from 'fs/promises';
+import { tmpdir } from 'os';
 import {
   chromium,
   expect,
@@ -21,9 +17,23 @@ const EXTENSION_PATH = resolve(__dirname, '../../dist');
 
 let context: BrowserContext;
 let extensionId = '';
+let fixtureServer: Server;
+let baseUrl = '';
+let userDataDir = '';
 
 test.beforeAll(async () => {
-  context = await chromium.launchPersistentContext('', {
+  userDataDir = await mkdtemp(resolve(tmpdir(), 'tc-guard-e2e-'));
+  fixtureServer = createFixtureServer();
+  await new Promise<void>((resolveServer) => {
+    fixtureServer.listen(0, '127.0.0.1', () => resolveServer());
+  });
+  const address = fixtureServer.address();
+  if (!address || typeof address === 'string') {
+    throw new Error('Could not start fixture server');
+  }
+  baseUrl = `http://127.0.0.1:${address.port}`;
+
+  context = await chromium.launchPersistentContext(userDataDir, {
     channel: 'chromium',
     headless: false,
     args: [
@@ -38,6 +48,16 @@ test.beforeAll(async () => {
 
 test.afterAll(async () => {
   await context.close();
+  await new Promise<void>((resolveServer, rejectServer) => {
+    fixtureServer.close((error) => {
+      if (error) {
+        rejectServer(error);
+        return;
+      }
+      resolveServer();
+    });
+  });
+  await rm(userDataDir, { recursive: true, force: true });
 });
 
 test.beforeEach(async () => {
@@ -57,64 +77,40 @@ test('loads the packaged MV3 worker and popup page', async () => {
   await popup.close();
 });
 
-test('round-trips persisted page analysis through extension storage', async () => {
-  const record = {
-    tabId: 11,
-    url: 'https://example.com/checkout',
-    domain: 'example.com',
+test('persists a needs_provider analysis for a consent-like page visit', async () => {
+  const page = await context.newPage();
+  const consentUrl = `${baseUrl}/consent`;
+
+  await page.goto(consentUrl, { waitUntil: 'load' });
+  const record = await waitForUrlAnalysis(consentUrl);
+
+  expect(record).toMatchObject({
+    status: 'needs_provider',
+    sourceType: 'inline',
+    detectionType: 'checkbox',
+    domain: '127.0.0.1',
+    url: consentUrl,
+  });
+
+  await page.close();
+});
+
+test('persists a no_detection analysis for a plain page visit', async () => {
+  const page = await context.newPage();
+  const plainUrl = `${baseUrl}/plain`;
+
+  await page.goto(plainUrl, { waitUntil: 'load' });
+  const record = await waitForUrlAnalysis(plainUrl);
+
+  expect(record).toMatchObject({
     status: 'no_detection',
     sourceType: null,
     detectionType: null,
-    confidence: null,
-    textHash: null,
-    summary: null,
-    error: null,
-    updatedAt: Date.now(),
-  };
-
-  const result = await withWorker(async (worker) => {
-    await worker.evaluate(async (payload) => {
-      await chrome.storage.local.set({
-        pageAnalysis: {
-          [String(payload.tabId)]: payload,
-        },
-      });
-    }, record);
-
-    return (await worker.evaluate(async () => {
-      return await chrome.storage.local.get(['pageAnalysis']);
-    })) as { pageAnalysis: Record<string, typeof record> };
+    domain: '127.0.0.1',
+    url: plainUrl,
   });
 
-  expect(result.pageAnalysis['11']).toMatchObject({
-    tabId: 11,
-    domain: 'example.com',
-    status: 'no_detection',
-  });
-});
-
-test('round-trips per-domain notification preferences through extension storage', async () => {
-  const result = await withWorker(async (worker) => {
-    await worker.evaluate(async () => {
-      await chrome.storage.local.set({
-        domainNotificationPreferences: {
-          'example.com': false,
-          'tracked.test': true,
-        },
-      });
-    });
-
-    return (await worker.evaluate(async () => {
-      return await chrome.storage.local.get(['domainNotificationPreferences']);
-    })) as {
-      domainNotificationPreferences: Record<string, boolean>;
-    };
-  });
-
-  expect(result.domainNotificationPreferences).toMatchObject({
-    'example.com': false,
-    'tracked.test': true,
-  });
+  await page.close();
 });
 
 async function getExtensionWorker(): Promise<ServiceWorker> {
@@ -131,4 +127,73 @@ async function openExtensionPage(): Promise<Page> {
   const page = await context.newPage();
   await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
   return page;
+}
+
+async function waitForUrlAnalysis(url: string): Promise<Record<string, unknown>> {
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const result = await withWorker(async (worker) => {
+      return (await worker.evaluate(async (targetUrl) => {
+        const { pageAnalysisByUrl } = await chrome.storage.local.get(['pageAnalysisByUrl']);
+        return (pageAnalysisByUrl as Record<string, unknown> | undefined)?.[targetUrl] ?? null;
+      }, url)) as Record<string, unknown> | null;
+    });
+
+    if (result) {
+      return result;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+
+  throw new Error(`Timed out waiting for page analysis for ${url}`);
+}
+
+function createFixtureServer(): Server {
+  return createServer((request, response) => {
+    const path = request.url ?? '/';
+
+    response.setHeader('Content-Type', 'text/html; charset=utf-8');
+
+    if (path === '/consent') {
+      response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
+      <h1>Checkout</h1>
+      <p>
+        By completing this order, you agree to our Terms and Conditions, consent to recurring
+        billing for renewal plans, accept binding arbitration, and authorize data sharing with
+        our payment and analytics partners as described below.
+      </p>
+      <p>
+        You also accept a class action waiver, automatic subscription renewal unless canceled
+        before the next billing date, a mandatory dispute resolution process, and the collection
+        of usage data to improve service operations and marketing attribution.
+      </p>
+      <label for="agree">
+        <input type="checkbox" id="agree" />
+        I agree to the Terms and Conditions before submitting my order.
+      </label>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (path === '/plain') {
+      response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
+      <h1>Welcome</h1>
+      <p>This page contains marketing copy and product information only.</p>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    response.statusCode = 404;
+    response.end('<!doctype html><html><body><p>Not found</p></body></html>');
+  });
 }

@@ -1,6 +1,6 @@
 import type { Summary } from '@providers/types';
-import { sendToBackground } from '@shared/messaging';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
+import { getPageAnalysisByUrl } from '@shared/storage';
 import type { PendingNotification } from '@shared/storage';
 import { renderHistoryPanel } from '@popup/history';
 import { renderCacheSettings } from '@popup/settings/cache';
@@ -11,6 +11,7 @@ import { getPendingNotifications } from '@versioning/notifications';
 
 interface PopupState {
   tabId: number | null;
+  tabUrl: string;
   domain: string;
   analysis: PageAnalysisRecord | null;
   pendingNotifications: PendingNotification[];
@@ -20,6 +21,7 @@ interface PopupState {
 
 const state: PopupState = {
   tabId: null,
+  tabUrl: '',
   domain: '',
   analysis: null,
   pendingNotifications: [],
@@ -36,6 +38,7 @@ async function init(): Promise<void> {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const tab = tabs[0];
   state.tabId = tab?.id ?? null;
+  state.tabUrl = tab?.url ?? '';
 
   if (tab?.url) {
     try {
@@ -552,32 +555,28 @@ async function refreshPopupState(): Promise<void> {
 }
 
 async function refreshPageAnalysis(): Promise<void> {
-  if (state.tabId === null) {
+  if (!state.tabUrl && state.tabId === null) {
     state.analysis = null;
     return;
   }
 
-  const response = (await sendToBackground({
-    type: 'GET_PAGE_ANALYSIS',
-    payload: { tabId: state.tabId },
-  })) as {
-    ok: boolean;
-    data?: PageAnalysisRecord | null;
-    error?: string;
-  };
-
-  if (!response.ok) {
-    state.analysis = null;
-    state.error = response.error ?? 'Could not load page analysis.';
-    return;
+  if (state.tabUrl) {
+    const analysisByUrl = await getPageAnalysisByUrl(state.tabUrl);
+    if (analysisByUrl) {
+      state.analysis = {
+        ...analysisByUrl,
+        tabId: state.tabId ?? analysisByUrl.tabId,
+      };
+      state.error = null;
+      if (state.analysis.domain) {
+        state.domain = state.analysis.domain;
+      }
+      return;
+    }
   }
 
-  state.analysis = response.data ?? null;
+  state.analysis = null;
   state.error = null;
-
-  if (state.analysis?.domain) {
-    state.domain = state.analysis.domain;
-  }
 }
 
 async function refreshNotifications(): Promise<void> {

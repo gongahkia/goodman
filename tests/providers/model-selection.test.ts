@@ -147,6 +147,21 @@ describe('provider model selection', () => {
     const request = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
     expect(request.model).toBe('my-custom-model');
   });
+
+  it('treats missing provider credentials as unconfigured', async () => {
+    mockStorage.settings = createSettings({
+      openai: {
+        apiKey: '',
+        model: 'gpt-4o',
+      },
+    });
+
+    const providerResult = await getProviderByName('openai');
+
+    expect(providerResult.ok).toBe(false);
+    if (providerResult.ok) return;
+    expect(providerResult.error.message).toContain('Missing provider configuration');
+  });
 });
 
 function createSettings(

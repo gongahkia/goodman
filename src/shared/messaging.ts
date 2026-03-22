@@ -15,14 +15,7 @@ export type MessageHandler = (
 ) => Promise<MessageResponse> | undefined;
 
 export function onMessage(handler: MessageHandler): void {
-  browser.runtime.onMessage.addListener(
-    (message: unknown, sender: browser.Runtime.MessageSender) => {
-      const msg = message as Message;
-      const result = handler(msg, sender);
-      if (result) {
-        return result;
-      }
-      return undefined;
-    }
-  );
+  browser.runtime.onMessage.addListener((message, sender) => {
+    return handler(message as Message, sender);
+  });
 }

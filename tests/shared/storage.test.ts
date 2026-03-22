@@ -3,6 +3,7 @@ import type { PageAnalysisRecord } from '@shared/page-analysis';
 import {
   getDomainNotificationPreference,
   getPageAnalysis,
+  getPageAnalysisByUrl,
   getStorage,
   setDomainNotificationPreference,
   setPageAnalysisRecord,
@@ -44,6 +45,16 @@ describe('shared storage', () => {
     expect(saveResult.ok).toBe(true);
 
     const storedRecord = await getPageAnalysis(record.tabId);
+    expect(storedRecord).toEqual(record);
+  });
+
+  it('mirrors page analysis records by url', async () => {
+    const record = makePageAnalysisRecord();
+
+    const saveResult = await setPageAnalysisRecord(record);
+    expect(saveResult.ok).toBe(true);
+
+    const storedRecord = await getPageAnalysisByUrl(record.url);
     expect(storedRecord).toEqual(record);
   });
 

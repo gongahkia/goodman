@@ -10,9 +10,14 @@ import { resolveDetectionTextSource } from '@content/extractors/source';
 import { normalizeText } from '@content/extractors/normalizer';
 import { computeTextHash } from '@summarizer/cache';
 import { createOverlay, removeOverlay } from '@content/ui/overlay';
-import { getStorage } from '@shared/storage';
+import { getStorage, setPageAnalysisByUrl } from '@shared/storage';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
+import type { Settings } from '@shared/messages';
 import type { Summary } from '@providers/types';
+import {
+  getMissingProviderMessage,
+  isProviderConfigured,
+} from '@shared/provider-config';
 
 let analysisInFlight = false;
 let rerunRequested = false;
@@ -61,15 +66,10 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   }
 
   const settingsResult = await getStorage('settings');
-  const sensitivity = settingsResult.ok
-    ? settingsResult.data.detectionSensitivity
-    : 'normal' as const;
-  const themePreference = settingsResult.ok
-    ? settingsResult.data.darkMode
-    : 'auto';
-  const providerName = settingsResult.ok
-    ? settingsResult.data.activeProvider
-    : 'openai';
+  const settings = settingsResult.ok ? settingsResult.data : null;
+  const sensitivity = settings?.detectionSensitivity ?? ('normal' as const);
+  const themePreference = settings?.darkMode ?? 'auto';
+  const providerName = settings?.activeProvider ?? 'openai';
 
   const detections = [
     ...detectCheckboxes(document.body),
@@ -84,7 +84,7 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   if (scored.length === 0) {
     removeOverlay();
     lastRenderedTextHash = null;
-    await savePageAnalysisState({
+    await persistPageAnalysisState({
       status: 'no_detection',
       sourceType: null,
       detectionType: null,
@@ -103,7 +103,7 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   if (normalized.text.length < 50) {
     removeOverlay();
     lastRenderedTextHash = null;
-    await savePageAnalysisState({
+    await persistPageAnalysisState({
       status: 'extraction_failed',
       sourceType: resolvedText.sourceType,
       detectionType: best.type,
@@ -117,6 +117,24 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
 
   const textHash = await computeTextHash(normalized.text);
   if (!force && lastRenderedTextHash === textHash) {
+    return {
+      ok: true,
+      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
+    };
+  }
+
+  if (!hasConfiguredProvider(settings)) {
+    removeOverlay();
+    lastRenderedTextHash = null;
+    await persistPageAnalysisState({
+      status: 'needs_provider',
+      sourceType: resolvedText.sourceType,
+      detectionType: best.type,
+      confidence: best.weightedConfidence,
+      textHash,
+      summary: null,
+      error: getMissingProviderMessage(providerName),
+    });
     return {
       ok: true,
       data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
@@ -152,17 +170,25 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
   };
 }
 
-async function savePageAnalysisState(
+async function persistPageAnalysisState(
   record: Omit<PageAnalysisRecord, 'tabId' | 'url' | 'domain' | 'updatedAt'>
 ): Promise<void> {
-  await sendToBackground({
-    type: 'SAVE_PAGE_ANALYSIS',
-    payload: {
-      tabId: -1,
-      ...record,
-      url: window.location.href,
-      domain: window.location.hostname,
-      updatedAt: Date.now(),
-    },
+  await setPageAnalysisByUrl(window.location.href, {
+    tabId: -1,
+    ...record,
+    url: window.location.href,
+    domain: window.location.hostname,
+    updatedAt: Date.now(),
   });
+}
+
+function hasConfiguredProvider(settings: Settings | null): boolean {
+  if (!settings) {
+    return false;
+  }
+
+  return isProviderConfigured(
+    settings.activeProvider,
+    settings.providers[settings.activeProvider]
+  );
 }

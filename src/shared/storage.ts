@@ -46,6 +46,7 @@ export interface StorageSchema {
   settings: Settings;
   cache: Record<string, CachedSummary>;
   pageAnalysis: Record<string, PageAnalysisRecord>;
+  pageAnalysisByUrl: Record<string, PageAnalysisRecord>;
   versionHistory: Record<string, VersionEntry[]>;
   domainNotificationPreferences: Record<string, boolean>;
   pendingNotifications: PendingNotification[];
@@ -75,6 +76,7 @@ const STORAGE_DEFAULTS: StorageSchema = {
   settings: DEFAULT_SETTINGS,
   cache: {},
   pageAnalysis: {},
+  pageAnalysisByUrl: {},
   versionHistory: {},
   domainNotificationPreferences: {},
   pendingNotifications: [],
@@ -117,15 +119,31 @@ export async function getPageAnalysis(
 export async function setPageAnalysisRecord(
   record: PageAnalysisRecord
 ): Promise<Result<void, Error>> {
-  const result = await getStorage('pageAnalysis');
-  if (!result.ok) return result;
+  const [pageAnalysisResult, pageAnalysisByUrlResult] = await Promise.all([
+    getStorage('pageAnalysis'),
+    getStorage('pageAnalysisByUrl'),
+  ]);
+  if (!pageAnalysisResult.ok) return pageAnalysisResult;
+  if (!pageAnalysisByUrlResult.ok) return pageAnalysisByUrlResult;
 
   const pageAnalysis = {
-    ...result.data,
+    ...pageAnalysisResult.data,
     [getPageAnalysisKey(record.tabId)]: record,
   };
+  const pageAnalysisByUrl = {
+    ...pageAnalysisByUrlResult.data,
+    [record.url]: record,
+  };
 
-  return setStorage('pageAnalysis', pageAnalysis);
+  try {
+    await browser.storage.local.set({
+      pageAnalysis,
+      pageAnalysisByUrl,
+    });
+    return ok(undefined);
+  } catch (e) {
+    return err(e instanceof Error ? e : new Error(String(e)));
+  }
 }
 
 export async function removePageAnalysis(
@@ -138,6 +156,30 @@ export async function removePageAnalysis(
   delete pageAnalysis[getPageAnalysisKey(tabId)];
 
   return setStorage('pageAnalysis', pageAnalysis);
+}
+
+export async function getPageAnalysisByUrl(
+  url: string
+): Promise<PageAnalysisRecord | null> {
+  const result = await getStorage('pageAnalysisByUrl');
+  if (!result.ok) return null;
+
+  return result.data[url] ?? null;
+}
+
+export async function setPageAnalysisByUrl(
+  url: string,
+  record: PageAnalysisRecord
+): Promise<Result<void, Error>> {
+  const result = await getStorage('pageAnalysisByUrl');
+  if (!result.ok) return result;
+
+  const pageAnalysisByUrl = {
+    ...result.data,
+    [url]: record,
+  };
+
+  return setStorage('pageAnalysisByUrl', pageAnalysisByUrl);
 }
 
 export async function getDomainNotificationPreference(

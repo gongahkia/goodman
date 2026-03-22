@@ -3,7 +3,9 @@ import type { Result } from '@shared/result';
 import { getStorage } from '@shared/storage';
 import { ProviderError } from '@shared/errors';
 import type { TCGuardError } from '@shared/errors';
+import { isProviderConfigured } from '@shared/provider-config';
 import type { LLMProvider } from './types';
+import type { Settings } from '@shared/messages';
 import { OpenAIProvider } from './openai';
 import { ClaudeProvider } from './claude';
 import { GeminiProvider } from './gemini';
@@ -20,16 +22,22 @@ export async function getActiveProvider(): Promise<Result<LLMProvider, TCGuardEr
   const providerName = settings.activeProvider;
   const config = settings.providers[providerName];
 
-  if (!config) {
+  if (!config || !isProviderConfigured(providerName, config)) {
     return err(
       new ProviderError(
         providerName,
-        'No LLM provider configured. Open TC Guard settings to add an API key.'
+        'Missing provider configuration. Open TC Guard settings to add the required credentials.'
       )
     );
   }
+  const resolvedConfig = config;
 
-  const provider = createProvider(providerName, config.apiKey, config.model, config.baseUrl);
+  const provider = createProvider(
+    providerName,
+    resolvedConfig.apiKey,
+    resolvedConfig.model,
+    resolvedConfig.baseUrl
+  );
   if (!provider) {
     return err(new ProviderError(providerName, 'Unknown provider'));
   }
@@ -56,16 +64,22 @@ export async function getProviderByName(
   }
 
   const config = settingsResult.data.providers[name];
-  if (!config) {
+  if (!config || !isProviderConfigured(name as Settings['activeProvider'], config)) {
     return err(
       new ProviderError(
         name,
-        'No configuration found for this provider. Open TC Guard settings to configure it.'
+        'Missing provider configuration. Open TC Guard settings to configure it.'
       )
     );
   }
+  const resolvedConfig = config;
 
-  const provider = createProvider(name, config.apiKey, config.model, config.baseUrl);
+  const provider = createProvider(
+    name,
+    resolvedConfig.apiKey,
+    resolvedConfig.model,
+    resolvedConfig.baseUrl
+  );
   if (!provider) {
     return err(new ProviderError(name, 'Unknown provider'));
   }
@@ -78,12 +92,20 @@ export async function validateProvider(name: string): Promise<boolean> {
   if (!settingsResult.ok) return false;
 
   const config = settingsResult.data.providers[name];
-  if (!config) return false;
+  if (!config || !isProviderConfigured(name as Settings['activeProvider'], config)) {
+    return false;
+  }
+  const resolvedConfig = config;
 
-  const provider = createProvider(name, config.apiKey, config.model, config.baseUrl);
+  const provider = createProvider(
+    name,
+    resolvedConfig.apiKey,
+    resolvedConfig.model,
+    resolvedConfig.baseUrl
+  );
   if (!provider) return false;
 
-  return provider.validateApiKey(config.apiKey);
+  return provider.validateApiKey(resolvedConfig.apiKey);
 }
 
 function createProvider(
