@@ -1141,11 +1141,11 @@ blockedBy: [9, 10, 12, 13]
 5. Create `tests/extractors/chunker.test.ts`: test chunk sizes, paragraph boundary splitting, overlap.
 
 **DONE WHEN**
-- [ ] Inline extractor test verifies correct container selection
-- [ ] Normalizer test verifies HTML tag removal and whitespace collapse
-- [ ] Chunker test verifies no chunk exceeds max token limit
-- [ ] Chunker test verifies overlap between adjacent chunks
-- [ ] All tests pass with `pnpm test`
+- [x] Inline extractor test verifies correct container selection
+- [x] Normalizer test verifies HTML tag removal and whitespace collapse
+- [x] Chunker test verifies no chunk exceeds max token limit
+- [x] Chunker test verifies overlap between adjacent chunks
+- [x] All tests pass with `pnpm test`
 
 ### Task 47 (B) +testing
 blockedBy: [22, 23, 24]

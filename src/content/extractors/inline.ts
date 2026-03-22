@@ -5,11 +5,11 @@ const MIN_TEXT_LENGTH = 200;
 
 export function extractInlineText(detection: DetectedElement): string {
   const container = findContainer(detection.element);
-  let text = container.innerText.trim();
+  let text = (container.innerText ?? container.textContent ?? '').trim();
 
   if (text.length < MIN_TEXT_LENGTH && container.parentElement) {
     const parent = findContainer(container.parentElement);
-    text = parent.innerText.trim();
+    text = (parent.innerText ?? parent.textContent ?? '').trim();
   }
 
   return text.replace(/\s+/g, ' ').trim();
