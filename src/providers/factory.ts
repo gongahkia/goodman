@@ -47,6 +47,32 @@ export function getAllProviders(): LLMProvider[] {
   ];
 }
 
+export async function getProviderByName(
+  name: string
+): Promise<Result<LLMProvider, TCGuardError>> {
+  const settingsResult = await getStorage('settings');
+  if (!settingsResult.ok) {
+    return err(new ProviderError('Settings', 'Could not read settings'));
+  }
+
+  const config = settingsResult.data.providers[name];
+  if (!config) {
+    return err(
+      new ProviderError(
+        name,
+        'No configuration found for this provider. Open TC Guard settings to configure it.'
+      )
+    );
+  }
+
+  const provider = createProvider(name, config.apiKey, config.model, config.baseUrl);
+  if (!provider) {
+    return err(new ProviderError(name, 'Unknown provider'));
+  }
+
+  return ok(provider);
+}
+
 export async function validateProvider(name: string): Promise<boolean> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return false;
