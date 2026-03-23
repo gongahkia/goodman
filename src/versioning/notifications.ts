@@ -28,8 +28,7 @@ export async function notifyChange(
   const notificationsResult = await getStorage('pendingNotifications');
   if (!notificationsResult.ok) return false;
 
-  const notifications = [...notificationsResult.data];
-  notifications.push({
+  const notifications = upsertPendingNotification(notificationsResult.data, {
     domain,
     addedRedFlags: diff.addedRedFlags.length,
     timestamp: Date.now(),
@@ -43,7 +42,7 @@ export async function notifyChange(
 export async function getPendingNotifications(): Promise<PendingNotification[]> {
   const result = await getStorage('pendingNotifications');
   if (!result.ok) return [];
-  return result.data.filter((n) => !n.viewed);
+  return deduplicatePendingNotifications(result.data.filter((n) => !n.viewed));
 }
 
 export async function clearNotification(domain: string): Promise<void> {
@@ -63,4 +62,46 @@ export async function clearNotification(domain: string): Promise<void> {
       // may fail in non-extension context
     }
   }
+}
+
+function upsertPendingNotification(
+  notifications: PendingNotification[],
+  incoming: PendingNotification
+): PendingNotification[] {
+  const existing = notifications.find(
+    (notification) =>
+      notification.domain === incoming.domain && notification.viewed === false
+  );
+  const nextNotification = existing
+    ? {
+        ...incoming,
+        addedRedFlags: Math.max(existing.addedRedFlags, incoming.addedRedFlags),
+      }
+    : incoming;
+
+  const filtered = notifications.filter(
+    (notification) => notification.domain !== incoming.domain
+  );
+
+  return deduplicatePendingNotifications([...filtered, nextNotification]);
+}
+
+function deduplicatePendingNotifications(
+  notifications: PendingNotification[]
+): PendingNotification[] {
+  const byDomain = new Map<string, PendingNotification>();
+
+  for (const notification of notifications) {
+    const existing = byDomain.get(notification.domain);
+    if (
+      !existing ||
+      notification.timestamp > existing.timestamp ||
+      (notification.timestamp === existing.timestamp &&
+        notification.addedRedFlags > existing.addedRedFlags)
+    ) {
+      byDomain.set(notification.domain, notification);
+    }
+  }
+
+  return [...byDomain.values()].sort((left, right) => right.timestamp - left.timestamp);
 }
