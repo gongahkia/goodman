@@ -31,7 +31,7 @@ onMessage(
   (msg: Message, _sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
     switch (msg.type) {
       case 'DETECT_TC':
-        return queueDetection(true);
+        return queueDetection(true, msg.payload.settingsOverride);
       default:
         return undefined;
     }
@@ -43,7 +43,10 @@ startObserver(() => {
 });
 void queueDetection(false);
 
-async function queueDetection(force: boolean): Promise<MessageResponse> {
+async function queueDetection(
+  force: boolean,
+  settingsOverride?: Partial<Settings>
+): Promise<MessageResponse> {
   if (analysisInFlight) {
     rerunRequested = true;
     return lastRunResult;
@@ -52,7 +55,7 @@ async function queueDetection(force: boolean): Promise<MessageResponse> {
   analysisInFlight = true;
 
   try {
-    lastRunResult = await handleDetectTC(force);
+    lastRunResult = await handleDetectTC(force, settingsOverride);
     return lastRunResult;
   } finally {
     analysisInFlight = false;
@@ -63,16 +66,22 @@ async function queueDetection(force: boolean): Promise<MessageResponse> {
   }
 }
 
-async function handleDetectTC(force: boolean): Promise<MessageResponse> {
+async function handleDetectTC(
+  force: boolean,
+  settingsOverride?: Partial<Settings>
+): Promise<MessageResponse> {
   if (!document.body) {
     return { ok: false, error: 'Document body is unavailable' };
   }
 
   const settingsResult = await getStorage('settings');
-  const settings = settingsResult.ok ? settingsResult.data : null;
-  const sensitivity = settings?.detectionSensitivity ?? ('normal' as const);
+  const settings = resolveSettings(
+    settingsResult.ok ? settingsResult.data : null,
+    settingsOverride
+  );
+  const sensitivity = settings?.detectionSensitivity ?? ('conservative' as const);
   const themePreference = settings?.darkMode ?? 'auto';
-  const providerName = settings?.activeProvider ?? 'openai';
+  const providerName = settings?.activeProvider ?? 'hosted';
 
   const detections = [
     ...detectCheckboxes(document.body),
@@ -126,7 +135,44 @@ async function handleDetectTC(force: boolean): Promise<MessageResponse> {
     };
   }
 
-  if (!hasConfiguredProvider(settings)) {
+  if (providerName === 'hosted' && !settings?.hostedConsentAccepted) {
+    removeOverlay();
+    lastRenderedTextHash = null;
+    await persistPageAnalysisState({
+      status: 'needs_consent',
+      sourceType: resolvedText.sourceType,
+      detectionType: best.type,
+      confidence: best.weightedConfidence,
+      textHash,
+      summary: null,
+      error:
+        'Accept the TC Guard Cloud privacy disclosure before hosted analysis can run.',
+    });
+    return {
+      ok: true,
+      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
+    };
+  }
+
+  if (providerName === 'hosted' && !isHostedProviderAvailable(settings)) {
+    removeOverlay();
+    lastRenderedTextHash = null;
+    await persistPageAnalysisState({
+      status: 'service_unavailable',
+      sourceType: resolvedText.sourceType,
+      detectionType: best.type,
+      confidence: best.weightedConfidence,
+      textHash,
+      summary: null,
+      error: getMissingProviderMessage(providerName),
+    });
+    return {
+      ok: true,
+      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
+    };
+  }
+
+  if (providerName !== 'hosted' && !hasConfiguredProvider(settings)) {
     removeOverlay();
     lastRenderedTextHash = null;
     await persistPageAnalysisState({
@@ -229,6 +275,42 @@ function hasConfiguredProvider(settings: Settings | null): boolean {
     settings.activeProvider,
     settings.providers[settings.activeProvider]
   );
+}
+
+function isHostedProviderAvailable(settings: Settings | null): boolean {
+  if (!settings) {
+    return false;
+  }
+
+  return isProviderConfigured('hosted', settings.providers['hosted']);
+}
+
+function resolveSettings(
+  settings: Settings | null,
+  settingsOverride?: Partial<Settings>
+): Settings | null {
+  if (!settings && !settingsOverride) {
+    return null;
+  }
+
+  if (!settings) {
+    return settingsOverride as Settings;
+  }
+
+  if (!settingsOverride) {
+    return settings;
+  }
+
+  return {
+    ...settings,
+    ...settingsOverride,
+    providers: settingsOverride.providers
+      ? {
+          ...settings.providers,
+          ...settingsOverride.providers,
+        }
+      : settings.providers,
+  };
 }
 
 async function summarizeLocally(

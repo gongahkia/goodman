@@ -52,6 +52,19 @@ describe('detectCheckboxes', () => {
     expect(results).toHaveLength(0);
   });
 
+  it('should NOT detect a newsletter marketing opt-in checkbox', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <input type="checkbox" id="newsletter">
+      <label for="newsletter">Email me product updates, promotions, and newsletter offers</label>
+    `;
+    document.body.appendChild(root);
+
+    const results = detectCheckboxes(root);
+
+    expect(results).toHaveLength(0);
+  });
+
   it('should return nearest T&C link URL in nearestLink', () => {
     const root = document.createElement('div');
     root.innerHTML = `

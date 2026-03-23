@@ -12,6 +12,8 @@ import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { setPageAnalysisRecord } from '@shared/storage';
 import { syncVersionHistory } from './version-tracking';
+import type { SummarizeOptions } from '@providers/types';
+import type { TCGuardError } from '@shared/errors';
 
 export interface ProcessPageAnalysisInput {
   tabId: number;
@@ -64,10 +66,13 @@ export async function processPageAnalysis(
   if (!providerResult.ok) {
     const errorMessage =
       providerResult.error.userMessage ?? providerResult.error.message;
+    const status = input.provider === 'hosted'
+      ? 'service_unavailable'
+      : 'needs_provider';
 
     await setPageAnalysisRecord(
       buildPageAnalysisRecord(input, {
-        status: 'needs_provider',
+        status,
         textHash,
         summary: null,
         error: errorMessage,
@@ -78,18 +83,37 @@ export async function processPageAnalysis(
   }
 
   const chunks = chunkText(input.text);
+  const summarizeMetadata = buildSummarizeMetadata(input);
   const summaryResult =
-    chunks.length > 1
-      ? await chunkedSummarizeWithProvider(chunks, input.provider)
-      : await singleShotSummarizeWithProvider(input.text, input.provider);
+    input.provider === 'hosted'
+      ? await singleShotSummarizeWithProvider(
+          input.text,
+          input.provider,
+          summarizeMetadata
+        )
+      : chunks.length > 1
+        ? await chunkedSummarizeWithProvider(
+            chunks,
+            input.provider,
+            summarizeMetadata
+          )
+        : await singleShotSummarizeWithProvider(
+            input.text,
+            input.provider,
+            summarizeMetadata
+          );
 
   if (!summaryResult.ok) {
     const errorMessage =
       summaryResult.error.userMessage ?? summaryResult.error.message;
+    const status =
+      input.provider === 'hosted' && isHostedServiceError(summaryResult.error)
+        ? 'service_unavailable'
+        : 'error';
 
     await setPageAnalysisRecord(
       buildPageAnalysisRecord(input, {
-        status: 'error',
+        status,
         textHash,
         summary: null,
         error: errorMessage,
@@ -111,6 +135,26 @@ export async function processPageAnalysis(
   );
 
   return { ok: true, data: summaryResult.data };
+}
+
+function buildSummarizeMetadata(
+  input: ProcessPageAnalysisInput
+): SummarizeOptions['metadata'] {
+  return {
+    url: input.url,
+    domain: input.domain,
+    sourceType: input.sourceType,
+    detectionType: input.detectionType,
+    clientVersion: chrome.runtime?.getManifest?.().version ?? 'unknown',
+  };
+}
+
+function isHostedServiceError(error: TCGuardError): boolean {
+  return (
+    error.code === 'NETWORK_ERROR' ||
+    error.code === 'RATE_LIMIT' ||
+    error.code === 'SERVICE_UNAVAILABLE'
+  );
 }
 
 function buildPageAnalysisRecord(

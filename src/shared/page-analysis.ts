@@ -7,7 +7,9 @@ export type PageAnalysisStatus =
   | 'analyzing'
   | 'no_detection'
   | 'extraction_failed'
+  | 'needs_consent'
   | 'needs_provider'
+  | 'service_unavailable'
   | 'error'
   | 'ready';
 

@@ -32,6 +32,14 @@ describe('provider settings', () => {
     expect(container.textContent).not.toContain('API Key');
   });
 
+  it('renders TC Guard Cloud as the default recommended option', async () => {
+    const container = await renderSettings();
+
+    expect(container.textContent).toContain('TC Guard Cloud');
+    expect(container.textContent).toContain('Recommended for most people');
+    expect(container.textContent).toContain('Selected');
+  });
+
   it('keeps the test button bound to the currently displayed provider', async () => {
     const container = await renderSettings();
 

@@ -22,6 +22,7 @@ export const chrome = {
     sendMessage: vi.fn(),
     onMessage: { addListener: vi.fn() },
     getURL: vi.fn((path: string) => `chrome-extension://mock-id/${path}`),
+    getManifest: vi.fn(() => ({ version: '1.0.0-test' })),
   },
   tabs: {
     sendMessage: vi.fn(),

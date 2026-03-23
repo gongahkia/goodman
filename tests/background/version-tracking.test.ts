@@ -45,15 +45,22 @@ describe('syncVersionHistory', () => {
   beforeEach(() => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     mockStorage.settings = {
-      activeProvider: 'openai',
+      activeProvider: 'hosted',
       providers: {
+        hosted: {
+          apiKey: '',
+          model: 'tc-guard-cloud',
+          baseUrl: 'http://127.0.0.1:8787',
+        },
         openai: { apiKey: '', model: 'gpt-4o' },
         claude: { apiKey: '', model: 'claude-sonnet-4-20250514' },
         gemini: { apiKey: '', model: 'gemini-1.5-pro' },
         ollama: { apiKey: '', model: '', baseUrl: 'http://localhost:11434' },
         custom: { apiKey: '', model: '', baseUrl: '' },
+        fixture: { apiKey: '', model: 'fixture-v1' },
       },
-      detectionSensitivity: 'normal',
+      hostedConsentAccepted: true,
+      detectionSensitivity: 'conservative',
       darkMode: 'auto',
       notifyOnChange: true,
     };

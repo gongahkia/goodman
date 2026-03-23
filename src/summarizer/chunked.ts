@@ -8,33 +8,41 @@ import { getActiveProvider, getProviderByName } from '@providers/factory';
 import { SYSTEM_PROMPT } from '@providers/prompts';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import { computeSeverity } from './severity';
+import type { SummarizeOptions } from '@providers/types';
 
 const MAX_CONCURRENT = 3;
 
 export async function chunkedSummarize(
-  chunks: string[]
+  chunks: string[],
+  metadata?: SummarizeOptions['metadata']
 ): Promise<Result<Summary, TCGuardError>> {
-  return chunkedSummarizeInternal(chunks);
+  return chunkedSummarizeInternal(chunks, undefined, metadata);
 }
 
 export async function chunkedSummarizeWithProvider(
   chunks: string[],
-  providerName: string
+  providerName: string,
+  metadata?: SummarizeOptions['metadata']
 ): Promise<Result<Summary, TCGuardError>> {
-  return chunkedSummarizeInternal(chunks, providerName);
+  return chunkedSummarizeInternal(chunks, providerName, metadata);
 }
 
 async function chunkedSummarizeInternal(
   chunks: string[],
-  providerName?: string
+  providerName?: string,
+  metadata?: SummarizeOptions['metadata']
 ): Promise<Result<Summary, TCGuardError>> {
-  if (chunks.length === 1) {
-    return providerName
-      ? singleShotSummarizeWithProvider(chunks[0] ?? '', providerName)
-      : singleShotSummarize(chunks[0] ?? '');
+  if (providerName === 'hosted') {
+    return singleShotSummarizeWithProvider(chunks.join('\n\n'), providerName, metadata);
   }
 
-  const partials = await mapPhase(chunks, providerName);
+  if (chunks.length === 1) {
+    return providerName
+      ? singleShotSummarizeWithProvider(chunks[0] ?? '', providerName, metadata)
+      : singleShotSummarize(chunks[0] ?? '', metadata);
+  }
+
+  const partials = await mapPhase(chunks, providerName, metadata);
   const errors = partials.filter((r) => !r.ok);
   if (errors.length === partials.length) {
     return err(
@@ -51,7 +59,8 @@ async function chunkedSummarizeInternal(
 
 async function mapPhase(
   chunks: string[],
-  providerName?: string
+  providerName?: string,
+  metadata?: SummarizeOptions['metadata']
 ): Promise<Array<Result<Summary, TCGuardError>>> {
   const results: Array<Result<Summary, TCGuardError>> = [];
 
@@ -60,8 +69,8 @@ async function mapPhase(
     const batchResults = await Promise.all(
       batch.map((chunk) =>
         providerName
-          ? singleShotSummarizeWithProvider(chunk, providerName)
-          : singleShotSummarize(chunk)
+          ? singleShotSummarizeWithProvider(chunk, providerName, metadata)
+          : singleShotSummarize(chunk, metadata)
       )
     );
     results.push(...batchResults);
@@ -97,6 +106,7 @@ async function reducePhase(
     systemPrompt: SYSTEM_PROMPT,
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
+    rawText: mergePrompt,
   });
 
   if (mergeResult.ok) {

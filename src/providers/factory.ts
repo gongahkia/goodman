@@ -12,6 +12,7 @@ import { GeminiProvider } from './gemini';
 import { OllamaProvider } from './ollama';
 import { CustomEndpointProvider } from './custom';
 import { FixtureProvider } from './fixture';
+import { HostedProvider } from './hosted';
 
 export async function getActiveProvider(): Promise<Result<LLMProvider, TCGuardError>> {
   const settingsResult = await getStorage('settings');
@@ -48,6 +49,7 @@ export async function getActiveProvider(): Promise<Result<LLMProvider, TCGuardEr
 
 export function getAllProviders(): LLMProvider[] {
   return [
+    new HostedProvider(),
     new OpenAIProvider(''),
     new ClaudeProvider(''),
     new GeminiProvider(''),
@@ -117,6 +119,8 @@ function createProvider(
   baseUrl?: string
 ): LLMProvider | null {
   switch (name) {
+    case 'hosted':
+      return new HostedProvider(baseUrl, model);
     case 'openai':
       return new OpenAIProvider(apiKey, model);
     case 'claude':

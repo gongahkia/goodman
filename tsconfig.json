@@ -25,6 +25,6 @@
       "@versioning/*": ["src/versioning/*"]
     }
   },
-  "include": ["src/**/*.ts"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "server/**/*.ts"],
   "exclude": ["node_modules", "dist", "tests"]
 }

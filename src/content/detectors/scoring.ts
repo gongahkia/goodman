@@ -6,10 +6,10 @@ export interface ScoredDetection extends DetectedElement {
 }
 
 const TYPE_WEIGHTS: Record<string, number> = {
-  checkbox: 1.2,
+  checkbox: 1.15,
   modal: 1.0,
-  fullpage: 0.9,
-  banner: 0.8,
+  fullpage: 0.95,
+  banner: 0.75,
 };
 
 export function scoreDetections(

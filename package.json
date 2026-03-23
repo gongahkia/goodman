@@ -11,6 +11,8 @@
     "dev": "vite",
     "build": "vite build",
     "build:firefox": "BUILD_TARGET=firefox vite build",
+    "server:dev": "tsx watch server/index.ts",
+    "server:start": "tsx server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -36,11 +38,14 @@
     "jsdom": "^29.0.1",
     "prettier": "^3.8.1",
     "typescript": "^5.9.3",
+    "tsx": "^4.20.6",
     "vite": "^8.0.1",
     "vitest": "^4.1.0"
   },
   "dependencies": {
+    "@hono/node-server": "^1.19.6",
     "diff": "^8.0.3",
+    "hono": "^4.10.2",
     "pdfjs-dist": "^5.5.207",
     "webextension-polyfill": "^0.12.0"
   }

@@ -26,12 +26,20 @@ export function parseSummaryResponse(
     }
 
     const obj = parsed as Record<string, unknown>;
-    const summary = validateSummary(obj);
+    const summary = parseSummaryObject(obj);
     return ok(summary);
   } catch (e) {
     if (e instanceof InvalidResponseError) return err(e);
     return err(new InvalidResponseError('Failed to parse JSON response'));
   }
+}
+
+export function parseSummaryObject(raw: unknown): Summary {
+  if (!raw || typeof raw !== 'object') {
+    throw new InvalidResponseError('Response is not an object');
+  }
+
+  return validateSummary(raw as Record<string, unknown>);
 }
 
 function validateSummary(obj: Record<string, unknown>): Summary {

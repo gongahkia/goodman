@@ -6,7 +6,42 @@ export interface DetectedElement {
   nearestLink: string | null;
 }
 
-const TC_KEYWORDS = ['terms', 'conditions', 'privacy', 'policy', 'agree', 'consent', 'eula', 'tos'];
+const LEGAL_KEYWORDS = [
+  'terms',
+  'conditions',
+  'terms of service',
+  'terms and conditions',
+  'privacy',
+  'privacy policy',
+  'policy',
+  'eula',
+  'tos',
+  'arbitration',
+  'subscription',
+  'cancellation',
+];
+const AGREEMENT_KEYWORDS = [
+  'agree',
+  'accept',
+  'consent',
+  'acknowledge',
+  'by checking',
+  'by continuing',
+  'i have read',
+  'i understand',
+];
+const MARKETING_KEYWORDS = [
+  'newsletter',
+  'marketing',
+  'promotions',
+  'offers',
+  'updates',
+  'email me',
+  'text me',
+  'sms',
+  'product updates',
+  'subscribe',
+];
 const MAX_ANCESTOR_LEVELS = 5;
 const MAX_VERTICAL_DISTANCE = 200;
 
@@ -26,14 +61,14 @@ export function detectCheckboxes(root: Element): DetectedElement[] {
 
 function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
   const foundKeywords: string[] = [];
+  const contextSegments: string[] = [];
   let nearestLink: string | null = null;
-  let score = 0;
 
   const label = findAssociatedLabel(checkbox);
   if (label) {
     const labelResult = scanElementForKeywords(label);
     foundKeywords.push(...labelResult.keywords);
-    score += labelResult.score * 1.5;
+    contextSegments.push(labelResult.text);
     nearestLink = findNearestLink(label) ?? nearestLink;
   }
 
@@ -46,9 +81,8 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
     for (const sibling of siblings) {
       if (sibling === checkbox || sibling === label) continue;
       const sibResult = scanElementForKeywords(sibling);
-      const distanceFactor = 1 - level * 0.15;
-      score += sibResult.score * distanceFactor;
       foundKeywords.push(...sibResult.keywords);
+      contextSegments.push(sibResult.text);
       nearestLink = nearestLink ?? findNearestLink(sibling);
     }
   }
@@ -57,14 +91,35 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
   for (const link of links) {
     const linkResult = scanElementForKeywords(link);
     foundKeywords.push(...linkResult.keywords);
-    score += linkResult.score * 0.8;
+    contextSegments.push(linkResult.text);
     nearestLink = nearestLink ?? link.getAttribute('href');
   }
 
-  const uniqueKeywords = [...new Set(foundKeywords)];
-  const confidence = Math.min(score, 1.0);
+  const contextText = contextSegments.join(' ').toLowerCase();
+  if (!hasStrongAgreementLanguage(contextText)) return null;
+  if (!hasLegalContext(contextText, nearestLink)) return null;
+  if (looksLikeMarketingOptIn(contextText, nearestLink)) return null;
 
-  if (uniqueKeywords.length === 0) return null;
+  const legalMatches = countMatches(contextText, LEGAL_KEYWORDS);
+  const agreementMatches = countMatches(contextText, AGREEMENT_KEYWORDS);
+  const marketingMatches = countMatches(contextText, MARKETING_KEYWORDS);
+  let score = 0;
+
+  score += Math.min(legalMatches * 0.18, 0.45);
+  score += Math.min(agreementMatches * 0.2, 0.35);
+  if (nearestLink) score += 0.2;
+  if (contextText.includes('terms and conditions') || contextText.includes('terms of service')) {
+    score += 0.2;
+  }
+  if (contextText.includes('privacy policy')) {
+    score += 0.1;
+  }
+  score -= Math.min(marketingMatches * 0.2, 0.4);
+
+  const uniqueKeywords = [...new Set(foundKeywords)];
+  const confidence = Math.max(0, Math.min(score, 1.0));
+
+  if (uniqueKeywords.length === 0 || confidence < 0.45) return null;
 
   return {
     element: checkbox,
@@ -84,30 +139,23 @@ function findAssociatedLabel(checkbox: HTMLInputElement): HTMLLabelElement | nul
   return parent as HTMLLabelElement | null;
 }
 
-function scanElementForKeywords(el: Element): { keywords: string[]; score: number } {
+function scanElementForKeywords(el: Element): { keywords: string[]; text: string } {
   const text = (el.textContent ?? '').toLowerCase();
   const found: string[] = [];
-  let score = 0;
 
-  for (const keyword of TC_KEYWORDS) {
+  for (const keyword of [...LEGAL_KEYWORDS, ...AGREEMENT_KEYWORDS]) {
     if (text.includes(keyword)) {
       found.push(keyword);
-      score += 0.2;
     }
   }
 
-  if (text.includes('terms and conditions') || text.includes('terms of service')) {
-    score += 0.3;
-  }
-  if (text.includes('privacy policy')) {
-    score += 0.2;
-  }
-
-  return { keywords: found, score };
+  return { keywords: found, text };
 }
 
 function findNearestLink(el: Element): string | null {
-  const anchor = el.querySelector('a[href]');
+  const anchor = Array.from(el.querySelectorAll('a[href]')).find((candidate) =>
+    isLegalLink(candidate as HTMLAnchorElement)
+  );
   return anchor?.getAttribute('href') ?? null;
 }
 
@@ -123,12 +171,59 @@ function findLinksWithinDistance(
     const linkRect = link.getBoundingClientRect();
     const verticalDistance = Math.abs(linkRect.top - rect.top);
     if (verticalDistance <= maxDistance) {
-      const text = (link.textContent ?? '').toLowerCase();
-      if (TC_KEYWORDS.some((kw) => text.includes(kw))) {
+      if (isLegalLink(link as HTMLAnchorElement)) {
         nearby.push(link as HTMLAnchorElement);
       }
     }
   }
 
   return nearby;
+}
+
+function hasStrongAgreementLanguage(text: string): boolean {
+  return AGREEMENT_KEYWORDS.some((keyword) => text.includes(keyword));
+}
+
+function hasLegalContext(text: string, nearestLink: string | null): boolean {
+  return (
+    LEGAL_KEYWORDS.some((keyword) => text.includes(keyword)) ||
+    isLegalHref(nearestLink)
+  );
+}
+
+function looksLikeMarketingOptIn(text: string, nearestLink: string | null): boolean {
+  const marketingMatches = countMatches(text, MARKETING_KEYWORDS);
+  const explicitLegalPhrase =
+    text.includes('terms and conditions') ||
+    text.includes('terms of service') ||
+    text.includes('privacy policy') ||
+    isLegalHref(nearestLink);
+
+  return marketingMatches > 0 && !explicitLegalPhrase;
+}
+
+function countMatches(text: string, keywords: string[]): number {
+  return keywords.reduce(
+    (count, keyword) => count + (text.includes(keyword) ? 1 : 0),
+    0
+  );
+}
+
+function isLegalLink(link: HTMLAnchorElement): boolean {
+  const text = (link.textContent ?? '').toLowerCase();
+  const href = link.getAttribute('href');
+  return hasLegalContext(text, href);
+}
+
+function isLegalHref(href: string | null): boolean {
+  if (!href) return false;
+  const normalizedHref = href.toLowerCase();
+  return (
+    normalizedHref.includes('terms') ||
+    normalizedHref.includes('privacy') ||
+    normalizedHref.includes('policy') ||
+    normalizedHref.includes('conditions') ||
+    normalizedHref.includes('tos') ||
+    normalizedHref.includes('eula')
+  );
 }

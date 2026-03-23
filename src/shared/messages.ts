@@ -7,7 +7,7 @@ import type {
 
 export interface DetectTCMessage {
   type: 'DETECT_TC';
-  payload: { tabId: number };
+  payload: { tabId: number; settingsOverride?: Partial<Settings> };
 }
 
 export interface ExtractTextMessage {
@@ -78,6 +78,7 @@ export type MessageType = Message['type'];
 
 export interface Settings {
   activeProvider:
+    | 'hosted'
     | 'openai'
     | 'claude'
     | 'gemini'
@@ -85,6 +86,7 @@ export interface Settings {
     | 'custom'
     | 'fixture';
   providers: Record<string, ProviderConfig>;
+  hostedConsentAccepted: boolean;
   detectionSensitivity: 'aggressive' | 'normal' | 'conservative';
   darkMode: 'auto' | 'light' | 'dark';
   notifyOnChange: boolean;

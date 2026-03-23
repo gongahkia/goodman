@@ -80,8 +80,88 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('Provider setup required');
+    expect(document.body.textContent).toContain('Advanced provider setup required');
     expect(document.body.textContent).toContain('Open Settings');
+  });
+
+  it('renders the hosted consent state from persisted analysis', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': {
+        ...readyAnalysis(),
+        status: 'needs_consent',
+        summary: null,
+        error:
+          'Accept the TC Guard Cloud privacy disclosure before hosted analysis can run.',
+      },
+    };
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    expect(document.body.textContent).toContain('Enable TC Guard Cloud');
+    expect(document.body.textContent).toContain('Accept and Analyze');
+  });
+
+  it('accepts hosted consent and reruns analysis from the popup', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': {
+        ...readyAnalysis(),
+        status: 'needs_consent',
+        summary: null,
+        error:
+          'Accept the TC Guard Cloud privacy disclosure before hosted analysis can run.',
+      },
+    };
+    chrome.tabs.sendMessage.mockImplementation(async () => {
+      mockStorage.pageAnalysis = {
+        'https://example.com/checkout': readyAnalysis(),
+      };
+      return { ok: true };
+    });
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    const acceptButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Accept and Analyze'
+    );
+
+    acceptButton?.click();
+    await flush();
+
+    expect((mockStorage.settings as { hostedConsentAccepted: boolean }).hostedConsentAccepted).toBe(
+      true
+    );
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      type: 'DETECT_TC',
+      payload: {
+        tabId: 7,
+        settingsOverride: { hostedConsentAccepted: true },
+      },
+    });
+    expect(document.body.textContent).toContain(
+      'This page asks you to agree to terms.'
+    );
+  });
+
+  it('renders a hosted service unavailable state from persisted analysis', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': {
+        ...readyAnalysis(),
+        status: 'service_unavailable',
+        summary: null,
+        error: 'TC Guard Cloud is temporarily unavailable. Please try again shortly.',
+      },
+    };
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    expect(document.body.textContent).toContain('TC Guard Cloud is unavailable');
+    expect(document.body.textContent).toContain('Retry');
   });
 
   it('refreshes persisted analysis after a manual analyze', async () => {

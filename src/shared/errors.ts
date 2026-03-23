@@ -53,6 +53,17 @@ export class ProviderError extends TCGuardError {
   }
 }
 
+export class ServiceUnavailableError extends TCGuardError {
+  constructor(service: string, detail = 'The service is temporarily unavailable.') {
+    super(
+      `${service} unavailable: ${detail}`,
+      `${service} is temporarily unavailable. Please try again shortly.`,
+      'SERVICE_UNAVAILABLE'
+    );
+    this.name = 'ServiceUnavailableError';
+  }
+}
+
 export class ExtractionError extends TCGuardError {
   constructor(detail: string) {
     super(

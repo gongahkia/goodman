@@ -58,9 +58,17 @@ export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
   model: '',
 };
 
+const DEFAULT_HOSTED_API_BASE_URL =
+  import.meta.env?.VITE_HOSTED_API_BASE_URL?.trim() || 'http://127.0.0.1:8787';
+
 export const DEFAULT_SETTINGS: Settings = {
-  activeProvider: 'openai',
+  activeProvider: 'hosted',
   providers: {
+    hosted: {
+      apiKey: '',
+      model: 'tc-guard-cloud',
+      baseUrl: DEFAULT_HOSTED_API_BASE_URL,
+    },
     openai: { apiKey: '', model: 'gpt-4o' },
     claude: { apiKey: '', model: 'claude-sonnet-4-20250514' },
     gemini: { apiKey: '', model: 'gemini-1.5-pro' },
@@ -68,7 +76,8 @@ export const DEFAULT_SETTINGS: Settings = {
     custom: { apiKey: '', model: '', baseUrl: '' },
     fixture: { apiKey: '', model: 'fixture-v1' },
   },
-  detectionSensitivity: 'normal',
+  hostedConsentAccepted: false,
+  detectionSensitivity: 'conservative',
   darkMode: 'auto',
   notifyOnChange: true,
 };

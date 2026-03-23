@@ -87,9 +87,35 @@ export async function getCacheStats(): Promise<{
 }
 
 export async function computeTextHash(text: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(text);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  const subtleCrypto = globalThis.crypto?.subtle;
+  if (subtleCrypto) {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(text);
+      const hashBuffer = await subtleCrypto.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+    } catch {
+      // Fall through to the deterministic JS hash below.
+    }
+  }
+
+  return computeFallbackHash(text);
+}
+
+function computeFallbackHash(text: string): string {
+  let hashA = 0x811c9dc5;
+  let hashB = 0x01000193;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const codePoint = text.charCodeAt(index);
+    hashA ^= codePoint;
+    hashA = Math.imul(hashA, 0x01000193);
+    hashB ^= codePoint + index;
+    hashB = Math.imul(hashB, 0x045d9f3b);
+  }
+
+  const partA = (hashA >>> 0).toString(16).padStart(8, '0');
+  const partB = (hashB >>> 0).toString(16).padStart(8, '0');
+  return `${partA}${partB}`.repeat(4).slice(0, 64);
 }

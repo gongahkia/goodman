@@ -1,6 +1,12 @@
 import type { Summary } from '@providers/types';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
-import { getPageAnalysisByUrl, prunePageAnalysisState } from '@shared/storage';
+import type { Settings } from '@shared/messages';
+import {
+  getPageAnalysisByUrl,
+  getStorage,
+  prunePageAnalysisState,
+  setStorage,
+} from '@shared/storage';
 import type { PendingNotification } from '@shared/storage';
 import { renderHistoryPanel } from '@popup/history';
 import { renderCacheSettings } from '@popup/settings/cache';
@@ -92,9 +98,25 @@ function render(container: HTMLElement): void {
     case 'needs_provider':
       container.appendChild(
         createActionState(
-          'Provider setup required',
+          'Advanced provider setup required',
           state.analysis.error ??
-            'Configure an LLM provider before analyzing this page.',
+            'Switch to a bring-your-own-provider connection in Settings before analyzing this page.',
+          'Open Settings',
+          showSettings
+        )
+      );
+      break;
+    case 'needs_consent':
+      container.appendChild(createHostedConsentState());
+      break;
+    case 'service_unavailable':
+      container.appendChild(
+        createDualActionState(
+          'TC Guard Cloud is unavailable',
+          state.analysis.error ??
+            'Hosted analysis is temporarily unavailable. Try again shortly or switch to an advanced provider.',
+          'Retry',
+          handleAnalyze,
           'Open Settings',
           showSettings
         )
@@ -236,6 +258,51 @@ function createActionState(
   div.appendChild(copy);
   div.appendChild(createButton(buttonLabel, onClick));
   return div;
+}
+
+function createDualActionState(
+  title: string,
+  body: string,
+  primaryLabel: string,
+  primaryAction: () => void,
+  secondaryLabel: string,
+  secondaryAction: () => void
+): HTMLElement {
+  const div = document.createElement('div');
+  div.style.cssText = 'text-align:center;padding:32px 16px';
+
+  const heading = document.createElement('p');
+  heading.style.cssText = 'font-weight:600;margin-bottom:8px';
+  heading.textContent = title;
+
+  const copy = document.createElement('p');
+  copy.style.cssText =
+    'color:var(--tc-text-secondary);margin-bottom:16px;line-height:1.5';
+  copy.textContent = body;
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap';
+  actions.appendChild(createButton(primaryLabel, primaryAction));
+  actions.appendChild(createFooterButton(secondaryLabel, secondaryAction));
+
+  div.appendChild(heading);
+  div.appendChild(copy);
+  div.appendChild(actions);
+  return div;
+}
+
+function createHostedConsentState(): HTMLElement {
+  return createDualActionState(
+    'Enable TC Guard Cloud',
+    state.analysis?.error ??
+      'To summarize this agreement, TC Guard needs your permission to send the extracted terms to TC Guard Cloud for analysis.',
+    'Accept and Analyze',
+    () => {
+      void acceptHostedConsentAndAnalyze();
+    },
+    'Open Settings',
+    showSettings
+  );
 }
 
 function createSummaryView(
@@ -398,7 +465,7 @@ function createButton(text: string, onClick: () => void): HTMLButtonElement {
   btn.style.cssText =
     'background:var(--tc-accent);color:var(--tc-accent-text);border:none;border-radius:var(--tc-radius-md);padding:8px 16px;cursor:pointer;font-size:14px;font-weight:500;transition:background 150ms';
   btn.textContent = text;
-  btn.addEventListener('click', onClick);
+  btn.addEventListener('click', () => onClick());
   btn.addEventListener('mouseenter', () => {
     btn.style.background = 'var(--tc-accent-hover)';
   });
@@ -438,7 +505,7 @@ function createFooterButton(
   return btn;
 }
 
-async function handleAnalyze(): Promise<void> {
+async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void> {
   state.loading = true;
   state.error = null;
   renderCurrentApp();
@@ -448,9 +515,13 @@ async function handleAnalyze(): Promise<void> {
       throw new Error('No active tab');
     }
 
+    const payload = settingsOverride
+      ? { tabId: state.tabId, settingsOverride }
+      : { tabId: state.tabId };
+
     const response = (await chrome.tabs.sendMessage(state.tabId, {
       type: 'DETECT_TC',
-      payload: { tabId: state.tabId },
+      payload,
     })) as { ok?: boolean; error?: string } | undefined;
 
     await refreshPopupState();
@@ -463,6 +534,35 @@ async function handleAnalyze(): Promise<void> {
     state.loading = false;
     renderCurrentApp();
   }
+}
+
+async function acceptHostedConsentAndAnalyze(): Promise<void> {
+  const settingsResult = await getStorage('settings');
+  if (!settingsResult.ok) {
+    state.error = 'Could not update TC Guard Cloud settings.';
+    renderCurrentApp();
+    return;
+  }
+
+  const saveResult = await setStorage('settings', {
+    ...settingsResult.data,
+    hostedConsentAccepted: true,
+  });
+  if (!saveResult.ok) {
+    state.error = 'Could not save TC Guard Cloud consent.';
+    renderCurrentApp();
+    return;
+  }
+
+  state.analysis = state.analysis
+    ? {
+        ...state.analysis,
+        status: 'analyzing',
+        error: null,
+      }
+    : state.analysis;
+
+  await handleAnalyze({ hostedConsentAccepted: true });
 }
 
 function showSettings(): void {

@@ -17,27 +17,27 @@ function makeDetection(
 }
 
 describe('scoreDetections', () => {
-  it('should pass 0.55 confidence checkbox in normal mode', () => {
-    const detections = [makeDetection(0.55, 'checkbox')];
+  it('should pass a strong checkbox detection in normal mode', () => {
+    const detections = [makeDetection(0.6, 'checkbox')];
     const scored = scoreDetections(detections, 'normal');
 
-    // 0.55 * 1.2 = 0.66, above 0.5 threshold
+    // 0.6 * 1.15 = 0.69, above 0.65 threshold
     expect(scored).toHaveLength(1);
   });
 
-  it('should filter 0.55 confidence checkbox in conservative mode', () => {
-    const detections = [makeDetection(0.55, 'checkbox')];
+  it('should filter a mid-confidence checkbox in conservative mode', () => {
+    const detections = [makeDetection(0.6, 'checkbox')];
     const scored = scoreDetections(detections, 'conservative');
 
-    // 0.55 * 1.2 = 0.66, below 0.7 threshold
+    // 0.6 * 1.15 = 0.69, below 0.8 threshold
     expect(scored).toHaveLength(0);
   });
 
-  it('should pass low confidence in aggressive mode', () => {
-    const detections = [makeDetection(0.35, 'checkbox')];
+  it('should pass lower confidence detections in aggressive mode', () => {
+    const detections = [makeDetection(0.4, 'checkbox')];
     const scored = scoreDetections(detections, 'aggressive');
 
-    // 0.35 * 1.2 = 0.42, above 0.3 threshold
+    // 0.4 * 1.15 = 0.46, above 0.4 threshold
     expect(scored).toHaveLength(1);
   });
 

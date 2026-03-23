@@ -44,6 +44,7 @@
 
 import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
+import type { AnalysisSourceType, DetectionType } from '@shared/page-analysis';
 
 export type Severity = 'low' | 'medium' | 'high' | 'critical';
 export type RedFlagSeverity = 'low' | 'medium' | 'high';
@@ -81,6 +82,14 @@ export interface SummarizeOptions {
   systemPrompt: string;
   maxTokens: number;
   temperature: number;
+  rawText?: string;
+  metadata?: {
+    url?: string;
+    domain?: string;
+    sourceType?: AnalysisSourceType;
+    detectionType?: DetectionType;
+    clientVersion?: string;
+  };
 }
 
 export interface LLMProvider {

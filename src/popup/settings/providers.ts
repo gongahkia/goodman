@@ -2,9 +2,10 @@ import { getStorage, setStorage } from '@shared/storage';
 import type { Settings, ProviderConfig } from '@shared/messages';
 import { validateProvider } from '@providers/factory';
 
-const PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as const;
-type ProviderName = (typeof PROVIDERS)[number];
+const ADVANCED_PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as const;
+type ProviderName = (typeof ADVANCED_PROVIDERS)[number];
 const PROVIDER_LABELS: Record<string, string> = {
+  hosted: 'TC Guard Cloud',
   openai: 'OpenAI',
   claude: 'Claude',
   gemini: 'Gemini',
@@ -124,7 +125,7 @@ function renderProviderSettingsView(
   settings: Settings
 ): void {
   container.textContent = '';
-  const activeProvider = isVisibleProvider(settings.activeProvider)
+  const activeAdvancedProvider = isVisibleProvider(settings.activeProvider)
     ? settings.activeProvider
     : 'openai';
 
@@ -133,12 +134,37 @@ function renderProviderSettingsView(
   heading.textContent = 'LLM Provider Settings';
   container.appendChild(heading);
 
+  container.appendChild(createHostedProviderCard(container, settings));
+
+  const advancedHeading = document.createElement('h4');
+  advancedHeading.style.cssText = 'font-size:14px;font-weight:600;margin:20px 0 8px';
+  advancedHeading.textContent = 'Advanced Providers';
+  container.appendChild(advancedHeading);
+
+  const advancedCopy = document.createElement('p');
+  advancedCopy.style.cssText =
+    'font-size:13px;color:#6b7280;line-height:1.5;margin-bottom:12px';
+  advancedCopy.textContent =
+    'Use these options only if you want to bring your own provider credentials or run a local model.';
+  container.appendChild(advancedCopy);
+
+  const advancedSection = document.createElement('details');
+  advancedSection.style.cssText =
+    'border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fafafa';
+  advancedSection.open = settings.activeProvider !== 'hosted';
+
+  const advancedSummary = document.createElement('summary');
+  advancedSummary.style.cssText =
+    'cursor:pointer;font-size:13px;font-weight:600;color:#111827';
+  advancedSummary.textContent = 'Configure OpenAI, Claude, Gemini, Ollama, or custom endpoints';
+  advancedSection.appendChild(advancedSummary);
+
   const radioGroup = document.createElement('div');
-  radioGroup.style.cssText = 'margin-bottom:16px';
+  radioGroup.style.cssText = 'margin:16px 0';
 
   const configSection = document.createElement('div');
 
-  for (const name of PROVIDERS) {
+  for (const name of ADVANCED_PROVIDERS) {
     const label = document.createElement('label');
     label.style.cssText =
       'display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:14px';
@@ -146,10 +172,11 @@ function renderProviderSettingsView(
     radio.type = 'radio';
     radio.name = 'activeProvider';
     radio.value = name;
-    radio.checked = activeProvider === name;
+    radio.checked = settings.activeProvider === name;
     radio.addEventListener('change', async () => {
       const updatedSettings = await saveActiveProvider(name);
       if (!updatedSettings) return;
+      advancedSection.open = true;
       renderProviderConfigSection(configSection, name, updatedSettings);
     });
     label.appendChild(radio);
@@ -157,9 +184,10 @@ function renderProviderSettingsView(
     radioGroup.appendChild(label);
   }
 
-  container.appendChild(radioGroup);
-  renderProviderConfigSection(configSection, activeProvider, settings);
-  container.appendChild(configSection);
+  advancedSection.appendChild(radioGroup);
+  renderProviderConfigSection(configSection, activeAdvancedProvider, settings);
+  advancedSection.appendChild(configSection);
+  container.appendChild(advancedSection);
 }
 
 function renderProviderConfigSection(
@@ -175,7 +203,59 @@ function renderProviderConfigSection(
   );
 }
 
-async function saveActiveProvider(name: ProviderName): Promise<Settings | null> {
+function createHostedProviderCard(
+  container: HTMLElement,
+  settings: Settings
+): HTMLElement {
+  const card = document.createElement('div');
+  card.style.cssText =
+    'border:1px solid #bfdbfe;background:#eff6ff;border-radius:12px;padding:16px';
+
+  const heading = document.createElement('div');
+  heading.style.cssText = 'display:flex;justify-content:space-between;gap:12px;align-items:flex-start';
+
+  const titleGroup = document.createElement('div');
+  const title = document.createElement('h4');
+  title.style.cssText = 'font-size:15px;font-weight:600;margin-bottom:6px;color:#1d4ed8';
+  title.textContent = 'TC Guard Cloud';
+
+  const description = document.createElement('p');
+  description.style.cssText = 'font-size:13px;line-height:1.5;color:#1e3a8a';
+  description.textContent =
+    'Recommended for most people. No API key is required, and analysis runs through the default TC Guard hosted service.';
+
+  titleGroup.appendChild(title);
+  titleGroup.appendChild(description);
+
+  const button = document.createElement('button');
+  button.style.cssText =
+    'border:none;border-radius:8px;padding:8px 12px;cursor:pointer;font-size:12px;background:#2563eb;color:white;flex-shrink:0';
+  button.textContent =
+    settings.activeProvider === 'hosted' ? 'Selected' : 'Use TC Guard Cloud';
+  button.disabled = settings.activeProvider === 'hosted';
+  button.addEventListener('click', async () => {
+    const updatedSettings = await saveActiveProvider('hosted');
+    if (!updatedSettings) return;
+    renderProviderSettingsView(container, updatedSettings);
+  });
+
+  heading.appendChild(titleGroup);
+  heading.appendChild(button);
+  card.appendChild(heading);
+
+  const consentStatus = document.createElement('p');
+  consentStatus.style.cssText = 'margin-top:12px;font-size:12px;color:#1e40af';
+  consentStatus.textContent = settings.hostedConsentAccepted
+    ? 'Privacy disclosure accepted. Hosted analysis is enabled.'
+    : 'Privacy disclosure not accepted yet. The first hosted analysis will ask for one-time consent.';
+  card.appendChild(consentStatus);
+
+  return card;
+}
+
+async function saveActiveProvider(
+  name: Settings['activeProvider']
+): Promise<Settings | null> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return null;
 
@@ -204,5 +284,5 @@ async function saveProviderConfig(
 }
 
 function isVisibleProvider(name: Settings['activeProvider']): name is ProviderName {
-  return PROVIDERS.includes(name as ProviderName);
+  return ADVANCED_PROVIDERS.includes(name as ProviderName);
 }
