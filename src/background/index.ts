@@ -50,6 +50,10 @@ async function handleFetchUrl(
 ): Promise<MessageResponse> {
   try {
     const response = await fetch(url);
+    if (!response.ok) {
+      return { ok: false, error: `Failed to fetch URL: HTTP ${response.status}` };
+    }
+
     if (responseType === 'base64') {
       const bytes = new Uint8Array(await response.arrayBuffer());
       return { ok: true, data: bytesToBase64(bytes) };
