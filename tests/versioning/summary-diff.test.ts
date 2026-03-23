@@ -52,6 +52,37 @@ describe('compareSummaries', () => {
     expect(diff.severityChange!.new).toBe('high');
   });
 
+  it('should detect quote changes for an existing red flag', () => {
+    const oldSummary = makeSummary({
+      redFlags: [
+        {
+          category: 'automatic_renewal',
+          description: 'Auto renewal',
+          severity: 'medium',
+          quote: 'Your subscription renews monthly.',
+        },
+      ],
+    });
+    const newSummary = makeSummary({
+      redFlags: [
+        {
+          category: 'automatic_renewal',
+          description: 'Auto renewal',
+          severity: 'medium',
+          quote: 'Your subscription renews annually unless cancelled.',
+        },
+      ],
+    });
+
+    const diff = compareSummaries(oldSummary, newSummary);
+
+    expect(diff.changedRedFlags).toHaveLength(1);
+    expect(diff.changedRedFlags[0]).toMatchObject({
+      old: { quote: 'Your subscription renews monthly.' },
+      new: { quote: 'Your subscription renews annually unless cancelled.' },
+    });
+  });
+
   it('should match paraphrased key points as the same', () => {
     const oldSummary = makeSummary({ keyPoints: ['Your data is shared with advertisers'] });
     const newSummary = makeSummary({ keyPoints: ['Your data is shared with advertising partners'] });

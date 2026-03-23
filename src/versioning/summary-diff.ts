@@ -24,7 +24,11 @@ export function compareSummaries(
     const oldFlag = oldFlagMap.get(category);
     if (!oldFlag) {
       addedRedFlags.push(newFlag);
-    } else if (oldFlag.severity !== newFlag.severity || oldFlag.description !== newFlag.description) {
+    } else if (
+      oldFlag.severity !== newFlag.severity ||
+      oldFlag.description !== newFlag.description ||
+      oldFlag.quote !== newFlag.quote
+    ) {
       changedRedFlags.push({ old: oldFlag, new: newFlag });
     }
   }

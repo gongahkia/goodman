@@ -41,6 +41,34 @@ const changedSummary: Summary = {
   severity: 'high',
 };
 
+const quoteChangedSummary: Summary = {
+  summary: 'Base summary',
+  keyPoints: ['Point one'],
+  redFlags: [
+    {
+      category: 'automatic_renewal',
+      description: 'Auto renewal',
+      severity: 'medium',
+      quote: 'Your subscription renews monthly.',
+    },
+  ],
+  severity: 'medium',
+};
+
+const quoteUpdatedSummary: Summary = {
+  summary: 'Base summary',
+  keyPoints: ['Point one'],
+  redFlags: [
+    {
+      category: 'automatic_renewal',
+      description: 'Auto renewal',
+      severity: 'medium',
+      quote: 'Your subscription renews annually unless cancelled.',
+    },
+  ],
+  severity: 'medium',
+};
+
 describe('syncVersionHistory', () => {
   beforeEach(() => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
@@ -123,5 +151,19 @@ describe('syncVersionHistory', () => {
     expect(result.changed).toBe(true);
     expect(result.notified).toBe(true);
     expect(mockStorage.pendingNotifications).toHaveLength(1);
+  });
+
+  it('treats quote-only red flag changes as meaningful notifications', async () => {
+    await syncVersionHistory('example.com', 'text v1', quoteChangedSummary);
+
+    const result = await syncVersionHistory(
+      'example.com',
+      'text v2',
+      quoteUpdatedSummary
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.notified).toBe(true);
+    expect(result.summaryDiff?.changedRedFlags).toHaveLength(1);
   });
 });
