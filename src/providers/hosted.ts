@@ -13,7 +13,10 @@ import { parseSummaryObject } from './response-parser';
 
 const DEFAULT_BASE_URL =
   import.meta.env?.VITE_HOSTED_API_BASE_URL?.trim() || 'http://127.0.0.1:8787';
-const REQUEST_TIMEOUT_MS = 5_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = parseTimeoutMs(
+  import.meta.env?.VITE_HOSTED_API_TIMEOUT_MS,
+  30_000
+);
 
 interface HostedAnalyzeSuccessPayload {
   summary?: unknown;
@@ -35,7 +38,8 @@ export class HostedProvider implements LLMProvider {
 
   constructor(
     private baseUrl: string = DEFAULT_BASE_URL,
-    private defaultModel: string = 'tc-guard-cloud'
+    private defaultModel: string = 'tc-guard-cloud',
+    private requestTimeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS
   ) {}
 
   async summarize(
@@ -43,7 +47,7 @@ export class HostedProvider implements LLMProvider {
     options: SummarizeOptions
   ): Promise<Result<Summary, TCGuardError>> {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
 
     try {
       const response = await fetch(`${this.baseUrl}/v1/analyze`, {
@@ -121,6 +125,14 @@ export class HostedProvider implements LLMProvider {
   async validateApiKey(): Promise<boolean> {
     return this.baseUrl.trim().length > 0;
   }
+}
+
+function parseTimeoutMs(
+  value: string | undefined,
+  fallback: number
+): number {
+  const parsed = Number.parseInt(value?.trim() ?? '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
 function getPayloadMessage(

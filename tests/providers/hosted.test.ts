@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getProviderByName } from '@providers/factory';
+import { HostedProvider } from '@providers/hosted';
 import { DEFAULT_SETTINGS } from '@shared/storage';
 import { mockStorage } from '../mocks/chrome';
 
@@ -7,6 +8,7 @@ describe('hosted provider', () => {
   beforeEach(() => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('sends raw text and metadata to the hosted analyze endpoint', async () => {
@@ -110,6 +112,58 @@ describe('hosted provider', () => {
         clientVersion: '1.0.0-test',
       },
     });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('SERVICE_UNAVAILABLE');
+  });
+
+  it('waits for the configured hosted timeout before aborting slow requests', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(
+      (_input: RequestInfo | URL, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal;
+          signal?.addEventListener('abort', () => {
+            const abortError = new Error('Aborted');
+            abortError.name = 'AbortError';
+            reject(abortError);
+          });
+        })
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = new HostedProvider(
+      'https://cloud.example.test',
+      'tc-guard-cloud',
+      30_000
+    );
+
+    let settled = false;
+    const resultPromise = provider
+      .summarize('Formatted prompt', {
+        model: '',
+        systemPrompt: 'ignored',
+        maxTokens: 256,
+        temperature: 0.2,
+        rawText: 'Raw terms text',
+        metadata: {
+          url: 'https://example.com/checkout',
+          domain: 'example.com',
+          sourceType: 'inline',
+          detectionType: 'checkbox',
+          clientVersion: '1.0.0-test',
+        },
+      })
+      .finally(() => {
+        settled = true;
+      });
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(settled).toBe(false);
+
+    await vi.advanceTimersByTimeAsync(25_000);
+    const result = await resultPromise;
 
     expect(result.ok).toBe(false);
     if (result.ok) return;
