@@ -15,6 +15,7 @@ import {
   DEFAULT_TEMPERATURE,
 } from '../src/shared/constants';
 import { computeSeverity } from '../src/summarizer/severity';
+import { deduplicateRedFlagsBySeverity } from '../src/summarizer/red-flags';
 import type { AnalysisSourceType, DetectionType } from '../src/shared/page-analysis';
 
 const DEFAULT_UPSTREAM_URL = 'https://api.openai.com/v1/chat/completions';
@@ -184,14 +185,7 @@ function extractOpenAIContent(json: Record<string, unknown>): string | null {
 }
 
 function deduplicateRedFlags(flags: RedFlag[]): RedFlag[] {
-  const seen = new Map<string, RedFlag>();
-  for (const flag of flags) {
-    const existing = seen.get(flag.category);
-    if (!existing || flag.severity > existing.severity) {
-      seen.set(flag.category, flag);
-    }
-  }
-  return [...seen.values()];
+  return deduplicateRedFlagsBySeverity(flags);
 }
 
 function deduplicateStrings(items: string[]): string[] {

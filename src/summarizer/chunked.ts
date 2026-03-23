@@ -9,6 +9,7 @@ import { SYSTEM_PROMPT } from '@providers/prompts';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import { computeSeverity } from './severity';
 import type { SummarizeOptions } from '@providers/types';
+import { deduplicateRedFlagsBySeverity } from './red-flags';
 
 const MAX_CONCURRENT = 3;
 
@@ -127,14 +128,7 @@ async function reducePhase(
 }
 
 function deduplicateRedFlags(flags: RedFlag[]): RedFlag[] {
-  const seen = new Map<string, RedFlag>();
-  for (const flag of flags) {
-    const existing = seen.get(flag.category);
-    if (!existing || flag.severity > existing.severity) {
-      seen.set(flag.category, flag);
-    }
-  }
-  return [...seen.values()];
+  return deduplicateRedFlagsBySeverity(flags);
 }
 
 function deduplicateStrings(items: string[]): string[] {
