@@ -86,7 +86,23 @@ function extractMainContent(html: string): string {
 }
 
 function removeNonContentElements(el: Element): void {
-  const removeSelectors = ['nav', 'header', 'footer', 'aside', '[role="navigation"]', '.nav', '.header', '.footer', '.sidebar'];
+  const removeSelectors = [
+    'nav',
+    'header',
+    'footer',
+    'aside',
+    'script',
+    'style',
+    'noscript',
+    'template',
+    '[hidden]',
+    '[aria-hidden="true"]',
+    '[role="navigation"]',
+    '.nav',
+    '.header',
+    '.footer',
+    '.sidebar',
+  ];
   for (const selector of removeSelectors) {
     for (const toRemove of el.querySelectorAll(selector)) {
       toRemove.remove();
