@@ -10,10 +10,20 @@ import {
   appendChildren,
   createButton,
   createElement,
+  createIcon,
   createPill,
   createSectionHeading,
   cx,
 } from '@popup/ui';
+import {
+  iconShield,
+  iconShieldCheck,
+  iconAlertTriangle,
+  iconSettings,
+  iconRefresh,
+  iconClock,
+  iconZap,
+} from '@popup/icons';
 import type { Settings } from '@shared/messages';
 import type {
   PageAnalysisLogEntry,
@@ -42,6 +52,12 @@ interface PopupState {
   analysisStartedAt: number | null;
 }
 
+function getSurfaceMode(): 'popup' | 'panel' {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('surface') === 'panel' ? 'panel' : 'popup';
+}
+const surfaceMode = getSurfaceMode();
+
 const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Cache'] as const;
 
 const state: PopupState = {
@@ -62,24 +78,19 @@ let initialized = false;
 async function init(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) return;
-
   const onboardingResult = await getStorage('onboardingCompleted');
   if (onboardingResult.ok && !onboardingResult.data) {
     renderOnboarding(app, () => void initMain(app));
     return;
   }
-
   await initMain(app);
 }
 
 async function initMain(app: HTMLElement): Promise<void> {
   await refreshActiveTabContext();
-
   await refreshPopupState();
   render(app);
-
   try { await chrome.action?.setBadgeText?.({ text: '' }); } catch { /* noop */ }
-
   if (chrome.storage?.onChanged) {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -92,235 +103,432 @@ async function initMain(app: HTMLElement): Promise<void> {
       }
     });
   }
-
   registerActiveTabSync();
 }
+
+// ---------- render ----------
+
+let loadingInterval: ReturnType<typeof setInterval> | null = null;
 
 function render(container: HTMLElement): void {
   container.className = 'tc-page';
   container.textContent = '';
-
   if (!state.loading && state.analysis?.status !== 'analyzing' && loadingInterval) {
     clearInterval(loadingInterval);
     loadingInterval = null;
   }
-
-  appendChildren(container, createHeader());
-
-  const notificationBanner = createNotificationBanner();
-  if (notificationBanner) {
-    container.appendChild(notificationBanner);
+  if (surfaceMode === 'panel') {
+    renderPanel(container);
+  } else {
+    renderPopup(container);
   }
+}
+
+// ========== POPUP MODE ==========
+
+function renderPopup(container: HTMLElement): void {
+  container.appendChild(createCompactHeader());
+  const banner = createNotificationBanner();
+  if (banner) container.appendChild(banner);
 
   if (state.loading) {
-    container.appendChild(createLoadingState('Analyzing this page...'));
+    container.appendChild(createAnalyzingCard('Analyzing this page...'));
     return;
   }
-
   if (state.error && !state.analysis) {
-    container.appendChild(createErrorState(state.error));
-    container.appendChild(createFooter());
+    container.appendChild(createCompactErrorState(state.error));
+    container.appendChild(createActionBar());
     return;
   }
-
   if (!state.analysis) {
     if (isFirstRun()) {
-      container.appendChild(createOnboardingCard());
+      container.appendChild(createCompactWelcome());
     } else {
-      container.appendChild(createIdleState());
+      container.appendChild(createCompactIdleState());
     }
-    container.appendChild(createFooter());
+    container.appendChild(createActionBar());
     return;
   }
-
   switch (state.analysis.status) {
     case 'ready':
       if (state.analysis.summary) {
-        container.appendChild(createSummaryView(state.analysis.summary, state.analysis));
+        container.appendChild(createScoreCard(state.analysis.summary, state.analysis));
+        container.appendChild(createActionBar());
       } else {
-        container.appendChild(createErrorState('Summary is unavailable for this analysis.'));
+        container.appendChild(createCompactErrorState('Summary unavailable.'));
+        container.appendChild(createActionBar());
       }
       break;
     case 'analyzing':
-      container.appendChild(createLoadingState('Analyzing this page...'));
+      container.appendChild(createAnalyzingCard('Analyzing this page...'));
       break;
     case 'needs_provider':
-      container.appendChild(
-        createActionState(
-          'Advanced provider setup required',
-          state.analysis.error ??
-            'Switch to a bring-your-own-provider connection in Settings before analyzing this page.',
-          'Open Settings',
-          showSettings
-        )
-      );
+      container.appendChild(createCompactActionState(
+        iconSettings(28),
+        'Provider setup required',
+        state.analysis.error ?? 'Configure a provider in Settings.',
+        'Open Settings', showSettings
+      ));
       break;
     case 'needs_consent':
-      container.appendChild(createHostedConsentState());
+      container.appendChild(createCompactActionState(
+        iconShield(28),
+        'Enable TC Guard Cloud',
+        'Send T&C text to an LLM for analysis. Not stored or shared.',
+        'Accept & Analyze', () => { void acceptHostedConsentAndAnalyze(); },
+        'Settings', showSettings
+      ));
       break;
     case 'service_unavailable':
-      container.appendChild(
-        createDualActionState(
-          'TC Guard Cloud is unavailable',
-          state.analysis.error ??
-            'Hosted analysis is temporarily unavailable. Try again shortly or switch to an advanced provider.',
-          'Retry',
-          handleAnalyze,
-          'Open Settings',
-          showSettings
-        )
-      );
+      container.appendChild(createCompactActionState(
+        iconAlertTriangle(28),
+        'Cloud unavailable',
+        state.analysis.error ?? 'Try again shortly or switch providers.',
+        'Retry', handleAnalyze, 'Settings', showSettings
+      ));
       break;
     case 'extraction_failed':
-      container.appendChild(
-        createActionState(
-          'Could not extract T&C text',
-          state.analysis.error ??
-            'A legal surface was detected, but the text could not be extracted.',
-          'Analyze Again',
-          handleAnalyze
-        )
-      );
+      container.appendChild(createCompactActionState(
+        iconAlertTriangle(28),
+        'Could not extract text',
+        state.analysis.error ?? 'Legal surface detected but text extraction failed.',
+        'Retry', handleAnalyze
+      ));
+      break;
+    case 'cancelled':
+      container.appendChild(createCompactActionState(
+        iconShield(28), 'Analysis cancelled',
+        'The analysis was stopped before it could finish.',
+        'Analyze Again', handleAnalyze
+      ));
+      container.appendChild(createActionBar());
       break;
     case 'error':
-      container.appendChild(
-        createErrorState(state.analysis.error ?? 'Could not analyze this page.')
-      );
+      container.appendChild(createCompactErrorState(state.analysis.error ?? 'Could not analyze.'));
+      container.appendChild(createActionBar());
       break;
-    case 'no_detection':
-    case 'idle':
     default:
-      container.appendChild(createIdleState());
+      container.appendChild(createCompactIdleState());
+      container.appendChild(createActionBar());
       break;
   }
-
-  container.appendChild(createFooter());
 }
 
-function createHeader(): HTMLElement {
-  const header = createElement('section', 'tc-page-header');
-  const titleBlock = createElement('div');
-  const eyebrow = createElement('p', 'tc-page-eyebrow', 'TC Guard workspace');
-  const title = createElement('h1', 'tc-page-title', 'Terms Overview');
-  const copy = createElement(
-    'p',
-    'tc-page-copy',
-    'Review the active page, rerun analysis, and inspect tracked legal changes from one quiet workspace.'
-  );
-
-  const domainChip = createPill(getCurrentDomain() || 'No active domain', 'muted');
-  domainChip.classList.add('tc-domain-chip');
-
-  appendChildren(titleBlock, eyebrow, title, copy);
-  appendChildren(header, titleBlock, domainChip);
+function createCompactHeader(): HTMLElement {
+  const header = createElement('div', 'tc-compact-header');
+  const brand = createElement('div', 'tc-header-brand');
+  const logo = createElement('img', 'tc-header-logo') as HTMLImageElement;
+  logo.src = chrome.runtime.getURL('icons/tc-guard-48.png');
+  logo.alt = 'TC Guard';
+  const name = createElement('span', 'tc-header-name', 'TC Guard');
+  const domain = createPill(getCurrentDomain() || 'No domain', 'muted');
+  domain.classList.add('tc-domain-chip');
+  appendChildren(brand, logo, name);
+  appendChildren(header, brand, domain);
   return header;
 }
 
-function createIdleState(): HTMLElement {
-  return createActionState(
-    'No T&C detected on this page',
-    'Run a manual analysis if the legal text is hidden behind an interaction or loads late.',
-    'Analyze This Page',
-    handleAnalyze
-  );
+function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLElement {
+  const wrapper = createElement('div');
+  // score hero
+  const hero = createElement('div', 'tc-score-hero');
+  const icon = createElement('div', cx('tc-score-icon', `tc-score-icon--${summary.severity}`));
+  icon.innerHTML = iconShieldCheck(26);
+  const label = createElement('div', cx('tc-score-label', `tc-score-label--${summary.severity}`), `${summary.severity} risk`);
+  const stats = createElement('div', 'tc-stats-row');
+  const flagCount = createElement('span', undefined, `${summary.redFlags.length} red flag${summary.redFlags.length !== 1 ? 's' : ''}`);
+  const dot = createElement('span', 'tc-stats-dot');
+  const pointCount = createElement('span', undefined, `${summary.keyPoints.length} key point${summary.keyPoints.length !== 1 ? 's' : ''}`);
+  appendChildren(stats, flagCount, dot, pointCount);
+  appendChildren(hero, icon, label, stats);
+  wrapper.appendChild(hero);
+  // summary excerpt
+  const excerpt = createElement('p', 'tc-summary-excerpt', summary.summary);
+  excerpt.style.marginTop = '10px';
+  wrapper.appendChild(excerpt);
+  // red flags preview (top 3)
+  if (summary.redFlags.length > 0) {
+    const flagSection = createElement('div', 'tc-flag-preview');
+    flagSection.style.marginTop = '8px';
+    const flagsToShow = summary.redFlags.slice(0, 3);
+    for (const flag of flagsToShow) {
+      const row = createElement('div', cx('tc-flag-preview-row', `tc-flag-preview-row--${flag.severity}`));
+      const fname = createElement('span', 'tc-flag-preview-name', flag.category.replace(/_/g, ' '));
+      const fsev = createElement('span', cx('tc-flag-preview-severity', `tc-flag-preview-severity--${flag.severity}`), flag.severity);
+      appendChildren(row, fname, fsev);
+      flagSection.appendChild(row);
+    }
+    if (summary.redFlags.length > 3) {
+      const more = createElement('span', undefined, `+${summary.redFlags.length - 3} more`);
+      more.style.cssText = 'font-size:11px;color:var(--tc-text-tertiary);margin-top:2px;';
+      flagSection.appendChild(more);
+    }
+    wrapper.appendChild(flagSection);
+  }
+  // metadata
+  const meta = createElement('div', 'tc-meta-row');
+  meta.style.marginTop = '8px';
+  meta.appendChild(createPill(`${formatToken(analysis.sourceType)}`, 'default'));
+  meta.appendChild(createPill(`${formatConfidence(analysis.confidence)} conf`, 'default'));
+  meta.appendChild(createPill(`Updated ${formatTimestamp(analysis.updatedAt)}`, 'muted'));
+  wrapper.appendChild(meta);
+  return wrapper;
 }
 
-function isFirstRun(): boolean {
-  return (
-    state.settings?.activeProvider === 'hosted' &&
-    !state.settings?.hostedConsentAccepted
-  );
-}
-
-function createOnboardingCard(): HTMLElement {
-  const card = createDualActionState(
-    'Welcome to TC Guard',
-    'TC Guard detects Terms & Conditions on any page, summarizes them with AI, and tracks changes over time. Get started by enabling the hosted analysis service, or configure your own LLM provider.',
-    'Get Started',
-    () => { void acceptHostedConsentAndAnalyze(); },
-    'Use Your Own Provider',
-    showSettings
-  );
+function createCompactIdleState(): HTMLElement {
+  const card = createElement('div', 'tc-state-card');
+  const icon = createIcon(iconShield(32), 'tc-state-icon');
+  const title = createElement('div', 'tc-state-title', 'No T&C detected');
+  const copy = createElement('p', 'tc-state-copy', 'Run a manual analysis if legal text loads late or requires interaction.');
+  const actions = createElement('div', 'tc-state-actions');
+  actions.appendChild(createButton('Analyze This Page', 'primary', handleAnalyze));
+  appendChildren(card, icon, title, copy, actions);
   return card;
 }
 
-function createNotificationBanner(): HTMLElement | null {
-  if (state.pendingNotifications.length === 0) {
-    return null;
-  }
-
-  const currentDomain = getCurrentDomain();
-  const currentDomainNotification = state.pendingNotifications.find(
-    (notification) => notification.domain === currentDomain
-  );
-
-  const banner = createElement('section', 'tc-banner');
-  const row = createElement('div', 'tc-banner-row');
-  const copy = createElement('div');
-  const heading = createElement(
-    'p',
-    'tc-banner-title',
-    currentDomainNotification
-      ? `Terms changed on ${currentDomainNotification.domain}`
-      : 'Tracked T&C changes detected'
-  );
-  const body = createElement(
-    'p',
-    'tc-banner-copy',
-    currentDomainNotification
-      ? formatCurrentDomainNotification(currentDomainNotification)
-      : formatGenericNotificationSummary(state.pendingNotifications)
-  );
-
-  const cta = createButton('Open History', 'secondary', () => {
-    showHistory(resolveNotificationTargetDomain());
-  });
-
-  appendChildren(copy, heading, body);
-  appendChildren(row, copy, cta);
-  banner.appendChild(row);
-  return banner;
+function createCompactWelcome(): HTMLElement {
+  const card = createElement('div', 'tc-state-card');
+  const icon = createIcon(iconShield(32), 'tc-state-icon');
+  const title = createElement('div', 'tc-state-title', 'Welcome to TC Guard');
+  const copy = createElement('p', 'tc-state-copy', 'Detect, summarize, and track T&C changes with AI.');
+  const actions = createElement('div', 'tc-state-actions');
+  actions.appendChild(createButton('Get Started', 'primary', () => { void acceptHostedConsentAndAnalyze(); }));
+  actions.appendChild(createButton('Use Own Provider', 'secondary', showSettings));
+  appendChildren(card, icon, title, copy, actions);
+  return card;
 }
 
-let loadingInterval: ReturnType<typeof setInterval> | null = null;
+function createCompactErrorState(error: string): HTMLElement {
+  const card = createElement('div', 'tc-state-card');
+  const icon = createIcon(iconAlertTriangle(32), 'tc-state-icon');
+  const title = createElement('div', 'tc-state-title', 'Something went wrong');
+  const copy = createElement('p', 'tc-state-copy', mapErrorToActionable(error));
+  const actions = createElement('div', 'tc-state-actions');
+  actions.appendChild(createButton('Retry', 'primary', handleAnalyze));
+  actions.appendChild(createButton('Settings', 'secondary', showSettings));
+  appendChildren(card, icon, title, copy, actions);
+  return card;
+}
 
-function createLoadingState(label: string): HTMLElement {
-  const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
-  const elapsed = state.analysisStartedAt
-    ? Math.floor((Date.now() - state.analysisStartedAt) / 1000)
-    : 0;
-  const timerLabel = elapsed > 0 ? `${label} (${elapsed}s)` : label;
-  const card = createStateCard('Running analysis', timerLabel, 'Working');
-  const progressSection = createProgressSection(
-    getProgressPercent(state.analysis),
-    stageLabel,
-    getProgressLogs(state.analysis)
-  );
-  const actions = card.querySelector('.tc-state-actions');
-  if (actions) {
-    card.insertBefore(progressSection, actions);
-  } else {
-    card.appendChild(progressSection);
+function createCompactActionState(
+  iconSvg: string, titleText: string, bodyText: string,
+  primaryLabel: string, primaryAction: () => void,
+  secondaryLabel?: string, secondaryAction?: () => void
+): HTMLElement {
+  const card = createElement('div', 'tc-state-card');
+  const icon = createIcon(iconSvg, 'tc-state-icon');
+  const title = createElement('div', 'tc-state-title', titleText);
+  const copy = createElement('p', 'tc-state-copy', bodyText);
+  const actions = createElement('div', 'tc-state-actions');
+  actions.appendChild(createButton(primaryLabel, 'primary', primaryAction));
+  if (secondaryLabel && secondaryAction) {
+    actions.appendChild(createButton(secondaryLabel, 'secondary', secondaryAction));
   }
-  const copy = card.querySelector('.tc-state-copy');
-  if (copy && state.analysisStartedAt) {
+  appendChildren(card, icon, title, copy, actions);
+  return card;
+}
+
+function createAnalyzingCard(label: string): HTMLElement {
+  const card = createElement('div', 'tc-analyzing-card');
+  const icon = createIcon(iconZap(36), 'tc-analyzing-icon');
+  const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
+  const elapsed = state.analysisStartedAt ? Math.floor((Date.now() - state.analysisStartedAt) / 1000) : 0;
+  const title = createElement('div', 'tc-state-title', elapsed > 0 ? `${label} (${elapsed}s)` : label);
+  const progressWrap = createElement('div', 'tc-progress-compact');
+  const track = createElement('div', 'tc-progress-track');
+  const fill = createElement('div', 'tc-progress-fill');
+  const pct = getProgressPercent(state.analysis);
+  fill.style.width = `${pct}%`;
+  track.appendChild(fill);
+  const pctLabel = createElement('span', 'tc-progress-percent', `${pct}%`);
+  const stageLine = createElement('div', 'tc-progress-label', stageLabel);
+  appendChildren(progressWrap, track, pctLabel, stageLine);
+  const actions = createElement('div', 'tc-state-actions');
+  actions.appendChild(createButton('Cancel Analysis', 'ghost', () => { void handleCancelAnalysis(); }));
+  appendChildren(card, icon, title, progressWrap, actions);
+  if (state.analysisStartedAt) {
     if (loadingInterval) clearInterval(loadingInterval);
     loadingInterval = setInterval(() => {
       const s = Math.floor((Date.now() - (state.analysisStartedAt ?? Date.now())) / 1000);
-      copy.textContent = `${label} (${s}s)`;
+      title.textContent = `${label} (${s}s)`;
     }, 1000);
   }
-  card.querySelector('.tc-state-actions')?.appendChild(
-    createButton('Open Settings', 'ghost', showSettings)
-  );
   return card;
 }
 
-function createProgressSection(
-  progressPercent: number,
-  stageLabel: string,
-  logs: PageAnalysisLogEntry[]
-): HTMLElement {
+function createActionBar(): HTMLElement {
+  const bar = createElement('div', 'tc-action-bar');
+  const detailBtn = createButton('View Details', 'primary', () => { void handleKeepOpen(); });
+  const refreshBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
+  refreshBtn.type = 'button';
+  refreshBtn.innerHTML = iconRefresh(16);
+  refreshBtn.title = 'Re-analyze';
+  refreshBtn.addEventListener('click', () => handleAnalyze());
+  const settingsBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
+  settingsBtn.type = 'button';
+  settingsBtn.innerHTML = iconSettings(16);
+  settingsBtn.title = 'Settings';
+  settingsBtn.addEventListener('click', showSettings);
+  const historyBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
+  historyBtn.type = 'button';
+  historyBtn.innerHTML = iconClock(16);
+  historyBtn.title = 'History';
+  historyBtn.addEventListener('click', () => showHistory());
+  appendChildren(bar, detailBtn, refreshBtn, settingsBtn, historyBtn);
+  return bar;
+}
+
+function createNotificationBanner(): HTMLElement | null {
+  if (state.pendingNotifications.length === 0) return null;
+  const currentDomain = getCurrentDomain();
+  const current = state.pendingNotifications.find(n => n.domain === currentDomain);
+  const banner = createElement('div', 'tc-banner');
+  const text = createElement('span', 'tc-banner-text',
+    current
+      ? `Terms changed on ${current.domain}`
+      : `${state.pendingNotifications.length} domain${state.pendingNotifications.length > 1 ? 's' : ''} with T&C changes`
+  );
+  const btn = createButton('History', 'ghost', () => showHistory(resolveNotificationTargetDomain()));
+  appendChildren(banner, text, btn);
+  return banner;
+}
+
+// ========== PANEL MODE ==========
+
+function renderPanel(container: HTMLElement): void {
+  container.appendChild(createCompactHeader());
+  const banner = createNotificationBanner();
+  if (banner) container.appendChild(banner);
+
+  if (state.loading) {
+    container.appendChild(createPanelLoadingState('Analyzing this page...'));
+    return;
+  }
+  if (state.error && !state.analysis) {
+    container.appendChild(createPanelErrorState(state.error));
+    container.appendChild(createPanelFooter());
+    return;
+  }
+  if (!state.analysis) {
+    if (isFirstRun()) {
+      container.appendChild(createCompactWelcome());
+    } else {
+      container.appendChild(createCompactIdleState());
+    }
+    container.appendChild(createPanelFooter());
+    return;
+  }
+  switch (state.analysis.status) {
+    case 'ready':
+      if (state.analysis.summary) {
+        container.appendChild(createPanelSummaryView(state.analysis.summary, state.analysis));
+      } else {
+        container.appendChild(createPanelErrorState('Summary unavailable.'));
+      }
+      break;
+    case 'analyzing':
+      container.appendChild(createPanelLoadingState('Analyzing this page...'));
+      break;
+    case 'needs_provider':
+      container.appendChild(createCompactActionState(iconSettings(28), 'Provider setup required',
+        state.analysis.error ?? 'Configure a provider in Settings.', 'Open Settings', showSettings));
+      break;
+    case 'needs_consent':
+      container.appendChild(createCompactActionState(iconShield(28), 'Enable TC Guard Cloud',
+        'Send T&C text to an LLM for analysis.', 'Accept & Analyze',
+        () => { void acceptHostedConsentAndAnalyze(); }, 'Settings', showSettings));
+      break;
+    case 'service_unavailable':
+      container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Cloud unavailable',
+        state.analysis.error ?? 'Try again shortly.', 'Retry', handleAnalyze, 'Settings', showSettings));
+      break;
+    case 'extraction_failed':
+      container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Could not extract text',
+        state.analysis.error ?? 'Text extraction failed.', 'Retry', handleAnalyze));
+      break;
+    case 'cancelled':
+      container.appendChild(createCompactActionState(iconShield(28), 'Analysis cancelled',
+        'The analysis was stopped before it could finish.', 'Analyze Again', handleAnalyze));
+      break;
+    case 'error':
+      container.appendChild(createPanelErrorState(state.analysis.error ?? 'Could not analyze.'));
+      break;
+    default:
+      container.appendChild(createCompactIdleState());
+      break;
+  }
+  container.appendChild(createPanelFooter());
+}
+
+function createPanelSummaryView(summary: Summary, analysis: PageAnalysisRecord): HTMLElement {
+  const card = createElement('section', 'tc-card');
+  const topline = createElement('div', 'tc-summary-topline');
+  topline.appendChild(createSeverityPill(summary.severity));
+  topline.appendChild(createPill(`Updated ${formatTimestamp(analysis.updatedAt)}`, 'muted'));
+  const heading = createSectionHeading('Summary', 'AI-generated summary of detected terms.');
+  const metaRow = createMetadataRow(analysis);
+  const summaryCopy = createElement('p', 'tc-summary-copy', summary.summary);
+  appendChildren(card, topline, heading, metaRow, summaryCopy);
+  if (summary.keyPoints.length > 0) {
+    card.appendChild(createDivider());
+    card.appendChild(createKeyPointsSection(summary.keyPoints, `Key Points (${summary.keyPoints.length})`));
+  }
+  if (summary.redFlags.length > 0) {
+    card.appendChild(createDivider());
+    card.appendChild(createRedFlagsSection(summary.redFlags));
+  }
+  return card;
+}
+
+function createPanelLoadingState(label: string): HTMLElement {
+  const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
+  const elapsed = state.analysisStartedAt ? Math.floor((Date.now() - state.analysisStartedAt) / 1000) : 0;
+  const timerLabel = elapsed > 0 ? `${label} (${elapsed}s)` : label;
+  const card = createElement('div', 'tc-state-card');
+  card.style.textAlign = 'left';
+  card.style.alignItems = 'stretch';
+  const title = createElement('div', 'tc-state-title', timerLabel);
+  card.appendChild(title);
+  const progressSection = createProgressSection(getProgressPercent(state.analysis), stageLabel, getProgressLogs(state.analysis));
+  card.appendChild(progressSection);
+  const actions = createElement('div', 'tc-state-actions');
+  actions.appendChild(createButton('Open Settings', 'ghost', showSettings));
+  card.appendChild(actions);
+  if (state.analysisStartedAt) {
+    if (loadingInterval) clearInterval(loadingInterval);
+    loadingInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - (state.analysisStartedAt ?? Date.now())) / 1000);
+      title.textContent = `${label} (${s}s)`;
+    }, 1000);
+  }
+  return card;
+}
+
+function createPanelErrorState(error: string): HTMLElement {
+  const card = createElement('div', 'tc-state-card');
+  card.style.textAlign = 'left';
+  card.style.alignItems = 'stretch';
+  const title = createElement('div', 'tc-state-title', 'Something went wrong');
+  const copy = createElement('p', 'tc-state-copy', mapErrorToActionable(error));
+  const actions = createElement('div', 'tc-state-actions');
+  appendChildren(actions, createButton('Retry', 'primary', handleAnalyze), createButton('Settings', 'secondary', showSettings));
+  appendChildren(card, title, copy, actions);
+  return card;
+}
+
+function createPanelFooter(): HTMLElement {
+  const footer = createElement('div', 'tc-footer-nav');
+  appendChildren(footer,
+    createButton('Re-analyze', 'pill', () => handleAnalyze()),
+    createButton('Settings', 'pill', showSettings),
+    createButton('History', 'pill', () => showHistory()),
+  );
+  return footer;
+}
+
+// ========== SHARED COMPONENTS ==========
+
+function createProgressSection(progressPercent: number, stageLabel: string, logs: PageAnalysisLogEntry[]): HTMLElement {
   const section = createElement('section', 'tc-progress-shell');
   const meta = createElement('div', 'tc-progress-meta');
   const stage = createElement('span', 'tc-progress-stage', stageLabel);
@@ -329,27 +537,16 @@ function createProgressSection(
   const fill = createElement('div', 'tc-progress-fill');
   fill.style.width = `${progressPercent}%`;
   track.appendChild(fill);
-
   const latestLog = logs[logs.length - 1];
-  const caption = createElement(
-    'p',
-    'tc-progress-caption',
-    latestLog?.message ?? 'Starting analysis pipeline.'
-  );
-
+  const caption = createElement('p', 'tc-progress-caption', latestLog?.message ?? 'Starting analysis pipeline.');
   appendChildren(meta, stage, percent);
   appendChildren(section, meta, track, caption);
-
-  if (logs.length > 0) {
-    section.appendChild(createLogStream(logs));
-  }
-
+  if (logs.length > 0) section.appendChild(createLogStream(logs));
   return section;
 }
 
 function createLogStream(logs: PageAnalysisLogEntry[]): HTMLElement {
   const stream = createElement('div', 'tc-log-stream');
-
   for (const log of [...logs].reverse()) {
     const row = createElement('div', cx('tc-log-row', `tc-log-row--${log.level}`));
     const dot = createElement('span', 'tc-log-dot');
@@ -358,145 +555,12 @@ function createLogStream(logs: PageAnalysisLogEntry[]): HTMLElement {
     appendChildren(row, dot, copy, time);
     stream.appendChild(row);
   }
-
   return stream;
-}
-
-function createErrorState(error: string): HTMLElement {
-  const actionableError = mapErrorToActionable(error);
-  const card = createStateCard('Something went wrong', actionableError, 'Error');
-  const actions = card.querySelector('.tc-state-actions');
-  if (actions) {
-    appendChildren(
-      actions as HTMLElement,
-      createButton('Retry', 'primary', handleAnalyze),
-      createButton('Open Settings', 'secondary', showSettings)
-    );
-  }
-  return card;
-}
-
-function mapErrorToActionable(error: string): string {
-  const lower = error.toLowerCase();
-  if (lower.includes('network') || lower.includes('connect')) {
-    return 'Check your internet connection and try again.';
-  }
-  if (lower.includes('rate limit')) return error; // already has timing info
-  if (lower.includes('invalid') && lower.includes('response')) {
-    return 'The AI returned an unexpected format. Try a different model in Settings.';
-  }
-  if (lower.includes('api key') || lower.includes('credentials') || lower.includes('401')) {
-    return 'Provider rejected the request. Check your API key in Settings.';
-  }
-  return error;
-}
-
-function createActionState(
-  title: string,
-  body: string,
-  buttonLabel: string,
-  onClick: () => void
-): HTMLElement {
-  const card = createStateCard(title, body, 'Ready');
-  const actions = card.querySelector('.tc-state-actions');
-  if (actions) {
-    actions.appendChild(createButton(buttonLabel, 'primary', onClick));
-  }
-  return card;
-}
-
-function createDualActionState(
-  title: string,
-  body: string,
-  primaryLabel: string,
-  primaryAction: () => void,
-  secondaryLabel: string,
-  secondaryAction: () => void
-): HTMLElement {
-  const card = createStateCard(title, body, 'Attention');
-  const actions = card.querySelector('.tc-state-actions');
-  if (actions) {
-    appendChildren(
-      actions as HTMLElement,
-      createButton(primaryLabel, 'primary', primaryAction),
-      createButton(secondaryLabel, 'secondary', secondaryAction)
-    );
-  }
-  return card;
-}
-
-function createHostedConsentState(): HTMLElement {
-  return createDualActionState(
-    'Enable TC Guard Cloud',
-    state.analysis?.error ??
-      'TC Guard Cloud sends the extracted T&C text to an LLM for summarization. The text is not stored or shared beyond the analysis request. You can switch to a self-hosted provider at any time in Settings.',
-    'Accept and Analyze',
-    () => {
-      void acceptHostedConsentAndAnalyze();
-    },
-    'Open Settings',
-    showSettings
-  );
-}
-
-function createStateCard(
-  title: string,
-  body: string,
-  kicker: string
-): HTMLElement {
-  const card = createElement('section', 'tc-state-card');
-  const kickerNode = createElement('p', 'tc-state-kicker', kicker);
-  const heading = createElement('h2', 'tc-state-title', title);
-  const copy = createElement('p', 'tc-state-copy', body);
-  const actions = createElement('div', 'tc-state-actions');
-  appendChildren(card, kickerNode, heading, copy, actions);
-  return card;
-}
-
-function createSummaryView(
-  summary: Summary,
-  analysis: PageAnalysisRecord
-): HTMLElement {
-  const card = createElement('section', 'tc-card');
-  const topline = createElement('div', 'tc-summary-topline');
-  const severityPill = createSeverityPill(summary.severity);
-  const analyzedPill = createPill(
-    `Updated ${formatTimestamp(analysis.updatedAt)}`,
-    'muted'
-  );
-  appendChildren(topline, severityPill, analyzedPill);
-
-  const heading = createSectionHeading(
-    'Latest summary',
-    'A concise reading of the current agreement on this page.'
-  );
-
-  const metaRow = createMetadataRow(analysis);
-  const summaryCopy = createElement('p', 'tc-summary-copy', summary.summary);
-
-  appendChildren(card, topline, heading, metaRow, summaryCopy);
-
-  if (summary.keyPoints.length > 0) {
-    card.appendChild(createDivider());
-    card.appendChild(
-      createKeyPointsSection(summary.keyPoints, `Key Points (${summary.keyPoints.length})`)
-    );
-  }
-
-  if (summary.redFlags.length > 0) {
-    card.appendChild(createDivider());
-    card.appendChild(createRedFlagsSection(summary.redFlags));
-  }
-
-  return card;
 }
 
 function createKeyPointsSection(points: string[], title: string): HTMLElement {
   const section = createElement('section');
-  section.appendChild(
-    createSectionHeading(title, 'Structured takeaways from the detected legal language.')
-  );
-
+  section.appendChild(createSectionHeading(title, 'Structured takeaways from the detected legal language.'));
   const list = createElement('div', 'tc-list');
   for (const point of points) {
     const row = createElement('div', 'tc-list-item');
@@ -505,141 +569,70 @@ function createKeyPointsSection(points: string[], title: string): HTMLElement {
     appendChildren(row, bullet, copy);
     list.appendChild(row);
   }
-
   section.appendChild(list);
   return section;
 }
 
-function createRedFlagsSection(
-  flags: Array<{ category: string; description: string; severity: string; quote: string }>
-): HTMLElement {
+function createRedFlagsSection(flags: Array<{ category: string; description: string; severity: string; quote: string }>): HTMLElement {
   const section = createElement('section');
-  section.appendChild(
-    createSectionHeading(
-      `Red Flags (${flags.length})`,
-      'Expandable clauses that look riskier than the rest of the agreement.'
-    )
-  );
-
+  section.appendChild(createSectionHeading(`Red Flags (${flags.length})`, 'Clauses that look riskier than the rest of the agreement.'));
   const stack = createElement('div', 'tc-flag-stack');
-  for (const flag of flags) {
-    stack.appendChild(createRedFlagCard(flag));
-  }
+  for (const flag of flags) stack.appendChild(createRedFlagCard(flag));
   section.appendChild(stack);
   return section;
 }
 
-function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
-  const row = createElement('div', 'tc-meta-row');
-  const chips = [
-    `Source: ${formatToken(analysis.sourceType)}`,
-    `Detection: ${formatToken(analysis.detectionType)}`,
-    `Confidence: ${formatConfidence(analysis.confidence)}`,
-  ];
-
-  for (const chipText of chips) {
-    row.appendChild(createPill(chipText, 'default'));
-  }
-
-  return row;
-}
-
-function createSeverityPill(severity: string): HTMLElement {
-  return createPill(
-    severity.toUpperCase(),
-    isSeverity(severity) ? severity : 'default'
-  );
-}
-
-function createRedFlagCard(flag: {
-  category: string;
-  description: string;
-  severity: string;
-  quote: string;
-}): HTMLElement {
-  const card = createElement(
-    'div',
-    cx(
-      'tc-flag-card',
-      isExpandableSeverity(flag.severity) && `tc-flag-card--${flag.severity}`
-    )
-  );
-
+function createRedFlagCard(flag: { category: string; description: string; severity: string; quote: string }): HTMLElement {
+  const card = createElement('div', cx('tc-flag-card', isExpandableSeverity(flag.severity) && `tc-flag-card--${flag.severity}`));
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-expanded', 'false');
-
   const header = createElement('div', 'tc-flag-header');
-  const title = createElement(
-    'span',
-    'tc-flag-title',
-    flag.category.replace(/_/g, ' ')
-  );
+  const title = createElement('span', 'tc-flag-title', flag.category.replace(/_/g, ' '));
   const severityPill = createSeverityPill(flag.severity);
   const details = createElement('div', 'tc-flag-details');
   const desc = createElement('p', 'tc-flag-description', flag.description);
-
   appendChildren(header, title, severityPill);
   details.appendChild(desc);
-
-  if (flag.quote) {
-    details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
-  }
-
+  if (flag.quote) details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
   appendChildren(card, header, details);
-
   const toggle = (): void => {
     const expanded = card.getAttribute('aria-expanded') === 'true';
     card.setAttribute('aria-expanded', String(!expanded));
     details.style.maxHeight = expanded ? '0' : '320px';
   };
-
   card.addEventListener('click', toggle);
-  card.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      toggle();
-    }
-  });
-
+  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
   return card;
 }
 
-function createFooter(): HTMLElement {
-  const footer = createElement('div', 'tc-footer-nav');
-  appendChildren(
-    footer,
-    createButton('Keep Open', 'pill', () => {
-      void handleKeepOpen();
-    }),
-    createButton('Settings', 'pill', showSettings),
-    createButton('History', 'pill', () => {
-      showHistory();
-    })
-  );
-  return footer;
+function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
+  const row = createElement('div', 'tc-meta-row');
+  row.appendChild(createPill(`Source: ${formatToken(analysis.sourceType)}`, 'default'));
+  row.appendChild(createPill(`Detection: ${formatToken(analysis.detectionType)}`, 'default'));
+  row.appendChild(createPill(`Confidence: ${formatConfidence(analysis.confidence)}`, 'default'));
+  return row;
 }
+
+function createSeverityPill(severity: string): HTMLElement {
+  return createPill(severity.toUpperCase(), isSeverity(severity) ? severity : 'default');
+}
+
+function createDivider(): HTMLElement {
+  return createElement('div', 'tc-section-divider');
+}
+
+// ========== ACTIONS ==========
 
 async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void> {
   state.loading = true;
   state.error = null;
   state.analysisStartedAt = Date.now();
   renderCurrentApp();
-
   try {
-    if (state.tabId === null) {
-      throw new Error('No active tab');
-    }
-
-    const payload = settingsOverride
-      ? { tabId: state.tabId, settingsOverride }
-      : { tabId: state.tabId };
-
-    const response = (await chrome.tabs.sendMessage(state.tabId, {
-      type: 'DETECT_TC',
-      payload,
-    })) as { ok?: boolean; error?: string } | undefined;
-
+    if (state.tabId === null) throw new Error('No active tab');
+    const payload = settingsOverride ? { tabId: state.tabId, settingsOverride } : { tabId: state.tabId };
+    const response = (await chrome.tabs.sendMessage(state.tabId, { type: 'DETECT_TC', payload })) as { ok?: boolean; error?: string } | undefined;
     await refreshPopupState();
     if (response && response.ok === false && !state.analysis) {
       state.error = response.error ?? 'Could not analyze this page.';
@@ -654,16 +647,25 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
   }
 }
 
+async function handleCancelAnalysis(): Promise<void> {
+  if (state.tabId === null) return;
+  try {
+    await chrome.tabs.sendMessage(state.tabId, { type: 'CANCEL_TC', payload: { tabId: state.tabId } });
+    await sendToBackground({ type: 'CANCEL_PAGE_ANALYSIS', payload: { tabId: state.tabId } });
+  } catch { /* noop */ }
+  state.loading = false;
+  state.analysisStartedAt = null;
+  if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+  await refreshPopupState();
+  renderCurrentApp();
+}
+
 async function handleKeepOpen(): Promise<void> {
   try {
     const response = await sendToBackground({
       type: 'OPEN_WORKSPACE_SURFACE',
-      payload: {
-        tabId: state.tabId ?? undefined,
-        windowId: state.windowId ?? undefined,
-      },
+      payload: { tabId: state.tabId ?? undefined, windowId: state.windowId ?? undefined },
     });
-
     if (response && typeof response === 'object' && 'ok' in response && response.ok === false) {
       state.error = 'Could not open a persistent TC Guard workspace.';
       renderCurrentApp();
@@ -676,109 +678,58 @@ async function handleKeepOpen(): Promise<void> {
 
 async function acceptHostedConsentAndAnalyze(): Promise<void> {
   const settingsResult = await getStorage('settings');
-  if (!settingsResult.ok) {
-    state.error = 'Could not update TC Guard Cloud settings.';
-    renderCurrentApp();
-    return;
-  }
-
-  const saveResult = await setStorage('settings', {
-    ...settingsResult.data,
-    hostedConsentAccepted: true,
-  });
-  if (!saveResult.ok) {
-    state.error = 'Could not save TC Guard Cloud consent.';
-    renderCurrentApp();
-    return;
-  }
-
-  state.analysis = state.analysis
-    ? {
-        ...state.analysis,
-        status: 'analyzing',
-        error: null,
-      }
-    : state.analysis;
-
+  if (!settingsResult.ok) { state.error = 'Could not update settings.'; renderCurrentApp(); return; }
+  const saveResult = await setStorage('settings', { ...settingsResult.data, hostedConsentAccepted: true });
+  if (!saveResult.ok) { state.error = 'Could not save consent.'; renderCurrentApp(); return; }
+  state.analysis = state.analysis ? { ...state.analysis, status: 'analyzing', error: null } : state.analysis;
   await handleAnalyze({ hostedConsentAccepted: true });
 }
+
+// ========== SUB-VIEWS ==========
 
 function showSettings(): void {
   const app = document.getElementById('app');
   if (!app) return;
-
   app.className = 'tc-page';
   app.textContent = '';
-
   const panel = createElement('section', 'tc-settings-panel');
   const body = createElement('div', 'tc-settings-body');
   const contentDiv = createElement('div');
   const tabBar = createElement('div', 'tc-tabs');
-
-  appendChildren(
-    body,
-    createViewHeader('Settings', 'Tune providers, detection rules, notifications, and cache behavior.'),
-    tabBar,
-    contentDiv
-  );
+  appendChildren(body, createViewHeader('Settings', 'Providers, detection, notifications, and cache.'), tabBar, contentDiv);
   panel.appendChild(body);
   app.appendChild(panel);
-
   const buttons: HTMLButtonElement[] = [];
-
   for (const tab of SETTINGS_TABS) {
     const button = createElement('button', 'tc-tab', tab) as HTMLButtonElement;
     button.type = 'button';
     button.addEventListener('click', async () => {
       setActiveTab(buttons, button);
-
       switch (tab) {
-        case 'Providers':
-          await renderProviderSettings(contentDiv);
-          break;
-        case 'Detection':
-          await renderDetectionSettings(contentDiv);
-          break;
-        case 'Notifications':
-          await renderNotificationSettings(contentDiv);
-          break;
-        case 'Domains':
-          await renderDomainSettings(contentDiv);
-          break;
-        case 'Cache':
-          await renderCacheSettings(contentDiv);
-          break;
+        case 'Providers': await renderProviderSettings(contentDiv); break;
+        case 'Detection': await renderDetectionSettings(contentDiv); break;
+        case 'Notifications': await renderNotificationSettings(contentDiv); break;
+        case 'Domains': await renderDomainSettings(contentDiv); break;
+        case 'Cache': await renderCacheSettings(contentDiv); break;
       }
     });
     buttons.push(button);
     tabBar.appendChild(button);
   }
-
   const firstTab = buttons[0];
-  if (firstTab) {
-    setActiveTab(buttons, firstTab);
-  }
+  if (firstTab) setActiveTab(buttons, firstTab);
   void renderProviderSettings(contentDiv);
 }
 
 function showHistory(initialDomain?: string): void {
   const app = document.getElementById('app');
   if (!app) return;
-
   app.className = 'tc-page';
   app.textContent = '';
-
   const panel = createElement('section', 'tc-history-panel');
   const body = createElement('div', 'tc-history-body');
   const contentDiv = createElement('div');
-  appendChildren(
-    body,
-    createViewHeader(
-      'History',
-      'Inspect saved versions and compare how a domain’s terms evolve over time.'
-    ),
-    contentDiv
-  );
+  appendChildren(body, createViewHeader('History', 'Inspect saved versions and compare T&C changes over time.'), contentDiv);
   panel.appendChild(body);
   app.appendChild(panel);
   void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain());
@@ -793,23 +744,14 @@ function createViewHeader(title: string, subtitle: string): HTMLElement {
 }
 
 function handleBack(): void {
-  void refreshPopupState().then(() => {
-    renderCurrentApp();
-  });
+  void refreshPopupState().then(() => renderCurrentApp());
 }
 
-function setActiveTab(
-  buttons: HTMLButtonElement[],
-  activeButton: HTMLButtonElement
-): void {
-  for (const button of buttons) {
-    button.classList.toggle('is-active', button === activeButton);
-  }
+function setActiveTab(buttons: HTMLButtonElement[], activeButton: HTMLButtonElement): void {
+  for (const button of buttons) button.classList.toggle('is-active', button === activeButton);
 }
 
-function createDivider(): HTMLElement {
-  return createElement('div', 'tc-section-divider');
-}
+// ========== STATE ==========
 
 async function refreshPopupState(): Promise<void> {
   await prunePageAnalysisState();
@@ -820,38 +762,23 @@ async function refreshPopupState(): Promise<void> {
 }
 
 async function refreshPageAnalysis(): Promise<void> {
-  if (!state.tabUrl && state.tabId === null) {
-    state.analysis = null;
-    return;
-  }
-
+  if (!state.tabUrl && state.tabId === null) { state.analysis = null; return; }
   if (state.tabUrl) {
     const analysisByUrl = await getPageAnalysisByUrl(state.tabUrl);
     if (analysisByUrl) {
-      state.analysis = {
-        ...analysisByUrl,
-        tabId: state.tabId ?? analysisByUrl.tabId,
-      };
+      state.analysis = { ...analysisByUrl, tabId: state.tabId ?? analysisByUrl.tabId };
       if (state.analysis.status === 'analyzing') {
-        state.analysisStartedAt =
-          state.analysisStartedAt ??
-          state.analysis.progressLogs?.[0]?.timestamp ??
-          state.analysis.updatedAt;
+        state.analysisStartedAt = state.analysisStartedAt ?? state.analysis.progressLogs?.[0]?.timestamp ?? state.analysis.updatedAt;
       } else if (!state.loading) {
         state.analysisStartedAt = null;
       }
       state.error = null;
-      if (state.analysis.domain) {
-        state.domain = state.analysis.domain;
-      }
+      if (state.analysis.domain) state.domain = state.analysis.domain;
       return;
     }
   }
-
   state.analysis = null;
-  if (!state.loading) {
-    state.analysisStartedAt = null;
-  }
+  if (!state.loading) state.analysisStartedAt = null;
   state.error = null;
 }
 
@@ -861,30 +788,21 @@ async function refreshNotifications(): Promise<void> {
 
 function renderCurrentApp(): void {
   const app = document.getElementById('app');
-  if (app) {
-    render(app);
-  }
+  if (app) render(app);
 }
 
 async function refreshActiveTabContext(): Promise<void> {
   const tab = await getCurrentTargetTab();
   const previousTabId = state.tabId;
   const previousUrl = state.tabUrl;
-
   state.tabId = tab?.id ?? null;
   state.windowId = typeof tab?.windowId === 'number' ? tab.windowId : null;
   state.tabUrl = tab?.url ?? '';
-
   if (tab?.url) {
-    try {
-      state.domain = new URL(tab.url).hostname;
-    } catch {
-      state.domain = 'unknown';
-    }
+    try { state.domain = new URL(tab.url).hostname; } catch { state.domain = 'unknown'; }
   } else {
     state.domain = 'unknown';
   }
-
   if (previousTabId !== state.tabId || previousUrl !== state.tabUrl) {
     state.loading = false;
     state.analysisStartedAt = null;
@@ -892,20 +810,14 @@ async function refreshActiveTabContext(): Promise<void> {
 }
 
 function registerActiveTabSync(): void {
-  chrome.tabs.onActivated?.addListener(() => {
-    void refreshForCurrentTab();
-  });
-
+  chrome.tabs.onActivated?.addListener(() => { void refreshForCurrentTab(); });
   chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
     const navigated = typeof changeInfo.url === 'string' || changeInfo.status === 'complete';
     if (!navigated) return;
     if (state.tabId !== null && tabId !== state.tabId) return;
     void refreshForCurrentTab();
   });
-
-  chrome.windows?.onFocusChanged?.addListener(() => {
-    void refreshForCurrentTab();
-  });
+  chrome.windows?.onFocusChanged?.addListener(() => { void refreshForCurrentTab(); });
 }
 
 async function refreshForCurrentTab(): Promise<void> {
@@ -917,10 +829,7 @@ async function refreshForCurrentTab(): Promise<void> {
 async function getCurrentTargetTab(): Promise<chrome.tabs.Tab | undefined> {
   const preferred = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const preferredBrowserTab = preferred.find(isUserBrowsableTab);
-  if (preferredBrowserTab) {
-    return preferredBrowserTab;
-  }
-
+  if (preferredBrowserTab) return preferredBrowserTab;
   const activeTabs = await chrome.tabs.query({ active: true });
   return activeTabs.find(isUserBrowsableTab) ?? activeTabs[0];
 }
@@ -928,14 +837,32 @@ async function getCurrentTargetTab(): Promise<chrome.tabs.Tab | undefined> {
 function isUserBrowsableTab(tab: chrome.tabs.Tab): boolean {
   const url = tab.url ?? '';
   const extensionRoot = chrome.runtime.getURL('');
+  return url.length > 0 && !url.startsWith(extensionRoot) && !url.startsWith('chrome://') && !url.startsWith('edge://') && !url.startsWith('about:');
+}
 
-  return (
-    url.length > 0 &&
-    !url.startsWith(extensionRoot) &&
-    !url.startsWith('chrome://') &&
-    !url.startsWith('edge://') &&
-    !url.startsWith('about:')
-  );
+// ========== HELPERS ==========
+
+function mapErrorToActionable(error: string): string {
+  const lower = error.toLowerCase();
+  if (lower.includes('network') || lower.includes('connect')) return 'Check your internet connection and try again.';
+  if (lower.includes('rate limit')) return error;
+  if (lower.includes('invalid') && lower.includes('response')) return 'Unexpected format from AI. Try a different model in Settings.';
+  if (lower.includes('api key') || lower.includes('credentials') || lower.includes('401')) return 'Provider rejected the request. Check your API key in Settings.';
+  return error;
+}
+
+function isFirstRun(): boolean {
+  return state.settings?.activeProvider === 'hosted' && !state.settings?.hostedConsentAccepted;
+}
+
+function getCurrentDomain(): string {
+  return state.analysis?.domain ?? state.domain;
+}
+
+function resolveNotificationTargetDomain(): string {
+  const cd = getCurrentDomain();
+  const match = state.pendingNotifications.find(n => n.domain === cd);
+  return match?.domain ?? state.pendingNotifications[0]?.domain ?? cd;
 }
 
 function formatConfidence(value: number | null): string {
@@ -949,73 +876,21 @@ function formatToken(value: string | null): string {
 }
 
 function formatTimestamp(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  return new Date(timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function formatLogTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
 }
 
 function getProgressPercent(analysis: PageAnalysisRecord | null): number {
   const value = analysis?.progressPercent;
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    return Math.max(0, Math.min(100, Math.round(value)));
-  }
-
+  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.min(100, Math.round(value)));
   return analysis?.status === 'analyzing' ? 15 : 0;
 }
 
-function getProgressLogs(
-  analysis: PageAnalysisRecord | null
-): PageAnalysisLogEntry[] {
+function getProgressLogs(analysis: PageAnalysisRecord | null): PageAnalysisLogEntry[] {
   return analysis?.progressLogs ?? [];
-}
-
-function getCurrentDomain(): string {
-  return state.analysis?.domain ?? state.domain;
-}
-
-function resolveNotificationTargetDomain(): string {
-  const currentDomain = getCurrentDomain();
-  const currentDomainNotification = state.pendingNotifications.find(
-    (notification) => notification.domain === currentDomain
-  );
-
-  return (
-    currentDomainNotification?.domain ??
-    state.pendingNotifications[0]?.domain ??
-    currentDomain
-  );
-}
-
-function formatCurrentDomainNotification(
-  notification: PendingNotification
-): string {
-  if (notification.addedRedFlags > 0) {
-    const noun = notification.addedRedFlags === 1 ? 'red flag' : 'red flags';
-    const verb = notification.addedRedFlags === 1 ? 'was' : 'were';
-    return `${notification.addedRedFlags} new ${noun} ${verb} added since the last saved version.`;
-  }
-
-  return 'A tracked T&C change was detected for this domain.';
-}
-
-function formatGenericNotificationSummary(
-  notifications: PendingNotification[]
-): string {
-  const count = notifications.length;
-  return count === 1
-    ? '1 tracked domain has a new terms change ready for review.'
-    : `${count} tracked domains have new terms changes ready for review.`;
 }
 
 function isSeverity(value: string): value is 'low' | 'medium' | 'high' | 'critical' {
@@ -1026,6 +901,8 @@ function isExpandableSeverity(value: string): value is 'low' | 'medium' | 'high'
   return value === 'low' || value === 'medium' || value === 'high';
 }
 
+// ========== BOOTSTRAP ==========
+
 function bootstrap(): void {
   if (initialized) return;
   initialized = true;
@@ -1035,7 +912,6 @@ function bootstrap(): void {
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', bootstrap, { once: true });
 }
-
 if (document.getElementById('app')) {
   queueMicrotask(bootstrap);
 }

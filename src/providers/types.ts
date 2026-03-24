@@ -82,6 +82,7 @@ export interface SummarizeOptions {
   systemPrompt: string;
   maxTokens: number;
   temperature: number;
+  signal?: AbortSignal;
   rawText?: string;
   metadata?: {
     url?: string;

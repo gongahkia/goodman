@@ -6,6 +6,7 @@ export type PageAnalysisLogLevel = 'info' | 'success' | 'warning' | 'error';
 export type PageAnalysisStatus =
   | 'idle'
   | 'analyzing'
+  | 'cancelled'
   | 'no_detection'
   | 'extraction_failed'
   | 'needs_consent'

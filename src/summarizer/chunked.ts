@@ -1,7 +1,7 @@
 import { ok, err } from '@shared/result';
 import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
-import { InvalidResponseError } from '@shared/errors';
+import { CancelledError, InvalidResponseError } from '@shared/errors';
 import type { Summary, RedFlag } from '@providers/types';
 import { singleShotSummarize, singleShotSummarizeWithProvider } from './singleshot';
 import { getActiveProvider, getProviderByName } from '@providers/factory';
@@ -10,44 +10,54 @@ import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, MAX_HOSTED_SINGLE_REQUEST_CHAR
 import { computeSeverity } from './severity';
 import type { SummarizeOptions } from '@providers/types';
 import { deduplicateRedFlagsBySeverity } from './red-flags';
+import { throwIfAborted } from '@shared/cancellation';
 
 const MAX_CONCURRENT = 3;
 
 export async function chunkedSummarize(
   chunks: string[],
-  metadata?: SummarizeOptions['metadata']
+  metadata?: SummarizeOptions['metadata'],
+  signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
-  return chunkedSummarizeInternal(chunks, undefined, metadata);
+  return chunkedSummarizeInternal(chunks, undefined, metadata, signal);
 }
 
 export async function chunkedSummarizeWithProvider(
   chunks: string[],
   providerName: string,
-  metadata?: SummarizeOptions['metadata']
+  metadata?: SummarizeOptions['metadata'],
+  signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
-  return chunkedSummarizeInternal(chunks, providerName, metadata);
+  return chunkedSummarizeInternal(chunks, providerName, metadata, signal);
 }
 
 async function chunkedSummarizeInternal(
   chunks: string[],
   providerName?: string,
-  metadata?: SummarizeOptions['metadata']
+  metadata?: SummarizeOptions['metadata'],
+  signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
+  throwIfAborted(signal);
+
   if (providerName === 'hosted') {
     const joined = chunks.join('\n\n');
     if (joined.length <= MAX_HOSTED_SINGLE_REQUEST_CHARS) {
-      return singleShotSummarizeWithProvider(joined, providerName, metadata);
+      return singleShotSummarizeWithProvider(joined, providerName, metadata, signal);
     } // else fall through to map-reduce path
   }
 
   if (chunks.length === 1) {
     return providerName
-      ? singleShotSummarizeWithProvider(chunks[0] ?? '', providerName, metadata)
-      : singleShotSummarize(chunks[0] ?? '', metadata);
+      ? singleShotSummarizeWithProvider(chunks[0] ?? '', providerName, metadata, signal)
+      : singleShotSummarize(chunks[0] ?? '', metadata, signal);
   }
 
-  const partials = await mapPhase(chunks, providerName, metadata);
+  const partials = await mapPhase(chunks, providerName, metadata, signal);
+  throwIfAborted(signal);
   const errors = partials.filter((r) => !r.ok);
+  if (errors.some((result) => !result.ok && result.error.code === 'CANCELLED')) {
+    return err(new CancelledError());
+  }
   if (errors.length === partials.length) {
     return err(
       new InvalidResponseError('All chunk summaries failed')
@@ -58,23 +68,25 @@ async function chunkedSummarizeInternal(
     .filter((r): r is { ok: true; data: Summary } => r.ok)
     .map((r) => r.data);
 
-  return reducePhase(summaries, providerName);
+  return reducePhase(summaries, providerName, signal);
 }
 
 async function mapPhase(
   chunks: string[],
   providerName?: string,
-  metadata?: SummarizeOptions['metadata']
+  metadata?: SummarizeOptions['metadata'],
+  signal?: AbortSignal
 ): Promise<Array<Result<Summary, TCGuardError>>> {
   const results: Array<Result<Summary, TCGuardError>> = [];
 
   for (let i = 0; i < chunks.length; i += MAX_CONCURRENT) {
+    throwIfAborted(signal);
     const batch = chunks.slice(i, i + MAX_CONCURRENT);
     const batchResults = await Promise.all(
       batch.map((chunk) =>
         providerName
-          ? singleShotSummarizeWithProvider(chunk, providerName, metadata)
-          : singleShotSummarize(chunk, metadata)
+          ? singleShotSummarizeWithProvider(chunk, providerName, metadata, signal)
+          : singleShotSummarize(chunk, metadata, signal)
       )
     );
     results.push(...batchResults);
@@ -85,8 +97,10 @@ async function mapPhase(
 
 async function reducePhase(
   summaries: Summary[],
-  providerName?: string
+  providerName?: string,
+  signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
+  throwIfAborted(signal);
   const allRedFlags = deduplicateRedFlags(summaries.flatMap((s) => s.redFlags));
   const allKeyPoints = deduplicateStrings(summaries.flatMap((s) => s.keyPoints));
   const combinedSummary = summaries.map((s) => s.summary).join(' ');
@@ -110,6 +124,7 @@ async function reducePhase(
     systemPrompt: SYSTEM_PROMPT,
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
+    signal,
     rawText: mergePrompt,
   });
 
@@ -120,6 +135,10 @@ async function reducePhase(
       redFlags: allRedFlags,
       severity: computeSeverity(allRedFlags),
     });
+  }
+
+  if (mergeResult.error.code === 'CANCELLED') {
+    return err(mergeResult.error);
   }
 
   return ok({

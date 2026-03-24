@@ -105,3 +105,11 @@ export function createSectionHeading(
 export function createEmptyMessage(text: string): HTMLParagraphElement {
   return createElement('p', 'tc-empty-note', text);
 }
+
+export function createIcon(svgString: string, className?: string): HTMLSpanElement {
+  const span = createElement('span', className);
+  span.innerHTML = svgString;
+  const svgEl = span.querySelector('svg');
+  if (svgEl) svgEl.style.display = 'block';
+  return span;
+}

@@ -1,5 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { NetworkError, ProviderError, RateLimitError } from '@shared/errors';
+import {
+  CancelledError,
+  NetworkError,
+  ProviderError,
+  RateLimitError,
+} from '@shared/errors';
 import type { Summary } from '@providers/types';
 import { mockStorage } from '../mocks/chrome';
 
@@ -29,7 +34,7 @@ import {
 } from '@summarizer/cache';
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
-import { processPageAnalysis } from '@background/process-analysis';
+import { cancelPageAnalysis, processPageAnalysis } from '@background/process-analysis';
 
 const mockSummary: Summary = {
   summary: 'A summary.',
@@ -241,5 +246,57 @@ describe('processPageAnalysis', () => {
     )['https://example.com/rate-limited'];
     expect(storedRecord.status).toBe('service_unavailable');
     vi.useRealTimers();
+  });
+
+  it('cancels an active analysis before the provider returns', async () => {
+    vi.mocked(getCachedSummary).mockResolvedValue(null);
+    vi.mocked(getProviderByName).mockResolvedValue({
+      ok: true,
+      data: {
+        name: 'openai',
+        summarize: vi.fn(),
+        validateApiKey: vi.fn(),
+      },
+    });
+    vi.mocked(singleShotSummarizeWithProvider).mockImplementation(
+      async (_text, _providerName, _metadata, signal) =>
+        new Promise((resolve) => {
+          signal?.addEventListener(
+            'abort',
+            () => resolve({ ok: false, error: new CancelledError() }),
+            { once: true }
+          );
+        })
+    );
+
+    const resultPromise = processPageAnalysis({
+      tabId: 15,
+      url: 'https://example.com/cancelled',
+      domain: 'example.com',
+      text: 'short legal text',
+      provider: 'openai',
+      sourceType: 'inline',
+      detectionType: 'checkbox',
+      confidence: 0.9,
+    });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const cancelled = await cancelPageAnalysis(15);
+    const result = await resultPromise;
+
+    expect(cancelled).toBe(true);
+    expect(result).toEqual({
+      ok: false,
+      error: 'Analysis cancelled.',
+      cancelled: true,
+    });
+
+    const storedRecord = (
+      mockStorage.pageAnalysis as Record<string, { status: string; progressLabel: string }>
+    )['https://example.com/cancelled'];
+    expect(storedRecord.status).toBe('cancelled');
+    expect(storedRecord.progressLabel).toBe('Cancelled');
   });
 });

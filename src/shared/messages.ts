@@ -10,6 +10,11 @@ export interface DetectTCMessage {
   payload: { tabId: number; settingsOverride?: Partial<Settings> };
 }
 
+export interface CancelTCMessage {
+  type: 'CANCEL_TC';
+  payload: { tabId: number };
+}
+
 export interface ExtractTextMessage {
   type: 'EXTRACT_TEXT';
   payload: { selector: string; url: string };
@@ -44,6 +49,11 @@ export interface OpenWorkspaceSurfaceMessage {
   payload: { tabId?: number; windowId?: number };
 }
 
+export interface CancelPageAnalysisMessage {
+  type: 'CANCEL_PAGE_ANALYSIS';
+  payload: { tabId: number };
+}
+
 export interface SavePageAnalysisMessage {
   type: 'SAVE_PAGE_ANALYSIS';
   payload: PageAnalysisRecord;
@@ -69,6 +79,7 @@ export interface TCChangedMessage {
 
 export type Message =
   | DetectTCMessage
+  | CancelTCMessage
   | ExtractTextMessage
   | FetchURLMessage
   | SummarizeMessage
@@ -76,6 +87,7 @@ export type Message =
   | SaveSettingsMessage
   | GetPageAnalysisMessage
   | OpenWorkspaceSurfaceMessage
+  | CancelPageAnalysisMessage
   | SavePageAnalysisMessage
   | ProcessPageAnalysisMessage
   | TCChangedMessage;

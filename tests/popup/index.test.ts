@@ -64,11 +64,11 @@ describe('popup index', () => {
     expect(document.body.textContent).toContain(
       'This page asks you to agree to terms.'
     );
-    expect(document.body.textContent).toContain('Source: inline');
-    expect(document.body.textContent).toContain('Keep Open');
+    expect(document.body.textContent).toContain('inline');
+    expect(document.body.textContent).toContain('View Details');
   });
 
-  it('opens a persistent workspace from the popup footer', async () => {
+  it('opens a persistent workspace from the action bar', async () => {
     mockStorage.pageAnalysis = {
       'https://example.com/checkout': readyAnalysis(),
     };
@@ -78,11 +78,11 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    const keepOpenButton = Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Keep Open'
+    const viewDetailsButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'View Details'
     );
 
-    keepOpenButton?.click();
+    viewDetailsButton?.click();
     await flush();
 
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
@@ -108,7 +108,7 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('Advanced provider setup required');
+    expect(document.body.textContent).toContain('Provider setup required');
     expect(document.body.textContent).toContain('Open Settings');
   });
 
@@ -128,7 +128,7 @@ describe('popup index', () => {
     await flush();
 
     expect(document.body.textContent).toContain('Enable TC Guard Cloud');
-    expect(document.body.textContent).toContain('Accept and Analyze');
+    expect(document.body.textContent).toContain('Accept & Analyze');
   });
 
   it('accepts hosted consent and reruns analysis from the popup', async () => {
@@ -153,7 +153,7 @@ describe('popup index', () => {
     await flush();
 
     const acceptButton = Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Accept and Analyze'
+      (button) => button.textContent === 'Accept & Analyze'
     );
 
     acceptButton?.click();
@@ -188,7 +188,7 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('TC Guard Cloud is unavailable');
+    expect(document.body.textContent).toContain('Cloud unavailable');
     expect(document.body.textContent).toContain('Retry');
   });
 
@@ -223,9 +223,70 @@ describe('popup index', () => {
 
     expect(document.body.textContent).toContain('Checking cache');
     expect(document.body.textContent).toContain('72%');
-    expect(document.body.textContent).toContain(
-      'Computed a text fingerprint and started checking the local summary cache.'
+  });
+
+  it('cancels an in-flight analysis from the popup', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': {
+        ...readyAnalysis(),
+        status: 'analyzing',
+        summary: null,
+        progressPercent: 65,
+        progressLabel: 'Sending to background worker',
+        progressLogs: [
+          {
+            timestamp: Date.now() - 1000,
+            message: 'Handing off the prepared text to the background worker for summarization.',
+            progress: 65,
+            level: 'info',
+          },
+        ],
+      },
+    };
+    chrome.runtime.sendMessage.mockResolvedValue({ ok: true, data: { cancelled: true } });
+    chrome.tabs.sendMessage.mockImplementation(async (_tabId, message) => {
+      if (message.type === 'CANCEL_TC') {
+        mockStorage.pageAnalysis = {
+          'https://example.com/checkout': {
+            ...readyAnalysis(),
+            status: 'cancelled',
+            summary: null,
+            progressPercent: 65,
+            progressLabel: 'Cancelled',
+            progressLogs: [
+              {
+                timestamp: Date.now(),
+                message: 'Analysis was cancelled before completion.',
+                progress: 65,
+                level: 'warning',
+              },
+            ],
+          },
+        };
+      }
+      return { ok: true };
+    });
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    const cancelButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Cancel Analysis'
     );
+
+    cancelButton?.click();
+    await flush();
+
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
+      type: 'CANCEL_TC',
+      payload: { tabId: 7 },
+    });
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'CANCEL_PAGE_ANALYSIS',
+      payload: { tabId: 7 },
+    });
+    expect(document.body.textContent).toContain('Analysis cancelled');
   });
 
   it('refreshes persisted analysis after a manual analyze', async () => {
@@ -281,9 +342,6 @@ describe('popup index', () => {
     await flush();
 
     expect(document.body.textContent).toContain('Terms changed on example.com');
-    expect(document.body.textContent).toContain(
-      '2 new red flags were added since the last saved version.'
-    );
   });
 
   it('renders a generic banner for changes on other domains', async () => {
@@ -309,10 +367,7 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('Tracked T&C changes detected');
-    expect(document.body.textContent).toContain(
-      '2 tracked domains have new terms changes ready for review.'
-    );
+    expect(document.body.textContent).toContain('2 domains with T&C changes');
   });
 
   it('refreshes the panel when the active tab changes', async () => {
@@ -373,11 +428,11 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    const openHistoryButton = Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Open History'
+    const historyButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'History'
     );
 
-    openHistoryButton?.click();
+    historyButton?.click();
     await flush();
 
     expect(renderHistoryPanel).toHaveBeenCalledWith(

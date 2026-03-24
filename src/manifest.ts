@@ -40,7 +40,7 @@ function getChromeManifest() {
     ...baseManifest,
     permissions: [...baseManifest.permissions, 'sidePanel'],
     side_panel: {
-      default_path: 'src/popup/index.html',
+      default_path: 'src/popup/index.html?surface=panel',
     },
     background: {
       service_worker: 'src/background/index.ts',

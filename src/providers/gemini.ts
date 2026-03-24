@@ -1,6 +1,13 @@
 import { err } from '@shared/result';
 import type { Result } from '@shared/result';
-import { NetworkError, RateLimitError, ProviderError, TCGuardError } from '@shared/errors';
+import {
+  CancelledError,
+  NetworkError,
+  RateLimitError,
+  ProviderError,
+  TCGuardError,
+} from '@shared/errors';
+import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
 
@@ -33,7 +40,7 @@ export class GeminiProvider implements LLMProvider {
       },
     };
 
-    return this.makeRequestWithRetry(url, body);
+    return this.makeRequestWithRetry(url, body, 0, options.signal);
   }
 
   async validateApiKey(key: string): Promise<boolean> {
@@ -49,27 +56,29 @@ export class GeminiProvider implements LLMProvider {
   private async makeRequestWithRetry(
     url: string,
     body: Record<string, unknown>,
-    attempt = 0
+    attempt = 0,
+    signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal,
         body: JSON.stringify(body),
       });
 
       if (response.status === 429) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(url, body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(url, body, attempt + 1, signal);
         }
         return err(new RateLimitError('Gemini', 60));
       }
 
       if (response.status >= 500) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(url, body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(url, body, attempt + 1, signal);
         }
         return err(new ProviderError('Gemini', `Server error: ${response.status}`));
       }
@@ -86,6 +95,7 @@ export class GeminiProvider implements LLMProvider {
 
       return parseSummaryResponse(content);
     } catch (e) {
+      if (isCancelledError(e) || signal?.aborted) return err(new CancelledError());
       if (e instanceof TCGuardError) return err(e);
       return err(new NetworkError('Gemini'));
     }
@@ -99,8 +109,4 @@ function extractGeminiContent(json: Record<string, unknown>): string | null {
   const parts = content?.['parts'] as Array<Record<string, unknown>> | undefined;
   if (!parts?.[0]) return null;
   return (parts[0]['text'] as string) ?? null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

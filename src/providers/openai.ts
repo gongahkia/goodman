@@ -1,12 +1,14 @@
 import { err } from '@shared/result';
 import type { Result } from '@shared/result';
 import {
+  CancelledError,
   InvalidResponseError,
   NetworkError,
   RateLimitError,
   ProviderError,
   TCGuardError,
 } from '@shared/errors';
+import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
 
@@ -39,7 +41,7 @@ export class OpenAIProvider implements LLMProvider {
       response_format: { type: 'json_object' },
     };
 
-    return this.makeRequestWithRetry(body);
+    return this.makeRequestWithRetry(body, 0, options.signal);
   }
 
   async validateApiKey(key: string): Promise<boolean> {
@@ -55,7 +57,8 @@ export class OpenAIProvider implements LLMProvider {
 
   private async makeRequestWithRetry(
     body: Record<string, unknown>,
-    attempt = 0
+    attempt = 0,
+    signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
       const response = await fetch(this.baseUrl, {
@@ -64,13 +67,14 @@ export class OpenAIProvider implements LLMProvider {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${this.apiKey}`,
         },
+        signal,
         body: JSON.stringify(body),
       });
 
       if (response.status === 429) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(body, attempt + 1, signal);
         }
         const retryAfter = parseInt(response.headers.get('retry-after') ?? '60', 10);
         return err(new RateLimitError('OpenAI', retryAfter));
@@ -78,8 +82,8 @@ export class OpenAIProvider implements LLMProvider {
 
       if (response.status >= 500) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(body, attempt + 1, signal);
         }
         return err(new ProviderError('OpenAI', `Server error: ${response.status}`));
       }
@@ -96,6 +100,7 @@ export class OpenAIProvider implements LLMProvider {
 
       return parseSummaryResponse(content);
     } catch (e) {
+      if (isCancelledError(e) || signal?.aborted) return err(new CancelledError());
       if (e instanceof TCGuardError) return err(e);
       return err(new NetworkError('OpenAI'));
     }
@@ -107,8 +112,4 @@ function extractOpenAIContent(json: Record<string, unknown>): string | null {
   if (!choices?.[0]) return null;
   const message = choices[0]['message'] as Record<string, unknown> | undefined;
   return (message?.['content'] as string) ?? null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

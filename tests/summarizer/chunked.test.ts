@@ -95,7 +95,12 @@ describe('chunkedSummarizeWithProvider (hosted)', () => {
     const summary = makeSummary();
     mockSingleShotWithProvider.mockResolvedValue(ok(summary));
     const result = await chunkedSummarizeWithProvider([small], 'hosted');
-    expect(mockSingleShotWithProvider).toHaveBeenCalledWith(small, 'hosted', undefined);
+    expect(mockSingleShotWithProvider).toHaveBeenCalledWith(
+      small,
+      'hosted',
+      undefined,
+      undefined
+    );
     expect(result.ok).toBe(true);
   });
 

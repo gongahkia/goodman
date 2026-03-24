@@ -70,6 +70,17 @@ export class ServiceUnavailableError extends TCGuardError {
   }
 }
 
+export class CancelledError extends TCGuardError {
+  constructor(detail = 'Analysis cancelled by user.') {
+    super(
+      detail,
+      'Analysis was cancelled.',
+      'CANCELLED'
+    );
+    this.name = 'CancelledError';
+  }
+}
+
 export class ExtractionError extends TCGuardError {
   constructor(detail: string) {
     super(

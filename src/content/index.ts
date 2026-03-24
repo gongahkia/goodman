@@ -13,7 +13,11 @@ import { computeTextHash } from '@summarizer/cache';
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { createOverlay, removeOverlay } from '@content/ui/overlay';
-import { getStorage, setPageAnalysisByUrl } from '@shared/storage';
+import {
+  getPageAnalysisByUrl,
+  getStorage,
+  setPageAnalysisByUrl,
+} from '@shared/storage';
 import type {
   PageAnalysisLogEntry,
   PageAnalysisLogLevel,
@@ -27,18 +31,22 @@ import {
 } from '@shared/provider-config';
 import { MIN_OBSERVER_INTERVAL_MS } from '@shared/constants';
 import { appendProgressLog } from '@shared/analysis-progress';
+import { isCancelledError, throwIfAborted } from '@shared/cancellation';
 
 let analysisInFlight = false;
 let rerunRequested = false;
 let lastRenderedTextHash: string | null = null;
 let lastRunResult: MessageResponse = { ok: true, data: [] };
 let lastObserverDetectionTs = 0;
+let currentAnalysisController: AbortController | null = null;
 
 onMessage(
   (msg: Message, _sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
     switch (msg.type) {
       case 'DETECT_TC':
         return queueDetection(true, msg.payload.settingsOverride);
+      case 'CANCEL_TC':
+        return cancelCurrentAnalysis();
       default:
         return undefined;
     }
@@ -77,11 +85,24 @@ async function queueDetection(
   }
 
   analysisInFlight = true;
+  const controller = new AbortController();
+  currentAnalysisController = controller;
 
   try {
-    lastRunResult = await handleDetectTC(force, settingsOverride);
+    lastRunResult = await handleDetectTC(force, settingsOverride, controller.signal);
+    return lastRunResult;
+  } catch (error) {
+    if (isCancelledError(error) || controller.signal.aborted) {
+      lastRunResult = { ok: true, data: [] };
+      return lastRunResult;
+    }
+
+    lastRunResult = { ok: false, error: 'Could not analyze this page.' };
     return lastRunResult;
   } finally {
+    if (currentAnalysisController === controller) {
+      currentAnalysisController = null;
+    }
     analysisInFlight = false;
     if (rerunRequested) {
       rerunRequested = false;
@@ -92,18 +113,23 @@ async function queueDetection(
 
 async function handleDetectTC(
   force: boolean,
-  settingsOverride?: Partial<Settings>
+  settingsOverride?: Partial<Settings>,
+  signal?: AbortSignal
 ): Promise<MessageResponse> {
+  throwIfAborted(signal);
+
   if (!document.body) {
     return { ok: false, error: 'Document body is unavailable' };
   }
 
   const blacklistResult = await getStorage('domainBlacklist');
+  throwIfAborted(signal);
   if (blacklistResult.ok && blacklistResult.data.includes(window.location.hostname)) {
     return { ok: true, data: [] };
   }
 
   const settingsResult = await getStorage('settings');
+  throwIfAborted(signal);
   const settings = resolveSettings(
     settingsResult.ok ? settingsResult.data : null,
     settingsOverride
@@ -132,6 +158,7 @@ async function handleDetectTC(
     logMessage: string,
     level: PageAnalysisLogLevel = 'info'
   ): Promise<void> => {
+    throwIfAborted(signal);
     progressLogs = appendProgressLog(progressLogs, logMessage, progressPercent, level);
     Object.assign(analysisState, updates, {
       progressPercent,
@@ -204,6 +231,7 @@ async function handleDetectTC(
     );
   }
   const resolvedText = await resolveDetectionTextSource(best);
+  throwIfAborted(signal);
 
   const normalized = normalizeText(resolvedText.text);
   if (force) {
@@ -241,6 +269,7 @@ async function handleDetectTC(
   }
 
   const textHash = await computeTextHash(normalized.text);
+  throwIfAborted(signal);
   if (force) {
     await persistStage(
       {
@@ -348,7 +377,8 @@ async function handleDetectTC(
       'Running local summarizer',
       'Running the local fixture summarizer for this page.'
     );
-    const summaryResult = await summarizeLocally(normalized.text, providerName);
+    const summaryResult = await summarizeLocally(normalized.text, providerName, signal);
+    throwIfAborted(signal);
     if (!summaryResult.ok) {
       lastRenderedTextHash = null;
       await persistStage(
@@ -421,8 +451,19 @@ async function handleDetectTC(
       confidence: best.weightedConfidence,
     },
   });
+  throwIfAborted(signal);
 
-  const result = summaryResponse as { ok: boolean; data?: Summary; error?: string };
+  const result = summaryResponse as {
+    ok: boolean;
+    data?: Summary;
+    error?: string;
+    cancelled?: boolean;
+  };
+  if (result.cancelled) {
+    lastRenderedTextHash = null;
+    return { ok: true, data: [] };
+  }
+
   if (!result.ok || !result.data) {
     lastRenderedTextHash = null;
     return { ok: false, error: result.error ?? 'Summarization failed' };
@@ -499,13 +540,17 @@ function resolveSettings(
 
 async function summarizeLocally(
   text: string,
-  providerName: string
+  providerName: string,
+  signal?: AbortSignal
 ): Promise<{ ok: true; data: Summary } | { ok: false; error: string }> {
+  throwIfAborted(signal);
   const chunks = chunkText(text);
   const result =
     chunks.length > 1
-      ? await chunkedSummarizeWithProvider(chunks, providerName)
-      : await singleShotSummarizeWithProvider(text, providerName);
+      ? await chunkedSummarizeWithProvider(chunks, providerName, undefined, signal)
+      : await singleShotSummarizeWithProvider(text, providerName, undefined, signal);
+
+  throwIfAborted(signal);
 
   if (!result.ok) {
     return {
@@ -515,4 +560,42 @@ async function summarizeLocally(
   }
 
   return { ok: true, data: result.data };
+}
+
+async function cancelCurrentAnalysis(): Promise<MessageResponse> {
+  rerunRequested = false;
+  currentAnalysisController?.abort();
+  removeOverlay();
+  lastRenderedTextHash = null;
+  await persistCancelledPageAnalysisState();
+  return { ok: true, data: null };
+}
+
+async function persistCancelledPageAnalysisState(): Promise<void> {
+  const existing = await getPageAnalysisByUrl(window.location.href);
+  const progressPercent =
+    typeof existing?.progressPercent === 'number' ? existing.progressPercent : 0;
+  const progressLogs = appendProgressLog(
+    existing?.progressLogs ?? [],
+    'Analysis was cancelled before completion.',
+    progressPercent,
+    'warning'
+  );
+
+  await setPageAnalysisByUrl(window.location.href, {
+    tabId: existing?.tabId ?? -1,
+    url: window.location.href,
+    domain: window.location.hostname,
+    status: 'cancelled',
+    sourceType: existing?.sourceType ?? null,
+    detectionType: existing?.detectionType ?? null,
+    confidence: existing?.confidence ?? null,
+    textHash: existing?.textHash ?? null,
+    summary: null,
+    error: null,
+    progressPercent,
+    progressLabel: 'Cancelled',
+    progressLogs,
+    updatedAt: Date.now(),
+  });
 }

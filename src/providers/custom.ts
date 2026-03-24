@@ -1,6 +1,13 @@
 import { err } from '@shared/result';
 import type { Result } from '@shared/result';
-import { NetworkError, ProviderError, RateLimitError, TCGuardError } from '@shared/errors';
+import {
+  CancelledError,
+  NetworkError,
+  ProviderError,
+  RateLimitError,
+  TCGuardError,
+} from '@shared/errors';
+import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
 
@@ -32,7 +39,7 @@ export class CustomEndpointProvider implements LLMProvider {
       response_format: { type: 'json_object' },
     };
 
-    return this.makeRequestWithRetry(url, body);
+    return this.makeRequestWithRetry(url, body, 0, options.signal);
   }
 
   async validateApiKey(key: string): Promise<boolean> {
@@ -64,7 +71,8 @@ export class CustomEndpointProvider implements LLMProvider {
   private async makeRequestWithRetry(
     url: string,
     body: Record<string, unknown>,
-    attempt = 0
+    attempt = 0,
+    signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
       const headers: Record<string, string> = {
@@ -77,20 +85,21 @@ export class CustomEndpointProvider implements LLMProvider {
       const response = await fetch(url, {
         method: 'POST',
         headers,
+        signal,
         body: JSON.stringify(body),
       });
 
       if (response.status === 429) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(url, body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(url, body, attempt + 1, signal);
         }
         return err(new RateLimitError('Custom endpoint', 60));
       }
 
       if (response.status >= 500 && attempt < MAX_RETRIES) {
-        await sleep(RETRY_DELAYS[attempt] ?? 3000);
-        return this.makeRequestWithRetry(url, body, attempt + 1);
+        await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+        return this.makeRequestWithRetry(url, body, attempt + 1, signal);
       }
 
       if (!response.ok) {
@@ -108,12 +117,9 @@ export class CustomEndpointProvider implements LLMProvider {
 
       return parseSummaryResponse(content);
     } catch (e) {
+      if (isCancelledError(e) || signal?.aborted) return err(new CancelledError());
       if (e instanceof TCGuardError) return err(e);
       return err(new NetworkError('Custom endpoint'));
     }
   }
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

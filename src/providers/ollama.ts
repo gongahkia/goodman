@@ -1,6 +1,7 @@
 import { err } from '@shared/result';
 import type { Result } from '@shared/result';
-import { NetworkError, ProviderError, TCGuardError } from '@shared/errors';
+import { CancelledError, NetworkError, ProviderError, TCGuardError } from '@shared/errors';
+import { isCancelledError } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
 
@@ -34,6 +35,7 @@ export class OllamaProvider implements LLMProvider {
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: options.signal,
         body: JSON.stringify(body),
       });
 
@@ -51,6 +53,7 @@ export class OllamaProvider implements LLMProvider {
 
       return parseSummaryResponse(content);
     } catch (e) {
+      if (isCancelledError(e) || options.signal?.aborted) return err(new CancelledError());
       if (e instanceof TCGuardError) return err(e);
       return err(new NetworkError('Ollama'));
     }

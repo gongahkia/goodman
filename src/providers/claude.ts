@@ -1,6 +1,13 @@
 import { err } from '@shared/result';
 import type { Result } from '@shared/result';
-import { NetworkError, RateLimitError, ProviderError, TCGuardError } from '@shared/errors';
+import {
+  CancelledError,
+  NetworkError,
+  RateLimitError,
+  ProviderError,
+  TCGuardError,
+} from '@shared/errors';
+import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
 
@@ -27,7 +34,7 @@ export class ClaudeProvider implements LLMProvider {
       messages: [{ role: 'user', content: text }],
     };
 
-    return this.makeRequestWithRetry(body);
+    return this.makeRequestWithRetry(body, 0, options.signal);
   }
 
   async validateApiKey(key: string): Promise<boolean> {
@@ -53,7 +60,8 @@ export class ClaudeProvider implements LLMProvider {
 
   private async makeRequestWithRetry(
     body: Record<string, unknown>,
-    attempt = 0
+    attempt = 0,
+    signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
       const response = await fetch(API_URL, {
@@ -63,13 +71,14 @@ export class ClaudeProvider implements LLMProvider {
           'x-api-key': this.apiKey,
           'anthropic-version': '2023-06-01',
         },
+        signal,
         body: JSON.stringify(body),
       });
 
       if (response.status === 429) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(body, attempt + 1, signal);
         }
         const retryAfter = parseInt(response.headers.get('retry-after') ?? '60', 10);
         return err(new RateLimitError('Claude', retryAfter));
@@ -77,8 +86,8 @@ export class ClaudeProvider implements LLMProvider {
 
       if (response.status >= 500) {
         if (attempt < MAX_RETRIES) {
-          await sleep(RETRY_DELAYS[attempt] ?? 3000);
-          return this.makeRequestWithRetry(body, attempt + 1);
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(body, attempt + 1, signal);
         }
         return err(new ProviderError('Claude', `Server error: ${response.status}`));
       }
@@ -95,6 +104,7 @@ export class ClaudeProvider implements LLMProvider {
 
       return parseSummaryResponse(content);
     } catch (e) {
+      if (isCancelledError(e) || signal?.aborted) return err(new CancelledError());
       if (e instanceof TCGuardError) return err(e);
       return err(new NetworkError('Claude'));
     }
@@ -105,8 +115,4 @@ function extractClaudeContent(json: Record<string, unknown>): string | null {
   const content = json['content'] as Array<Record<string, unknown>> | undefined;
   if (!content?.[0]) return null;
   return (content[0]['text'] as string) ?? null;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

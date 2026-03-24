@@ -1,7 +1,8 @@
 import { ok } from '@shared/result';
 import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
-import type { LLMProvider, Summary, RedFlag } from './types';
+import type { LLMProvider, Summary, RedFlag, SummarizeOptions } from './types';
+import { throwIfAborted } from '@shared/cancellation';
 
 export class FixtureProvider implements LLMProvider {
   name = 'fixture';
@@ -9,8 +10,10 @@ export class FixtureProvider implements LLMProvider {
   constructor(private defaultModel: string = 'fixture-v1') {}
 
   async summarize(
-    text: string
+    text: string,
+    options: SummarizeOptions
   ): Promise<Result<Summary, TCGuardError>> {
+    throwIfAborted(options.signal);
     const termsText = extractTermsText(text);
     const normalized = termsText.toLowerCase();
     const redFlags: RedFlag[] = [];
@@ -51,6 +54,7 @@ export class FixtureProvider implements LLMProvider {
     }
 
     const summary = buildSummary(termsText, redFlags);
+    throwIfAborted(options.signal);
     return ok(summary);
   }
 

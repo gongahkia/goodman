@@ -1,6 +1,7 @@
 import { err } from '@shared/result';
 import type { Result } from '@shared/result';
 import {
+  CancelledError,
   InvalidResponseError,
   NetworkError,
   ProviderError,
@@ -47,7 +48,9 @@ export class HostedProvider implements LLMProvider {
     options: SummarizeOptions
   ): Promise<Result<Summary, TCGuardError>> {
     const controller = new AbortController();
+    const onAbort = (): void => controller.abort();
     const timeoutId = setTimeout(() => controller.abort(), this.requestTimeoutMs);
+    options.signal?.addEventListener('abort', onAbort, { once: true });
 
     try {
       const response = await fetch(`${this.baseUrl}/v1/analyze`, {
@@ -99,6 +102,10 @@ export class HostedProvider implements LLMProvider {
         data: summary,
       };
     } catch (e) {
+      if (e instanceof CancelledError || options.signal?.aborted) {
+        return err(new CancelledError());
+      }
+
       if (e instanceof TCGuardError) {
         return err(e);
       }
@@ -119,6 +126,7 @@ export class HostedProvider implements LLMProvider {
       return err(new NetworkError('TC Guard Cloud'));
     } finally {
       clearTimeout(timeoutId);
+      options.signal?.removeEventListener('abort', onAbort);
     }
   }
 

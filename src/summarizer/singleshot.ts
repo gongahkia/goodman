@@ -9,7 +9,8 @@ import type { SummarizeOptions } from '@providers/types';
 
 export async function singleShotSummarize(
   text: string,
-  metadata?: SummarizeOptions['metadata']
+  metadata?: SummarizeOptions['metadata'],
+  signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
   const providerResult = await getActiveProvider();
   if (!providerResult.ok) return providerResult;
@@ -22,6 +23,7 @@ export async function singleShotSummarize(
     systemPrompt: SYSTEM_PROMPT,
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
+    signal,
     rawText: text,
     metadata,
   });
@@ -34,7 +36,8 @@ export async function singleShotSummarize(
 export async function singleShotSummarizeWithProvider(
   text: string,
   providerName: string,
-  metadata?: SummarizeOptions['metadata']
+  metadata?: SummarizeOptions['metadata'],
+  signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
   const providerResult = await getProviderByName(providerName);
   if (!providerResult.ok) return providerResult;
@@ -47,6 +50,7 @@ export async function singleShotSummarizeWithProvider(
     systemPrompt: SYSTEM_PROMPT,
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
+    signal,
     rawText: text,
     metadata,
   });

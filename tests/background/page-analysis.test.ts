@@ -82,7 +82,7 @@ describe('background page analysis contracts', () => {
 
     expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
       enabled: true,
-      path: 'src/popup/index.html',
+      path: 'src/popup/index.html?surface=panel',
     });
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
   });
@@ -99,9 +99,34 @@ describe('background page analysis contracts', () => {
     expect(response).toEqual({ ok: true, data: null });
     expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
       enabled: true,
-      path: 'src/popup/index.html',
+      path: 'src/popup/index.html?surface=panel',
     });
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
+  });
+
+  it('cancels an analyzing record through the background message contract', async () => {
+    await importBackground();
+    const listener = getRuntimeListener();
+    const record = makePageAnalysisRecord({
+      status: 'analyzing',
+      progressPercent: 84,
+      progressLabel: 'Requesting summary',
+      progressLogs: [],
+    });
+
+    await listener({ type: 'SAVE_PAGE_ANALYSIS', payload: record }, {});
+    const cancelResponse = await listener(
+      { type: 'CANCEL_PAGE_ANALYSIS', payload: { tabId: record.tabId } },
+      {}
+    );
+    const getResponse = await listener(
+      { type: 'GET_PAGE_ANALYSIS', payload: { tabId: record.tabId } },
+      {}
+    ) as { ok: boolean; data: PageAnalysisRecord };
+
+    expect(cancelResponse).toEqual({ ok: true, data: { cancelled: true } });
+    expect(getResponse.data.status).toBe('cancelled');
+    expect(getResponse.data.progressLabel).toBe('Cancelled');
   });
 
   it('falls back to a popup window when side panel support is unavailable', async () => {

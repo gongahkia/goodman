@@ -17,7 +17,7 @@ import {
   setStorage,
 } from '@shared/storage';
 import type { Runtime } from 'webextension-polyfill';
-import { processPageAnalysis } from './process-analysis';
+import { cancelPageAnalysis, processPageAnalysis } from './process-analysis';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { pruneCache } from '@summarizer/cache';
 
@@ -42,6 +42,8 @@ onMessage(
         return handleGetPageAnalysis(msg.payload.tabId);
       case 'OPEN_WORKSPACE_SURFACE':
         return handleOpenWorkspaceSurface(msg.payload);
+      case 'CANCEL_PAGE_ANALYSIS':
+        return handleCancelPageAnalysis(msg.payload.tabId);
       case 'SAVE_PAGE_ANALYSIS':
         return handleSavePageAnalysis(msg.payload, sender);
       case 'PROCESS_PAGE_ANALYSIS':
@@ -113,6 +115,11 @@ async function handleOpenWorkspaceSurface(
   return { ok: true, data: null };
 }
 
+async function handleCancelPageAnalysis(tabId: number): Promise<MessageResponse> {
+  const cancelled = await cancelPageAnalysis(tabId);
+  return { ok: true, data: { cancelled } };
+}
+
 async function handleSavePageAnalysis(
   record: PageAnalysisRecord,
   sender: Runtime.MessageSender
@@ -146,6 +153,10 @@ async function handleProcessPageAnalysis(
     tabId,
     ...payload,
   });
+
+  if (result.cancelled) {
+    return { ok: false, error: result.error ?? 'Analysis cancelled.', cancelled: true };
+  }
 
   if (!result.ok) {
     console.error('[TC Guard] analysis failed:', payload.url, result.error);
@@ -213,7 +224,7 @@ async function openWorkspaceSurface(
     try {
       await chrome.sidePanel.setOptions?.({
         enabled: true,
-        path: 'src/popup/index.html',
+        path: 'src/popup/index.html?surface=panel',
       });
 
       if (typeof windowId === 'number') {
