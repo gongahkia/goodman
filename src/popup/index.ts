@@ -1,18 +1,26 @@
 import type { Summary } from '@providers/types';
-import type { PageAnalysisRecord } from '@shared/page-analysis';
+import { renderHistoryPanel } from '@popup/history';
+import { renderCacheSettings } from '@popup/settings/cache';
+import { renderDetectionSettings } from '@popup/settings/detection';
+import { renderNotificationSettings } from '@popup/settings/notifications';
+import { renderProviderSettings } from '@popup/settings/providers';
+import {
+  appendChildren,
+  createButton,
+  createElement,
+  createPill,
+  createSectionHeading,
+  cx,
+} from '@popup/ui';
 import type { Settings } from '@shared/messages';
+import type { PageAnalysisRecord } from '@shared/page-analysis';
+import type { PendingNotification } from '@shared/storage';
 import {
   getPageAnalysisByUrl,
   getStorage,
   prunePageAnalysisState,
   setStorage,
 } from '@shared/storage';
-import type { PendingNotification } from '@shared/storage';
-import { renderHistoryPanel } from '@popup/history';
-import { renderCacheSettings } from '@popup/settings/cache';
-import { renderDetectionSettings } from '@popup/settings/detection';
-import { renderNotificationSettings } from '@popup/settings/notifications';
-import { renderProviderSettings } from '@popup/settings/providers';
 import { getPendingNotifications } from '@versioning/notifications';
 
 interface PopupState {
@@ -24,6 +32,8 @@ interface PopupState {
   loading: boolean;
   error: string | null;
 }
+
+const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Cache'] as const;
 
 const state: PopupState = {
   tabId: null,
@@ -59,9 +69,11 @@ async function init(): Promise<void> {
 }
 
 function render(container: HTMLElement): void {
+  container.className = 'tc-page';
   container.textContent = '';
 
-  container.appendChild(createHeader());
+  appendChildren(container, createHeader());
+
   const notificationBanner = createNotificationBanner();
   if (notificationBanner) {
     container.appendChild(notificationBanner);
@@ -135,9 +147,7 @@ function render(container: HTMLElement): void {
       break;
     case 'error':
       container.appendChild(
-        createErrorState(
-          state.analysis.error ?? 'Could not analyze this page.'
-        )
+        createErrorState(state.analysis.error ?? 'Could not analyze this page.')
       );
       break;
     case 'no_detection':
@@ -151,20 +161,21 @@ function render(container: HTMLElement): void {
 }
 
 function createHeader(): HTMLElement {
-  const header = document.createElement('div');
-  header.style.cssText =
-    'display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--tc-border)';
+  const header = createElement('section', 'tc-page-header');
+  const titleBlock = createElement('div');
+  const eyebrow = createElement('p', 'tc-page-eyebrow', 'TC Guard workspace');
+  const title = createElement('h1', 'tc-page-title', 'Terms Overview');
+  const copy = createElement(
+    'p',
+    'tc-page-copy',
+    'Review the active page, rerun analysis, and inspect tracked legal changes from one quiet workspace.'
+  );
 
-  const title = document.createElement('div');
-  title.style.cssText = 'font-size:18px;font-weight:600';
-  title.textContent = 'TC Guard';
+  const domainChip = createPill(getCurrentDomain() || 'No active domain', 'muted');
+  domainChip.classList.add('tc-domain-chip');
 
-  const domain = document.createElement('div');
-  domain.style.cssText = 'font-size:13px;color:var(--tc-text-secondary)';
-  domain.textContent = state.analysis?.domain ?? state.domain;
-
-  header.appendChild(title);
-  header.appendChild(domain);
+  appendChildren(titleBlock, eyebrow, title, copy);
+  appendChildren(header, titleBlock, domainChip);
   return header;
 }
 
@@ -187,53 +198,49 @@ function createNotificationBanner(): HTMLElement | null {
     (notification) => notification.domain === currentDomain
   );
 
-  const banner = document.createElement('div');
-  banner.style.cssText =
-    'display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:16px;padding:12px;border-radius:var(--tc-radius-md);background:#eff6ff;border:1px solid #bfdbfe';
+  const banner = createElement('section', 'tc-banner');
+  const row = createElement('div', 'tc-banner-row');
+  const copy = createElement('div');
+  const heading = createElement(
+    'p',
+    'tc-banner-title',
+    currentDomainNotification
+      ? `Terms changed on ${currentDomainNotification.domain}`
+      : 'Tracked T&C changes detected'
+  );
+  const body = createElement(
+    'p',
+    'tc-banner-copy',
+    currentDomainNotification
+      ? formatCurrentDomainNotification(currentDomainNotification)
+      : formatGenericNotificationSummary(state.pendingNotifications)
+  );
 
-  const copy = document.createElement('div');
-
-  const heading = document.createElement('p');
-  heading.style.cssText = 'font-weight:600;margin-bottom:4px;color:#1d4ed8';
-  heading.textContent = currentDomainNotification
-    ? `Terms changed on ${currentDomainNotification.domain}`
-    : 'Tracked T&C changes detected';
-
-  const body = document.createElement('p');
-  body.style.cssText = 'font-size:13px;line-height:1.5;color:#1e3a8a';
-  body.textContent = currentDomainNotification
-    ? formatCurrentDomainNotification(currentDomainNotification)
-    : formatGenericNotificationSummary(state.pendingNotifications);
-
-  copy.appendChild(heading);
-  copy.appendChild(body);
-
-  const cta = createButton('Open History', () => {
+  const cta = createButton('Open History', 'secondary', () => {
     showHistory(resolveNotificationTargetDomain());
   });
-  cta.style.padding = '6px 12px';
-  cta.style.flexShrink = '0';
 
-  banner.appendChild(copy);
-  banner.appendChild(cta);
+  appendChildren(copy, heading, body);
+  appendChildren(row, copy, cta);
+  banner.appendChild(row);
   return banner;
 }
 
 function createLoadingState(label: string): HTMLElement {
-  const div = document.createElement('div');
-  div.style.cssText =
-    'text-align:center;padding:32px 16px;color:var(--tc-text-secondary)';
-  div.textContent = label;
-  return div;
+  const card = createStateCard('Running analysis', label, 'Working');
+  card.querySelector('.tc-state-actions')?.appendChild(
+    createButton('Open Settings', 'ghost', showSettings)
+  );
+  return card;
 }
 
 function createErrorState(error: string): HTMLElement {
-  const div = document.createElement('div');
-  div.style.cssText =
-    'padding:12px;background:#fee2e2;border-radius:var(--tc-radius-md);color:#991b1b;margin-bottom:12px';
-  div.textContent = error;
-  div.appendChild(createButton('Retry', handleAnalyze));
-  return div;
+  const card = createStateCard('Something went wrong', error, 'Error');
+  const actions = card.querySelector('.tc-state-actions');
+  if (actions) {
+    actions.appendChild(createButton('Retry', 'primary', handleAnalyze));
+  }
+  return card;
 }
 
 function createActionState(
@@ -242,22 +249,12 @@ function createActionState(
   buttonLabel: string,
   onClick: () => void
 ): HTMLElement {
-  const div = document.createElement('div');
-  div.style.cssText = 'text-align:center;padding:32px 16px';
-
-  const heading = document.createElement('p');
-  heading.style.cssText = 'font-weight:600;margin-bottom:8px';
-  heading.textContent = title;
-
-  const copy = document.createElement('p');
-  copy.style.cssText =
-    'color:var(--tc-text-secondary);margin-bottom:16px;line-height:1.5';
-  copy.textContent = body;
-
-  div.appendChild(heading);
-  div.appendChild(copy);
-  div.appendChild(createButton(buttonLabel, onClick));
-  return div;
+  const card = createStateCard(title, body, 'Ready');
+  const actions = card.querySelector('.tc-state-actions');
+  if (actions) {
+    actions.appendChild(createButton(buttonLabel, 'primary', onClick));
+  }
+  return card;
 }
 
 function createDualActionState(
@@ -268,27 +265,16 @@ function createDualActionState(
   secondaryLabel: string,
   secondaryAction: () => void
 ): HTMLElement {
-  const div = document.createElement('div');
-  div.style.cssText = 'text-align:center;padding:32px 16px';
-
-  const heading = document.createElement('p');
-  heading.style.cssText = 'font-weight:600;margin-bottom:8px';
-  heading.textContent = title;
-
-  const copy = document.createElement('p');
-  copy.style.cssText =
-    'color:var(--tc-text-secondary);margin-bottom:16px;line-height:1.5';
-  copy.textContent = body;
-
-  const actions = document.createElement('div');
-  actions.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap';
-  actions.appendChild(createButton(primaryLabel, primaryAction));
-  actions.appendChild(createFooterButton(secondaryLabel, secondaryAction));
-
-  div.appendChild(heading);
-  div.appendChild(copy);
-  div.appendChild(actions);
-  return div;
+  const card = createStateCard(title, body, 'Attention');
+  const actions = card.querySelector('.tc-state-actions');
+  if (actions) {
+    appendChildren(
+      actions as HTMLElement,
+      createButton(primaryLabel, 'primary', primaryAction),
+      createButton(secondaryLabel, 'secondary', secondaryAction)
+    );
+  }
+  return card;
 }
 
 function createHostedConsentState(): HTMLElement {
@@ -305,54 +291,98 @@ function createHostedConsentState(): HTMLElement {
   );
 }
 
+function createStateCard(
+  title: string,
+  body: string,
+  kicker: string
+): HTMLElement {
+  const card = createElement('section', 'tc-state-card');
+  const kickerNode = createElement('p', 'tc-state-kicker', kicker);
+  const heading = createElement('h2', 'tc-state-title', title);
+  const copy = createElement('p', 'tc-state-copy', body);
+  const actions = createElement('div', 'tc-state-actions');
+  appendChildren(card, kickerNode, heading, copy, actions);
+  return card;
+}
+
 function createSummaryView(
   summary: Summary,
   analysis: PageAnalysisRecord
 ): HTMLElement {
-  const div = document.createElement('div');
-  div.appendChild(createSeverityBadge(summary.severity));
-  div.appendChild(createMetadataRow(analysis));
+  const card = createElement('section', 'tc-card');
+  const topline = createElement('div', 'tc-summary-topline');
+  const severityPill = createSeverityPill(summary.severity);
+  const analyzedPill = createPill(
+    `Updated ${formatTimestamp(analysis.updatedAt)}`,
+    'muted'
+  );
+  appendChildren(topline, severityPill, analyzedPill);
 
-  const summaryP = document.createElement('p');
-  summaryP.style.cssText = 'margin:12px 0;line-height:1.5';
-  summaryP.textContent = summary.summary;
-  div.appendChild(summaryP);
+  const heading = createSectionHeading(
+    'Latest summary',
+    'A concise reading of the current agreement on this page.'
+  );
+
+  const metaRow = createMetadataRow(analysis);
+  const summaryCopy = createElement('p', 'tc-summary-copy', summary.summary);
+
+  appendChildren(card, topline, heading, metaRow, summaryCopy);
 
   if (summary.keyPoints.length > 0) {
-    const kpHeader = document.createElement('h3');
-    kpHeader.style.cssText = 'font-size:14px;font-weight:600;margin:12px 0 8px';
-    kpHeader.textContent = `Key Points (${summary.keyPoints.length})`;
-    div.appendChild(kpHeader);
-
-    const ul = document.createElement('ul');
-    ul.style.cssText = 'padding-left:20px;margin-bottom:12px';
-    for (const point of summary.keyPoints) {
-      const li = document.createElement('li');
-      li.style.cssText = 'margin-bottom:4px;line-height:1.4';
-      li.textContent = point;
-      ul.appendChild(li);
-    }
-    div.appendChild(ul);
+    card.appendChild(createDivider());
+    card.appendChild(
+      createKeyPointsSection(summary.keyPoints, `Key Points (${summary.keyPoints.length})`)
+    );
   }
 
   if (summary.redFlags.length > 0) {
-    const rfHeader = document.createElement('h3');
-    rfHeader.style.cssText = 'font-size:14px;font-weight:600;margin:12px 0 8px';
-    rfHeader.textContent = `Red Flags (${summary.redFlags.length})`;
-    div.appendChild(rfHeader);
-    for (const flag of summary.redFlags) {
-      div.appendChild(createRedFlagCard(flag));
-    }
+    card.appendChild(createDivider());
+    card.appendChild(createRedFlagsSection(summary.redFlags));
   }
 
-  return div;
+  return card;
+}
+
+function createKeyPointsSection(points: string[], title: string): HTMLElement {
+  const section = createElement('section');
+  section.appendChild(
+    createSectionHeading(title, 'Structured takeaways from the detected legal language.')
+  );
+
+  const list = createElement('div', 'tc-list');
+  for (const point of points) {
+    const row = createElement('div', 'tc-list-item');
+    const bullet = createElement('span', 'tc-list-bullet', '+');
+    const copy = createElement('p', 'tc-list-copy', point);
+    appendChildren(row, bullet, copy);
+    list.appendChild(row);
+  }
+
+  section.appendChild(list);
+  return section;
+}
+
+function createRedFlagsSection(
+  flags: Array<{ category: string; description: string; severity: string; quote: string }>
+): HTMLElement {
+  const section = createElement('section');
+  section.appendChild(
+    createSectionHeading(
+      `Red Flags (${flags.length})`,
+      'Expandable clauses that look riskier than the rest of the agreement.'
+    )
+  );
+
+  const stack = createElement('div', 'tc-flag-stack');
+  for (const flag of flags) {
+    stack.appendChild(createRedFlagCard(flag));
+  }
+  section.appendChild(stack);
+  return section;
 }
 
 function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
-  const row = document.createElement('div');
-  row.style.cssText =
-    'display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;margin-bottom:4px';
-
+  const row = createElement('div', 'tc-meta-row');
   const chips = [
     `Source: ${formatToken(analysis.sourceType)}`,
     `Detection: ${formatToken(analysis.detectionType)}`,
@@ -360,37 +390,17 @@ function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
   ];
 
   for (const chipText of chips) {
-    const chip = document.createElement('span');
-    chip.style.cssText =
-      'font-size:11px;color:var(--tc-text-secondary);background:var(--tc-surface);border-radius:9999px;padding:4px 8px';
-    chip.textContent = chipText;
-    row.appendChild(chip);
+    row.appendChild(createPill(chipText, 'default'));
   }
 
   return row;
 }
 
-function createSeverityBadge(severity: string): HTMLElement {
-  const colors: Record<string, string> = {
-    low: 'var(--tc-severity-low)',
-    medium: 'var(--tc-severity-medium)',
-    high: 'var(--tc-severity-high)',
-    critical: 'var(--tc-severity-critical)',
-  };
-
-  const div = document.createElement('div');
-  div.style.cssText = 'display:flex;align-items:center;gap:8px';
-
-  const dot = document.createElement('span');
-  dot.style.cssText = `width:8px;height:8px;border-radius:50%;background:${colors[severity] ?? colors['medium']}`;
-
-  const label = document.createElement('span');
-  label.style.cssText = 'font-size:11px;font-weight:600;text-transform:uppercase';
-  label.textContent = severity;
-
-  div.appendChild(dot);
-  div.appendChild(label);
-  return div;
+function createSeverityPill(severity: string): HTMLElement {
+  return createPill(
+    severity.toUpperCase(),
+    isSeverity(severity) ? severity : 'default'
+  );
 }
 
 function createRedFlagCard(flag: {
@@ -399,110 +409,64 @@ function createRedFlagCard(flag: {
   severity: string;
   quote: string;
 }): HTMLElement {
-  const card = document.createElement('div');
-  const severityColors: Record<string, string> = {
-    low: 'var(--tc-severity-low)',
-    medium: 'var(--tc-severity-medium)',
-    high: 'var(--tc-severity-high)',
-  };
+  const card = createElement(
+    'div',
+    cx(
+      'tc-flag-card',
+      isExpandableSeverity(flag.severity) && `tc-flag-card--${flag.severity}`
+    )
+  );
 
-  card.style.cssText = `border-left:3px solid ${severityColors[flag.severity] ?? severityColors['medium']};background:var(--tc-surface);border-radius:var(--tc-radius-md);padding:12px;margin-bottom:8px;cursor:pointer`;
-
-  const header = document.createElement('div');
-  header.style.cssText = 'display:flex;justify-content:space-between;align-items:center';
-
-  const catName = document.createElement('span');
-  catName.style.cssText = 'font-weight:500;font-size:13px';
-  catName.textContent = flag.category.replace(/_/g, ' ');
-
-  const sevPill = document.createElement('span');
-  sevPill.style.cssText = 'font-size:11px;font-weight:600;text-transform:uppercase';
-  sevPill.textContent = flag.severity;
-
-  header.appendChild(catName);
-  header.appendChild(sevPill);
-  card.appendChild(header);
-
-  const details = document.createElement('div');
-  details.style.cssText =
-    'max-height:0;overflow:hidden;transition:max-height 200ms cubic-bezier(0.16,1,0.3,1)';
-
-  const desc = document.createElement('p');
-  desc.style.cssText =
-    'margin:8px 0;font-size:13px;color:var(--tc-text-secondary);line-height:1.4';
-  desc.textContent = flag.description;
-  details.appendChild(desc);
-
-  if (flag.quote) {
-    const quote = document.createElement('blockquote');
-    quote.style.cssText =
-      'border-left:2px solid var(--tc-text-tertiary);padding-left:12px;color:var(--tc-text-secondary);font-style:italic;font-size:12px;margin:8px 0';
-    quote.textContent = flag.quote;
-    details.appendChild(quote);
-  }
-
-  card.appendChild(details);
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-expanded', 'false');
-  card.addEventListener('click', () => {
+
+  const header = createElement('div', 'tc-flag-header');
+  const title = createElement(
+    'span',
+    'tc-flag-title',
+    flag.category.replace(/_/g, ' ')
+  );
+  const severityPill = createSeverityPill(flag.severity);
+  const details = createElement('div', 'tc-flag-details');
+  const desc = createElement('p', 'tc-flag-description', flag.description);
+
+  appendChildren(header, title, severityPill);
+  details.appendChild(desc);
+
+  if (flag.quote) {
+    details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
+  }
+
+  appendChildren(card, header, details);
+
+  const toggle = (): void => {
     const expanded = card.getAttribute('aria-expanded') === 'true';
     card.setAttribute('aria-expanded', String(!expanded));
-    details.style.maxHeight = expanded ? '0' : '300px';
-  });
+    details.style.maxHeight = expanded ? '0' : '320px';
+  };
+
+  card.addEventListener('click', toggle);
   card.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      card.click();
+      toggle();
     }
   });
 
   return card;
 }
 
-function createButton(text: string, onClick: () => void): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.style.cssText =
-    'background:var(--tc-accent);color:var(--tc-accent-text);border:none;border-radius:var(--tc-radius-md);padding:8px 16px;cursor:pointer;font-size:14px;font-weight:500;transition:background 150ms';
-  btn.textContent = text;
-  btn.addEventListener('click', () => onClick());
-  btn.addEventListener('mouseenter', () => {
-    btn.style.background = 'var(--tc-accent-hover)';
-  });
-  btn.addEventListener('mouseleave', () => {
-    btn.style.background = 'var(--tc-accent)';
-  });
-  return btn;
-}
-
 function createFooter(): HTMLElement {
-  const footer = document.createElement('div');
-  footer.style.cssText =
-    'display:flex;gap:8px;justify-content:center;margin-top:16px;padding-top:12px;border-top:1px solid var(--tc-border)';
-
-  footer.appendChild(createFooterButton('Settings', showSettings));
-  footer.appendChild(createFooterButton('History', () => {
-    showHistory();
-  }));
+  const footer = createElement('div', 'tc-footer-nav');
+  appendChildren(
+    footer,
+    createButton('Settings', 'pill', showSettings),
+    createButton('History', 'pill', () => {
+      showHistory();
+    })
+  );
   return footer;
-}
-
-function createFooterButton(
-  text: string,
-  onClick: () => void
-): HTMLButtonElement {
-  const btn = document.createElement('button');
-  btn.style.cssText =
-    'background:transparent;color:var(--tc-accent);border:1px solid var(--tc-border);border-radius:var(--tc-radius-md);padding:6px 16px;cursor:pointer;font-size:13px;transition:background 150ms';
-  btn.textContent = text;
-  btn.addEventListener('click', onClick);
-  btn.addEventListener('mouseenter', () => {
-    btn.style.background = 'var(--tc-hover-bg)';
-  });
-  btn.addEventListener('mouseleave', () => {
-    btn.style.background = 'transparent';
-  });
-  return btn;
 }
 
 async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void> {
@@ -569,33 +533,30 @@ function showSettings(): void {
   const app = document.getElementById('app');
   if (!app) return;
 
+  app.className = 'tc-page';
   app.textContent = '';
-  app.appendChild(createBackButton());
 
-  const heading = document.createElement('h2');
-  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
-  heading.textContent = 'Settings';
-  app.appendChild(heading);
+  const panel = createElement('section', 'tc-settings-panel');
+  const body = createElement('div', 'tc-settings-body');
+  const contentDiv = createElement('div');
+  const tabBar = createElement('div', 'tc-tabs');
 
-  const tabs = ['Providers', 'Detection', 'Notifications', 'Cache'] as const;
-  const tabBar = document.createElement('div');
-  tabBar.style.cssText =
-    'display:flex;gap:4px;margin-bottom:16px;border-bottom:1px solid var(--tc-border)';
+  appendChildren(
+    body,
+    createViewHeader('Settings', 'Tune providers, detection rules, notifications, and cache behavior.'),
+    tabBar,
+    contentDiv
+  );
+  panel.appendChild(body);
+  app.appendChild(panel);
 
-  const contentDiv = document.createElement('div');
+  const buttons: HTMLButtonElement[] = [];
 
-  for (const tab of tabs) {
-    const btn = document.createElement('button');
-    btn.style.cssText =
-      'background:none;border:none;border-bottom:2px solid transparent;padding:8px 12px;cursor:pointer;font-size:13px;font-weight:500;color:var(--tc-text-secondary)';
-    btn.textContent = tab;
-    btn.addEventListener('click', async () => {
-      for (const child of tabBar.children) {
-        (child as HTMLElement).style.borderBottomColor = 'transparent';
-        (child as HTMLElement).style.color = 'var(--tc-text-secondary)';
-      }
-      btn.style.borderBottomColor = 'var(--tc-accent)';
-      btn.style.color = 'var(--tc-text)';
+  for (const tab of SETTINGS_TABS) {
+    const button = createElement('button', 'tc-tab', tab) as HTMLButtonElement;
+    button.type = 'button';
+    button.addEventListener('click', async () => {
+      setActiveTab(buttons, button);
 
       switch (tab) {
         case 'Providers':
@@ -612,15 +573,14 @@ function showSettings(): void {
           break;
       }
     });
-    tabBar.appendChild(btn);
+    buttons.push(button);
+    tabBar.appendChild(button);
   }
 
-  app.appendChild(tabBar);
-  app.appendChild(contentDiv);
-
-  const firstTab = tabBar.children[0] as HTMLElement;
-  firstTab.style.borderBottomColor = 'var(--tc-accent)';
-  firstTab.style.color = 'var(--tc-text)';
+  const firstTab = buttons[0];
+  if (firstTab) {
+    setActiveTab(buttons, firstTab);
+  }
   void renderProviderSettings(contentDiv);
 }
 
@@ -628,25 +588,50 @@ function showHistory(initialDomain?: string): void {
   const app = document.getElementById('app');
   if (!app) return;
 
+  app.className = 'tc-page';
   app.textContent = '';
-  app.appendChild(createBackButton());
 
-  const contentDiv = document.createElement('div');
-  app.appendChild(contentDiv);
+  const panel = createElement('section', 'tc-history-panel');
+  const body = createElement('div', 'tc-history-body');
+  const contentDiv = createElement('div');
+  appendChildren(
+    body,
+    createViewHeader(
+      'History',
+      'Inspect saved versions and compare how a domain’s terms evolve over time.'
+    ),
+    contentDiv
+  );
+  panel.appendChild(body);
+  app.appendChild(panel);
   void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain());
 }
 
-function createBackButton(): HTMLButtonElement {
-  const back = document.createElement('button');
-  back.style.cssText =
-    'background:none;border:none;color:var(--tc-accent);cursor:pointer;font-size:14px;margin-bottom:12px';
-  back.textContent = '← Back';
-  back.addEventListener('click', () => {
-    void refreshPopupState().then(() => {
-      renderCurrentApp();
-    });
+function createViewHeader(title: string, subtitle: string): HTMLElement {
+  const wrapper = createElement('div');
+  const header = createElement('div', 'tc-view-header');
+  appendChildren(header, createButton('Back', 'ghost', handleBack), createElement('h2', 'tc-view-title', title));
+  appendChildren(wrapper, header, createElement('p', 'tc-page-copy', subtitle));
+  return wrapper;
+}
+
+function handleBack(): void {
+  void refreshPopupState().then(() => {
+    renderCurrentApp();
   });
-  return back;
+}
+
+function setActiveTab(
+  buttons: HTMLButtonElement[],
+  activeButton: HTMLButtonElement
+): void {
+  for (const button of buttons) {
+    button.classList.toggle('is-active', button === activeButton);
+  }
+}
+
+function createDivider(): HTMLElement {
+  return createElement('div', 'tc-section-divider');
 }
 
 async function refreshPopupState(): Promise<void> {
@@ -701,6 +686,15 @@ function formatToken(value: string | null): string {
   return value.replace(/_/g, ' ');
 }
 
+function formatTimestamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 function getCurrentDomain(): string {
   return state.analysis?.domain ?? state.domain;
 }
@@ -737,6 +731,14 @@ function formatGenericNotificationSummary(
   return count === 1
     ? '1 tracked domain has a new terms change ready for review.'
     : `${count} tracked domains have new terms changes ready for review.`;
+}
+
+function isSeverity(value: string): value is 'low' | 'medium' | 'high' | 'critical' {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
+}
+
+function isExpandableSeverity(value: string): value is 'low' | 'medium' | 'high' {
+  return value === 'low' || value === 'medium' || value === 'high';
 }
 
 function bootstrap(): void {

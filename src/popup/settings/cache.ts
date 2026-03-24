@@ -1,68 +1,74 @@
-import { getCacheStats, clearCache } from '@summarizer/cache';
+import {
+  appendChildren,
+  createButton,
+  createElement,
+  createEmptyMessage,
+  createSectionHeading,
+} from '@popup/ui';
+import { clearCache, getCacheStats } from '@summarizer/cache';
 
 export async function renderCacheSettings(container: HTMLElement): Promise<void> {
   container.textContent = '';
-
-  const heading = document.createElement('h3');
-  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
-  heading.textContent = 'Cache Management';
-  container.appendChild(heading);
+  container.appendChild(
+    createSectionHeading(
+      'Cache management',
+      'Inspect saved summaries and clear stored entries when you want TC Guard to analyze from scratch.'
+    )
+  );
 
   const stats = await getCacheStats();
+  const statsCard = createElement('section', 'tc-callout');
+  appendChildren(
+    statsCard,
+    createElement('div', 'tc-callout-title', 'Saved analysis footprint'),
+    createElement('p', 'tc-callout-copy', `Cached summaries: ${stats.count}`),
+    createElement(
+      'p',
+      'tc-callout-copy',
+      `Approximate size: ${formatBytes(stats.sizeBytes)}`
+    )
+  );
+  container.appendChild(statsCard);
 
-  const statsDiv = document.createElement('div');
-  statsDiv.style.cssText = 'margin-bottom:16px;padding:12px;background:#f8f9fa;border-radius:8px';
+  container.appendChild(
+    createSectionHeading(
+      'Cached domains',
+      'Clear individual domains if you only want to invalidate a specific source.'
+    )
+  );
 
-  const countP = document.createElement('p');
-  countP.style.cssText = 'font-size:13px;margin-bottom:4px';
-  countP.textContent = `Cached summaries: ${stats.count}`;
-  statsDiv.appendChild(countP);
-
-  const sizeP = document.createElement('p');
-  sizeP.style.cssText = 'font-size:13px;margin-bottom:4px';
-  sizeP.textContent = `Approximate size: ${formatBytes(stats.sizeBytes)}`;
-  statsDiv.appendChild(sizeP);
-
-  container.appendChild(statsDiv);
-
-  if (stats.domains.length > 0) {
-    const domainHeading = document.createElement('h4');
-    domainHeading.style.cssText = 'font-size:14px;font-weight:500;margin-bottom:8px';
-    domainHeading.textContent = 'Cached Domains';
-    container.appendChild(domainHeading);
-
+  if (stats.domains.length === 0) {
+    container.appendChild(createEmptyMessage('No cached domains yet.'));
+  } else {
     for (const domain of stats.domains) {
-      const row = document.createElement('div');
-      row.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #e5e7eb';
+      const row = createElement('div', 'tc-domain-row');
+      const label = createElement('div', 'tc-domain-label');
+      appendChildren(
+        label,
+        createElement('div', 'tc-domain-name', domain),
+        createElement('div', 'tc-option-copy', 'Remove cached summaries for this domain only.')
+      );
 
-      const label = document.createElement('span');
-      label.style.cssText = 'font-size:13px';
-      label.textContent = domain;
-
-      const clearBtn = document.createElement('button');
-      clearBtn.style.cssText = 'border:1px solid #e5e7eb;border-radius:6px;padding:4px 10px;cursor:pointer;font-size:12px;background:white';
-      clearBtn.textContent = 'Clear';
-      clearBtn.addEventListener('click', async () => {
-        await clearCache(domain);
-        await renderCacheSettings(container);
+      const clearButton = createButton('Clear', 'secondary', () => {
+        void clearCache(domain).then(async () => {
+          await renderCacheSettings(container);
+        });
       });
 
-      row.appendChild(label);
-      row.appendChild(clearBtn);
+      appendChildren(row, label, clearButton);
       container.appendChild(row);
     }
   }
 
-  const clearAllBtn = document.createElement('button');
-  clearAllBtn.style.cssText = 'margin-top:16px;border:none;border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px;background:#ef4444;color:white';
-  clearAllBtn.textContent = 'Clear All Cache';
-  clearAllBtn.addEventListener('click', async () => {
-    if (confirm('Clear all cached summaries?')) {
-      await clearCache();
-      await renderCacheSettings(container);
-    }
-  });
-  container.appendChild(clearAllBtn);
+  container.appendChild(
+    createButton('Clear All Cache', 'danger', () => {
+      if (confirm('Clear all cached summaries?')) {
+        void clearCache().then(async () => {
+          await renderCacheSettings(container);
+        });
+      }
+    })
+  );
 }
 
 function formatBytes(bytes: number): string {

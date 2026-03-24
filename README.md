@@ -1,10 +1,15 @@
-# TC Guard
+[![](https://img.shields.io/badge/goodman_1.0.0-passing-green)](https://github.com/gongahkia/goodman/releases/tag/1.0.0) 
+![](https://github.com/gongahkia/goodman/actions/workflows/ci.yml/badge.svg)
 
-TC Guard is a Manifest V3 browser extension for understanding Terms and Conditions at the moment a page asks for consent. It detects likely legal surfaces, extracts the relevant text, summarizes it with a user-configured LLM provider, stores the result as shared page state for the overlay and popup, and tracks version changes per domain over time.
+# `Goodman`
+
+...
+
+Goodman is a Manifest V3 browser extension for understanding Terms and Conditions at the moment a page asks for consent. It detects likely legal surfaces, extracts the relevant text, summarizes it with a user-configured LLM provider, stores the result as shared page state for the overlay and popup, and tracks version changes per domain over time.
 
 ## Product Position
 
-TC Guard is currently a privacy-first, bring-your-own-provider product aimed at technical users and power users. It is not a zero-config consumer app yet.
+Goodman is currently a privacy-first, bring-your-own-provider product aimed at technical users and power users. It is not a zero-config consumer app yet.
 
 - It does automatic detection and persists explicit page-analysis state out of the box.
 - It requires provider configuration before remote summarization, version history, and change alerts can succeed.
@@ -32,9 +37,15 @@ TC Guard is currently a privacy-first, bring-your-own-provider product aimed at 
 
 More detail lives in [docs/ARCHITECTURE.md](/Users/gongahkia/Desktop/coding/projects/goodman/docs/ARCHITECTURE.md).
 
+## Stack
+
+...
+
+## Usage
+
 ## Installation
 
-TC Guard is pinned to Node 20.x and `pnpm@10.32.1`.
+Goodman is pinned to Node 20.x and `pnpm@10.32.1`.
 
 ```bash
 nvm use
@@ -63,7 +74,7 @@ Without provider setup, the extension can still detect likely consent surfaces a
 - No app telemetry or analytics are built into the extension.
 - Summaries, page-analysis state, version history, notification state, and settings live in browser local storage.
 - Extracted legal text is sent only to the provider you configure. Remote providers receive the text you ask them to summarize.
-- API keys are stored in browser-managed local extension storage. TC Guard does not add its own encryption layer on top of that storage.
+- API keys are stored in browser-managed local extension storage. Goodman does not add its own encryption layer on top of that storage.
 
 ## Interview Notes
 
@@ -85,6 +96,10 @@ pnpm exec playwright install chromium
 pnpm test:e2e
 ```
 
-## License
+## Architecture
 
-ISC
+...
+
+## Reference
+
+...

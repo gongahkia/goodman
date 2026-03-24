@@ -1,3 +1,4 @@
+import { appendChildren, createElement, createSectionHeading } from '@popup/ui';
 import { getStorage, setStorage } from '@shared/storage';
 
 const SENSITIVITY_OPTIONS = [
@@ -25,16 +26,17 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
 
   container.textContent = '';
 
-  const heading = document.createElement('h3');
-  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
-  heading.textContent = 'Detection Sensitivity';
-  container.appendChild(heading);
+  appendChildren(
+    container,
+    createSectionHeading(
+      'Detection sensitivity',
+      'Control how aggressively TC Guard tries to interpret consent surfaces on the active page.'
+    )
+  );
 
   for (const option of SENSITIVITY_OPTIONS) {
-    const label = document.createElement('label');
-    label.style.cssText = 'display:flex;gap:8px;margin-bottom:12px;cursor:pointer;padding:12px;border:1px solid #e5e7eb;border-radius:8px';
-
-    const radio = document.createElement('input');
+    const label = createElement('label', 'tc-radio-card');
+    const radio = createElement('input') as HTMLInputElement;
     radio.type = 'radio';
     radio.name = 'sensitivity';
     radio.value = option.value;
@@ -45,18 +47,14 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
       await setStorage('settings', { ...s.data, detectionSensitivity: option.value });
     });
 
-    const textDiv = document.createElement('div');
-    const name = document.createElement('div');
-    name.style.cssText = 'font-weight:500;font-size:14px';
-    name.textContent = option.label;
-    const desc = document.createElement('div');
-    desc.style.cssText = 'font-size:12px;color:#6b7280;margin-top:2px';
-    desc.textContent = option.description;
-    textDiv.appendChild(name);
-    textDiv.appendChild(desc);
+    const body = createElement('div', 'tc-option-body');
+    appendChildren(
+      body,
+      createElement('div', 'tc-option-title', option.label),
+      createElement('div', 'tc-option-copy', option.description)
+    );
 
-    label.appendChild(radio);
-    label.appendChild(textDiv);
+    appendChildren(label, radio, body);
     container.appendChild(label);
   }
 }

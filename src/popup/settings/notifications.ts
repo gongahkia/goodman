@@ -1,3 +1,4 @@
+import { appendChildren, createElement, createEmptyMessage, createSectionHeading } from '@popup/ui';
 import {
   getDomainNotificationPreference,
   getStorage,
@@ -12,51 +13,73 @@ export async function renderNotificationSettings(container: HTMLElement): Promis
   const settings = settingsResult.data;
 
   container.textContent = '';
+  container.appendChild(
+    createSectionHeading(
+      'Notification settings',
+      'Choose when TC Guard should surface stored terms changes for domains you revisit.'
+    )
+  );
 
-  const heading = document.createElement('h3');
-  heading.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:16px';
-  heading.textContent = 'Notification Settings';
-  container.appendChild(heading);
-
-  const globalToggle = document.createElement('label');
-  globalToggle.style.cssText = 'display:flex;align-items:center;gap:8px;margin-bottom:16px;cursor:pointer';
-  const globalCheck = document.createElement('input');
+  const globalRow = createElement('label', 'tc-domain-row');
+  const globalCheck = createElement('input') as HTMLInputElement;
   globalCheck.type = 'checkbox';
   globalCheck.checked = settings.notifyOnChange;
   globalCheck.addEventListener('change', async () => {
-    const s = await getStorage('settings');
-    if (!s.ok) return;
-    await setStorage('settings', { ...s.data, notifyOnChange: globalCheck.checked });
+    const nextSettings = await getStorage('settings');
+    if (!nextSettings.ok) return;
+    await setStorage('settings', {
+      ...nextSettings.data,
+      notifyOnChange: globalCheck.checked,
+    });
   });
-  globalToggle.appendChild(globalCheck);
-  globalToggle.appendChild(document.createTextNode('Notify when tracked T&C change'));
-  container.appendChild(globalToggle);
 
-  const domainsHeading = document.createElement('h4');
-  domainsHeading.style.cssText = 'font-size:14px;font-weight:500;margin-bottom:8px';
-  domainsHeading.textContent = 'Tracked Domains';
-  container.appendChild(domainsHeading);
+  const globalBody = createElement('div', 'tc-domain-label');
+  appendChildren(
+    globalBody,
+    createElement('div', 'tc-option-title', 'Notify when tracked T&C change'),
+    createElement(
+      'div',
+      'tc-option-copy',
+      'This controls the top-level banner and pending change reminders in the popup.'
+    )
+  );
+  appendChildren(globalRow, globalCheck, globalBody);
+  container.appendChild(globalRow);
+
+  container.appendChild(
+    createSectionHeading(
+      'Tracked domains',
+      'Override notifications domain by domain once TC Guard has saved version history for them.'
+    )
+  );
 
   const domains = await getAllTrackedDomains();
   if (domains.length === 0) {
-    const empty = document.createElement('p');
-    empty.style.cssText = 'font-size:13px;color:#6b7280';
-    empty.textContent = 'No domains tracked yet.';
-    container.appendChild(empty);
+    container.appendChild(createEmptyMessage('No domains tracked yet.'));
     return;
   }
 
   for (const domain of domains) {
-    const row = document.createElement('label');
-    row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid #e5e7eb;cursor:pointer';
-    const check = document.createElement('input');
+    const row = createElement('label', 'tc-domain-row');
+    const check = createElement('input') as HTMLInputElement;
     check.type = 'checkbox';
     check.checked = await getDomainNotificationPreference(domain);
     check.addEventListener('change', async () => {
       await setDomainNotificationPreference(domain, check.checked);
     });
-    row.appendChild(check);
-    row.appendChild(document.createTextNode(domain));
+
+    const label = createElement('div', 'tc-domain-label');
+    appendChildren(
+      label,
+      createElement('div', 'tc-domain-name', domain),
+      createElement(
+        'div',
+        'tc-option-copy',
+        'Show alerts and pending review banners when new terms are detected.'
+      )
+    );
+
+    appendChildren(row, check, label);
     container.appendChild(row);
   }
 }
