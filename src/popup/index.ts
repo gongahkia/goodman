@@ -26,10 +26,12 @@ import {
   prunePageAnalysisState,
   setStorage,
 } from '@shared/storage';
+import { sendToBackground } from '@shared/messaging';
 import { getPendingNotifications } from '@versioning/notifications';
 
 interface PopupState {
   tabId: number | null;
+  windowId: number | null;
   tabUrl: string;
   domain: string;
   analysis: PageAnalysisRecord | null;
@@ -44,6 +46,7 @@ const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Ca
 
 const state: PopupState = {
   tabId: null,
+  windowId: null,
   tabUrl: '',
   domain: '',
   analysis: null,
@@ -606,6 +609,9 @@ function createFooter(): HTMLElement {
   const footer = createElement('div', 'tc-footer-nav');
   appendChildren(
     footer,
+    createButton('Keep Open', 'pill', () => {
+      void handleKeepOpen();
+    }),
     createButton('Settings', 'pill', showSettings),
     createButton('History', 'pill', () => {
       showHistory();
@@ -644,6 +650,26 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
     state.loading = false;
     state.analysisStartedAt = null;
     if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+    renderCurrentApp();
+  }
+}
+
+async function handleKeepOpen(): Promise<void> {
+  try {
+    const response = await sendToBackground({
+      type: 'OPEN_WORKSPACE_SURFACE',
+      payload: {
+        tabId: state.tabId ?? undefined,
+        windowId: state.windowId ?? undefined,
+      },
+    });
+
+    if (response && typeof response === 'object' && 'ok' in response && response.ok === false) {
+      state.error = 'Could not open a persistent TC Guard workspace.';
+      renderCurrentApp();
+    }
+  } catch {
+    state.error = 'Could not open a persistent TC Guard workspace.';
     renderCurrentApp();
   }
 }
@@ -846,6 +872,7 @@ async function refreshActiveTabContext(): Promise<void> {
   const previousUrl = state.tabUrl;
 
   state.tabId = tab?.id ?? null;
+  state.windowId = typeof tab?.windowId === 'number' ? tab.windowId : null;
   state.tabUrl = tab?.url ?? '';
 
   if (tab?.url) {

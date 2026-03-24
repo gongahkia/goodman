@@ -87,6 +87,23 @@ describe('background page analysis contracts', () => {
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
   });
 
+  it('opens the TC Guard workspace from a background message', async () => {
+    await importBackground();
+    const listener = getRuntimeListener();
+
+    const response = await listener(
+      { type: 'OPEN_WORKSPACE_SURFACE', payload: { windowId: 22 } },
+      {}
+    );
+
+    expect(response).toEqual({ ok: true, data: null });
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      enabled: true,
+      path: 'src/popup/index.html',
+    });
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
+  });
+
   it('falls back to a popup window when side panel support is unavailable', async () => {
     const originalOpen = chrome.sidePanel.open;
     // Simulate a browser that does not expose the side panel open API.

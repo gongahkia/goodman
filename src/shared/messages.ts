@@ -39,6 +39,11 @@ export interface GetPageAnalysisMessage {
   payload: { tabId: number };
 }
 
+export interface OpenWorkspaceSurfaceMessage {
+  type: 'OPEN_WORKSPACE_SURFACE';
+  payload: { tabId?: number; windowId?: number };
+}
+
 export interface SavePageAnalysisMessage {
   type: 'SAVE_PAGE_ANALYSIS';
   payload: PageAnalysisRecord;
@@ -70,6 +75,7 @@ export type Message =
   | GetSettingsMessage
   | SaveSettingsMessage
   | GetPageAnalysisMessage
+  | OpenWorkspaceSurfaceMessage
   | SavePageAnalysisMessage
   | ProcessPageAnalysisMessage
   | TCChangedMessage;

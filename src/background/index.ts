@@ -2,6 +2,7 @@ import { onMessage } from '@shared/messaging';
 import type {
   Message,
   MessageResponse,
+  OpenWorkspaceSurfaceMessage,
   ProcessPageAnalysisMessage,
   Settings,
 } from '@shared/messages';
@@ -39,6 +40,8 @@ onMessage(
         return handleSaveSettings(msg.payload);
       case 'GET_PAGE_ANALYSIS':
         return handleGetPageAnalysis(msg.payload.tabId);
+      case 'OPEN_WORKSPACE_SURFACE':
+        return handleOpenWorkspaceSurface(msg.payload);
       case 'SAVE_PAGE_ANALYSIS':
         return handleSavePageAnalysis(msg.payload, sender);
       case 'PROCESS_PAGE_ANALYSIS':
@@ -97,6 +100,17 @@ async function handleSaveSettings(
 async function handleGetPageAnalysis(tabId: number): Promise<MessageResponse> {
   const analysis = await getPageAnalysis(tabId);
   return { ok: true, data: analysis };
+}
+
+async function handleOpenWorkspaceSurface(
+  payload: OpenWorkspaceSurfaceMessage['payload']
+): Promise<MessageResponse> {
+  const opened = await openWorkspaceSurface(payload);
+  if (!opened) {
+    return { ok: false, error: 'Could not open workspace surface' };
+  }
+
+  return { ok: true, data: null };
 }
 
 async function handleSavePageAnalysis(
@@ -184,13 +198,16 @@ function registerKeepAlive(): void {
 }
 
 function registerActionLauncher(): void {
-  chrome.action?.onClicked?.addListener((tab) => {
-    void openWorkspaceSurface(tab);
+  chrome.action?.onClicked?.addListener(async (tab) => {
+    await openWorkspaceSurface(tab);
   });
 }
 
-async function openWorkspaceSurface(tab?: chrome.tabs.Tab): Promise<void> {
+async function openWorkspaceSurface(
+  target?: chrome.tabs.Tab | OpenWorkspaceSurfaceMessage['payload']
+): Promise<boolean> {
   const extensionPage = chrome.runtime.getURL('src/popup/index.html');
+  const windowId = await resolveWorkspaceWindowId(target);
 
   if (chrome.sidePanel?.open) {
     try {
@@ -199,9 +216,9 @@ async function openWorkspaceSurface(tab?: chrome.tabs.Tab): Promise<void> {
         path: 'src/popup/index.html',
       });
 
-      if (typeof tab?.windowId === 'number') {
-        await chrome.sidePanel.open({ windowId: tab.windowId });
-        return;
+      if (typeof windowId === 'number') {
+        await chrome.sidePanel.open({ windowId });
+        return true;
       }
     } catch (error) {
       console.warn('[TC Guard] side panel open failed, falling back:', error);
@@ -217,7 +234,7 @@ async function openWorkspaceSurface(tab?: chrome.tabs.Tab): Promise<void> {
         height: 900,
         focused: true,
       });
-      return;
+      return true;
     } catch (error) {
       console.warn('[TC Guard] popup window open failed, falling back:', error);
     }
@@ -225,9 +242,34 @@ async function openWorkspaceSurface(tab?: chrome.tabs.Tab): Promise<void> {
 
   try {
     await chrome.tabs.create({ url: extensionPage });
+    return true;
   } catch (error) {
     console.error('[TC Guard] could not open workspace surface:', error);
   }
+
+  return false;
+}
+
+async function resolveWorkspaceWindowId(
+  target?: chrome.tabs.Tab | OpenWorkspaceSurfaceMessage['payload']
+): Promise<number | undefined> {
+  if (typeof target?.windowId === 'number') {
+    return target.windowId;
+  }
+
+  if (chrome.tabs?.query) {
+    try {
+      const activeTabs = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+      const activeTab = activeTabs[0];
+      if (typeof activeTab?.windowId === 'number') {
+        return activeTab.windowId;
+      }
+    } catch (error) {
+      console.warn('[TC Guard] could not resolve active window id:', error);
+    }
+  }
+
+  return undefined;
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

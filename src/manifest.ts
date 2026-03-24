@@ -17,6 +17,7 @@ const baseManifest = {
     },
   ],
   action: {
+    default_popup: 'src/popup/index.html',
     default_icon: {
       '16': 'icons/tc-guard-16.png',
       '48': 'icons/tc-guard-48.png',
@@ -51,10 +52,6 @@ function getChromeManifest() {
 function getFirefoxManifest() {
   return {
     ...baseManifest,
-    action: {
-      ...baseManifest.action,
-      default_popup: 'src/popup/index.html',
-    },
     background: {
       service_worker: 'src/background/index.ts',
     },

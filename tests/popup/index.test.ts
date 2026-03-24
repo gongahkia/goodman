@@ -65,6 +65,33 @@ describe('popup index', () => {
       'This page asks you to agree to terms.'
     );
     expect(document.body.textContent).toContain('Source: inline');
+    expect(document.body.textContent).toContain('Keep Open');
+  });
+
+  it('opens a persistent workspace from the popup footer', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
+    chrome.runtime.sendMessage.mockResolvedValue({ ok: true, data: null });
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    const keepOpenButton = Array.from(document.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Keep Open'
+    );
+
+    keepOpenButton?.click();
+    await flush();
+
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'OPEN_WORKSPACE_SURFACE',
+      payload: {
+        tabId: 7,
+        windowId: undefined,
+      },
+    });
   });
 
   it('renders provider setup state from persisted analysis', async () => {
