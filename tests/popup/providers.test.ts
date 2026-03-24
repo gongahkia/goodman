@@ -1,8 +1,16 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@providers/factory', () => ({
   validateProvider: vi.fn().mockResolvedValue(true),
 }));
+
+vi.mock('@providers/hosted', () => {
+  return {
+    HostedProvider: class {
+      checkHealth() { return Promise.resolve(false); }
+    },
+  };
+});
 
 import type { Settings } from '@shared/messages';
 import { DEFAULT_SETTINGS } from '@shared/storage';
@@ -12,10 +20,15 @@ import { mockStorage } from '../mocks/chrome';
 
 describe('provider settings', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     document.body.innerHTML = '';
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     mockStorage.settings = structuredClone(DEFAULT_SETTINGS);
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('rerenders the provider config immediately when the active provider changes', async () => {
@@ -36,7 +49,7 @@ describe('provider settings', () => {
     const container = await renderSettings();
 
     expect(container.textContent).toContain('TC Guard Cloud');
-    expect(container.textContent).toContain('Recommended for most people');
+    expect(container.textContent).toContain('No API key required');
     expect(container.textContent).toContain('Selected');
   });
 
@@ -59,7 +72,7 @@ describe('provider settings', () => {
     expect(validateProvider).toHaveBeenLastCalledWith('custom');
   });
 
-  it('persists draft edits immediately so they survive provider switches', async () => {
+  it('persists draft edits after debounce so they survive provider switches', async () => {
     const container = await renderSettings();
 
     const apiKeyInput = getApiKeyInput(container);
@@ -69,7 +82,7 @@ describe('provider settings', () => {
     apiKeyInput.dispatchEvent(new Event('input', { bubbles: true }));
     modelInput.value = 'gpt-4.1-draft';
     modelInput.dispatchEvent(new Event('input', { bubbles: true }));
-    await flush();
+    await flushDebounce();
 
     expect(getStoredSettings().providers.openai.apiKey).toBe('sk-draft-openai');
     expect(getStoredSettings().providers.openai.model).toBe('gpt-4.1-draft');
@@ -97,9 +110,15 @@ async function renderSettings(): Promise<HTMLElement> {
 }
 
 async function flush(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(0);
   await Promise.resolve();
   await Promise.resolve();
-  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function flushDebounce(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(500);
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 function getStoredSettings(): Settings {

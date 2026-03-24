@@ -6,7 +6,8 @@ export function chunkText(
   overlapTokens: number = DEFAULT_CHUNK_OVERLAP_TOKENS
 ): string[] {
   const estimatedTokens = estimateTokens(text);
-  if (estimatedTokens <= maxTokens) {
+  const safeMax = Math.floor(maxTokens * 0.85); // safety margin for token estimation variance
+  if (estimatedTokens <= safeMax) {
     return [text];
   }
 

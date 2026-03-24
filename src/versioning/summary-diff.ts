@@ -45,11 +45,11 @@ export function compareSummaries(
       : null;
 
   const newKeyPoints = newSummary.keyPoints.filter(
-    (point) => !oldSummary.keyPoints.some((old) => jaccardSimilarity(old, point) > 0.5)
+    (point) => !oldSummary.keyPoints.some((old) => jaccardSimilarity(old, point) >= 0.35)
   );
 
   const removedKeyPoints = oldSummary.keyPoints.filter(
-    (point) => !newSummary.keyPoints.some((np) => jaccardSimilarity(point, np) > 0.5)
+    (point) => !newSummary.keyPoints.some((np) => jaccardSimilarity(point, np) >= 0.35)
   );
 
   return {
@@ -62,9 +62,24 @@ export function compareSummaries(
   };
 }
 
+const STOP_WORDS = new Set([
+  'a', 'an', 'the', 'is', 'are', 'was', 'were', 'be', 'been', 'being',
+  'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would', 'could',
+  'should', 'may', 'might', 'can', 'shall', 'to', 'of', 'in', 'for',
+  'on', 'with', 'at', 'by', 'from', 'as', 'into', 'through', 'and',
+  'but', 'or', 'nor', 'not', 'so', 'yet', 'both', 'either', 'neither',
+  'that', 'this', 'these', 'those', 'it', 'its', 'your', 'you', 'their',
+]);
+
+function normalizeForComparison(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().split(/\s+/).filter((w) => w.length > 1 && !STOP_WORDS.has(w))
+  );
+}
+
 function jaccardSimilarity(a: string, b: string): number {
-  const setA = new Set(a.toLowerCase().split(/\s+/));
-  const setB = new Set(b.toLowerCase().split(/\s+/));
+  const setA = normalizeForComparison(a);
+  const setB = normalizeForComparison(b);
   const intersection = new Set([...setA].filter((x) => setB.has(x)));
   const union = new Set([...setA, ...setB]);
   if (union.size === 0) return 0;

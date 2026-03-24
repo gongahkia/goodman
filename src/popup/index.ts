@@ -1,7 +1,9 @@
 import type { Summary } from '@providers/types';
+import { renderOnboarding } from '@popup/onboarding';
 import { renderHistoryPanel } from '@popup/history';
 import { renderCacheSettings } from '@popup/settings/cache';
 import { renderDetectionSettings } from '@popup/settings/detection';
+import { renderDomainSettings } from '@popup/settings/domains';
 import { renderNotificationSettings } from '@popup/settings/notifications';
 import { renderProviderSettings } from '@popup/settings/providers';
 import {
@@ -13,7 +15,10 @@ import {
   cx,
 } from '@popup/ui';
 import type { Settings } from '@shared/messages';
-import type { PageAnalysisRecord } from '@shared/page-analysis';
+import type {
+  PageAnalysisLogEntry,
+  PageAnalysisRecord,
+} from '@shared/page-analysis';
 import type { PendingNotification } from '@shared/storage';
 import {
   getPageAnalysisByUrl,
@@ -29,11 +34,13 @@ interface PopupState {
   domain: string;
   analysis: PageAnalysisRecord | null;
   pendingNotifications: PendingNotification[];
+  settings: Settings | null;
   loading: boolean;
   error: string | null;
+  analysisStartedAt: number | null;
 }
 
-const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Cache'] as const;
+const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Cache'] as const;
 
 const state: PopupState = {
   tabId: null,
@@ -41,8 +48,10 @@ const state: PopupState = {
   domain: '',
   analysis: null,
   pendingNotifications: [],
+  settings: null,
   loading: false,
   error: null,
+  analysisStartedAt: null,
 };
 
 let initialized = false;
@@ -51,26 +60,47 @@ async function init(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) return;
 
-  const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
-  const tab = tabs[0];
-  state.tabId = tab?.id ?? null;
-  state.tabUrl = tab?.url ?? '';
-
-  if (tab?.url) {
-    try {
-      state.domain = new URL(tab.url).hostname;
-    } catch {
-      state.domain = 'unknown';
-    }
+  const onboardingResult = await getStorage('onboardingCompleted');
+  if (onboardingResult.ok && !onboardingResult.data) {
+    renderOnboarding(app, () => void initMain(app));
+    return;
   }
+
+  await initMain(app);
+}
+
+async function initMain(app: HTMLElement): Promise<void> {
+  await refreshActiveTabContext();
 
   await refreshPopupState();
   render(app);
+
+  try { await chrome.action?.setBadgeText?.({ text: '' }); } catch { /* noop */ }
+
+  if (chrome.storage?.onChanged) {
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') return;
+      if ('pageAnalysis' in changes || 'pendingNotifications' in changes) {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => {
+          void refreshPopupState().then(() => renderCurrentApp());
+        }, 300);
+      }
+    });
+  }
+
+  registerActiveTabSync();
 }
 
 function render(container: HTMLElement): void {
   container.className = 'tc-page';
   container.textContent = '';
+
+  if (!state.loading && state.analysis?.status !== 'analyzing' && loadingInterval) {
+    clearInterval(loadingInterval);
+    loadingInterval = null;
+  }
 
   appendChildren(container, createHeader());
 
@@ -91,7 +121,11 @@ function render(container: HTMLElement): void {
   }
 
   if (!state.analysis) {
-    container.appendChild(createIdleState());
+    if (isFirstRun()) {
+      container.appendChild(createOnboardingCard());
+    } else {
+      container.appendChild(createIdleState());
+    }
     container.appendChild(createFooter());
     return;
   }
@@ -188,6 +222,25 @@ function createIdleState(): HTMLElement {
   );
 }
 
+function isFirstRun(): boolean {
+  return (
+    state.settings?.activeProvider === 'hosted' &&
+    !state.settings?.hostedConsentAccepted
+  );
+}
+
+function createOnboardingCard(): HTMLElement {
+  const card = createDualActionState(
+    'Welcome to TC Guard',
+    'TC Guard detects Terms & Conditions on any page, summarizes them with AI, and tracks changes over time. Get started by enabling the hosted analysis service, or configure your own LLM provider.',
+    'Get Started',
+    () => { void acceptHostedConsentAndAnalyze(); },
+    'Use Your Own Provider',
+    showSettings
+  );
+  return card;
+}
+
 function createNotificationBanner(): HTMLElement | null {
   if (state.pendingNotifications.length === 0) {
     return null;
@@ -226,21 +279,113 @@ function createNotificationBanner(): HTMLElement | null {
   return banner;
 }
 
+let loadingInterval: ReturnType<typeof setInterval> | null = null;
+
 function createLoadingState(label: string): HTMLElement {
-  const card = createStateCard('Running analysis', label, 'Working');
+  const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
+  const elapsed = state.analysisStartedAt
+    ? Math.floor((Date.now() - state.analysisStartedAt) / 1000)
+    : 0;
+  const timerLabel = elapsed > 0 ? `${label} (${elapsed}s)` : label;
+  const card = createStateCard('Running analysis', timerLabel, 'Working');
+  const progressSection = createProgressSection(
+    getProgressPercent(state.analysis),
+    stageLabel,
+    getProgressLogs(state.analysis)
+  );
+  const actions = card.querySelector('.tc-state-actions');
+  if (actions) {
+    card.insertBefore(progressSection, actions);
+  } else {
+    card.appendChild(progressSection);
+  }
+  const copy = card.querySelector('.tc-state-copy');
+  if (copy && state.analysisStartedAt) {
+    if (loadingInterval) clearInterval(loadingInterval);
+    loadingInterval = setInterval(() => {
+      const s = Math.floor((Date.now() - (state.analysisStartedAt ?? Date.now())) / 1000);
+      copy.textContent = `${label} (${s}s)`;
+    }, 1000);
+  }
   card.querySelector('.tc-state-actions')?.appendChild(
     createButton('Open Settings', 'ghost', showSettings)
   );
   return card;
 }
 
+function createProgressSection(
+  progressPercent: number,
+  stageLabel: string,
+  logs: PageAnalysisLogEntry[]
+): HTMLElement {
+  const section = createElement('section', 'tc-progress-shell');
+  const meta = createElement('div', 'tc-progress-meta');
+  const stage = createElement('span', 'tc-progress-stage', stageLabel);
+  const percent = createElement('span', 'tc-progress-percent', `${progressPercent}%`);
+  const track = createElement('div', 'tc-progress-track');
+  const fill = createElement('div', 'tc-progress-fill');
+  fill.style.width = `${progressPercent}%`;
+  track.appendChild(fill);
+
+  const latestLog = logs[logs.length - 1];
+  const caption = createElement(
+    'p',
+    'tc-progress-caption',
+    latestLog?.message ?? 'Starting analysis pipeline.'
+  );
+
+  appendChildren(meta, stage, percent);
+  appendChildren(section, meta, track, caption);
+
+  if (logs.length > 0) {
+    section.appendChild(createLogStream(logs));
+  }
+
+  return section;
+}
+
+function createLogStream(logs: PageAnalysisLogEntry[]): HTMLElement {
+  const stream = createElement('div', 'tc-log-stream');
+
+  for (const log of [...logs].reverse()) {
+    const row = createElement('div', cx('tc-log-row', `tc-log-row--${log.level}`));
+    const dot = createElement('span', 'tc-log-dot');
+    const copy = createElement('p', 'tc-log-copy', log.message);
+    const time = createElement('span', 'tc-log-time', formatLogTime(log.timestamp));
+    appendChildren(row, dot, copy, time);
+    stream.appendChild(row);
+  }
+
+  return stream;
+}
+
 function createErrorState(error: string): HTMLElement {
-  const card = createStateCard('Something went wrong', error, 'Error');
+  const actionableError = mapErrorToActionable(error);
+  const card = createStateCard('Something went wrong', actionableError, 'Error');
   const actions = card.querySelector('.tc-state-actions');
   if (actions) {
-    actions.appendChild(createButton('Retry', 'primary', handleAnalyze));
+    appendChildren(
+      actions as HTMLElement,
+      createButton('Retry', 'primary', handleAnalyze),
+      createButton('Open Settings', 'secondary', showSettings)
+    );
   }
   return card;
+}
+
+function mapErrorToActionable(error: string): string {
+  const lower = error.toLowerCase();
+  if (lower.includes('network') || lower.includes('connect')) {
+    return 'Check your internet connection and try again.';
+  }
+  if (lower.includes('rate limit')) return error; // already has timing info
+  if (lower.includes('invalid') && lower.includes('response')) {
+    return 'The AI returned an unexpected format. Try a different model in Settings.';
+  }
+  if (lower.includes('api key') || lower.includes('credentials') || lower.includes('401')) {
+    return 'Provider rejected the request. Check your API key in Settings.';
+  }
+  return error;
 }
 
 function createActionState(
@@ -281,7 +426,7 @@ function createHostedConsentState(): HTMLElement {
   return createDualActionState(
     'Enable TC Guard Cloud',
     state.analysis?.error ??
-      'To summarize this agreement, TC Guard needs your permission to send the extracted terms to TC Guard Cloud for analysis.',
+      'TC Guard Cloud sends the extracted T&C text to an LLM for summarization. The text is not stored or shared beyond the analysis request. You can switch to a self-hosted provider at any time in Settings.',
     'Accept and Analyze',
     () => {
       void acceptHostedConsentAndAnalyze();
@@ -472,6 +617,7 @@ function createFooter(): HTMLElement {
 async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void> {
   state.loading = true;
   state.error = null;
+  state.analysisStartedAt = Date.now();
   renderCurrentApp();
 
   try {
@@ -496,6 +642,8 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
     state.error = 'Could not analyze this page.';
   } finally {
     state.loading = false;
+    state.analysisStartedAt = null;
+    if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
     renderCurrentApp();
   }
 }
@@ -568,6 +716,9 @@ function showSettings(): void {
         case 'Notifications':
           await renderNotificationSettings(contentDiv);
           break;
+        case 'Domains':
+          await renderDomainSettings(contentDiv);
+          break;
         case 'Cache':
           await renderCacheSettings(contentDiv);
           break;
@@ -636,6 +787,8 @@ function createDivider(): HTMLElement {
 
 async function refreshPopupState(): Promise<void> {
   await prunePageAnalysisState();
+  const settingsResult = await getStorage('settings');
+  if (settingsResult.ok) state.settings = settingsResult.data;
   await refreshPageAnalysis();
   await refreshNotifications();
 }
@@ -653,6 +806,14 @@ async function refreshPageAnalysis(): Promise<void> {
         ...analysisByUrl,
         tabId: state.tabId ?? analysisByUrl.tabId,
       };
+      if (state.analysis.status === 'analyzing') {
+        state.analysisStartedAt =
+          state.analysisStartedAt ??
+          state.analysis.progressLogs?.[0]?.timestamp ??
+          state.analysis.updatedAt;
+      } else if (!state.loading) {
+        state.analysisStartedAt = null;
+      }
       state.error = null;
       if (state.analysis.domain) {
         state.domain = state.analysis.domain;
@@ -662,6 +823,9 @@ async function refreshPageAnalysis(): Promise<void> {
   }
 
   state.analysis = null;
+  if (!state.loading) {
+    state.analysisStartedAt = null;
+  }
   state.error = null;
 }
 
@@ -674,6 +838,77 @@ function renderCurrentApp(): void {
   if (app) {
     render(app);
   }
+}
+
+async function refreshActiveTabContext(): Promise<void> {
+  const tab = await getCurrentTargetTab();
+  const previousTabId = state.tabId;
+  const previousUrl = state.tabUrl;
+
+  state.tabId = tab?.id ?? null;
+  state.tabUrl = tab?.url ?? '';
+
+  if (tab?.url) {
+    try {
+      state.domain = new URL(tab.url).hostname;
+    } catch {
+      state.domain = 'unknown';
+    }
+  } else {
+    state.domain = 'unknown';
+  }
+
+  if (previousTabId !== state.tabId || previousUrl !== state.tabUrl) {
+    state.loading = false;
+    state.analysisStartedAt = null;
+  }
+}
+
+function registerActiveTabSync(): void {
+  chrome.tabs.onActivated?.addListener(() => {
+    void refreshForCurrentTab();
+  });
+
+  chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
+    const navigated = typeof changeInfo.url === 'string' || changeInfo.status === 'complete';
+    if (!navigated) return;
+    if (state.tabId !== null && tabId !== state.tabId) return;
+    void refreshForCurrentTab();
+  });
+
+  chrome.windows?.onFocusChanged?.addListener(() => {
+    void refreshForCurrentTab();
+  });
+}
+
+async function refreshForCurrentTab(): Promise<void> {
+  await refreshActiveTabContext();
+  await refreshPopupState();
+  renderCurrentApp();
+}
+
+async function getCurrentTargetTab(): Promise<chrome.tabs.Tab | undefined> {
+  const preferred = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  const preferredBrowserTab = preferred.find(isUserBrowsableTab);
+  if (preferredBrowserTab) {
+    return preferredBrowserTab;
+  }
+
+  const activeTabs = await chrome.tabs.query({ active: true });
+  return activeTabs.find(isUserBrowsableTab) ?? activeTabs[0];
+}
+
+function isUserBrowsableTab(tab: chrome.tabs.Tab): boolean {
+  const url = tab.url ?? '';
+  const extensionRoot = chrome.runtime.getURL('');
+
+  return (
+    url.length > 0 &&
+    !url.startsWith(extensionRoot) &&
+    !url.startsWith('chrome://') &&
+    !url.startsWith('edge://') &&
+    !url.startsWith('about:')
+  );
 }
 
 function formatConfidence(value: number | null): string {
@@ -693,6 +928,29 @@ function formatTimestamp(timestamp: number): string {
     hour: 'numeric',
     minute: '2-digit',
   });
+}
+
+function formatLogTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+function getProgressPercent(analysis: PageAnalysisRecord | null): number {
+  const value = analysis?.progressPercent;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.min(100, Math.round(value)));
+  }
+
+  return analysis?.status === 'analyzing' ? 15 : 0;
+}
+
+function getProgressLogs(
+  analysis: PageAnalysisRecord | null
+): PageAnalysisLogEntry[] {
+  return analysis?.progressLogs ?? [];
 }
 
 function getCurrentDomain(): string {

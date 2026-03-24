@@ -45,6 +45,7 @@ describe('popup index', () => {
   beforeEach(() => {
     document.body.innerHTML = '<div id="app"></div>';
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
+    mockStorage.onboardingCompleted = true;
     vi.clearAllMocks();
     chrome.tabs.query.mockResolvedValue([
       { id: 7, url: 'https://example.com/checkout' },
@@ -164,6 +165,42 @@ describe('popup index', () => {
     expect(document.body.textContent).toContain('Retry');
   });
 
+  it('renders progress details and live logs while analysis is running', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': {
+        ...readyAnalysis(),
+        status: 'analyzing',
+        summary: null,
+        progressPercent: 72,
+        progressLabel: 'Checking cache',
+        progressLogs: [
+          {
+            timestamp: Date.now() - 2000,
+            message: 'Detected a likely Terms or Conditions surface on the page.',
+            progress: 18,
+            level: 'info',
+          },
+          {
+            timestamp: Date.now() - 1000,
+            message: 'Computed a text fingerprint and started checking the local summary cache.',
+            progress: 72,
+            level: 'info',
+          },
+        ],
+      },
+    };
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    expect(document.body.textContent).toContain('Checking cache');
+    expect(document.body.textContent).toContain('72%');
+    expect(document.body.textContent).toContain(
+      'Computed a text fingerprint and started checking the local summary cache.'
+    );
+  });
+
   it('refreshes persisted analysis after a manual analyze', async () => {
     mockStorage.pageAnalysis = {
       'https://example.com/checkout': {
@@ -249,6 +286,41 @@ describe('popup index', () => {
     expect(document.body.textContent).toContain(
       '2 tracked domains have new terms changes ready for review.'
     );
+  });
+
+  it('refreshes the panel when the active tab changes', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': readyAnalysis(),
+      'https://second.test/legal': {
+        ...readyAnalysis(),
+        tabId: 8,
+        url: 'https://second.test/legal',
+        domain: 'second.test',
+        summary: {
+          summary: 'Second tab terms summary.',
+          keyPoints: ['Different point'],
+          redFlags: [],
+          severity: 'medium',
+        },
+      },
+    };
+
+    chrome.tabs.query
+      .mockResolvedValueOnce([{ id: 7, url: 'https://example.com/checkout' }])
+      .mockResolvedValue([{ id: 8, url: 'https://second.test/legal' }]);
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    const onActivated = chrome.tabs.onActivated.addListener.mock.calls[0]?.[0] as
+      | (() => void)
+      | undefined;
+    onActivated?.();
+    await flush();
+
+    expect(document.body.textContent).toContain('Second tab terms summary.');
+    expect(document.body.textContent).toContain('second.test');
   });
 
   it('opens history for the first pending domain when the banner CTA is clicked', async () => {

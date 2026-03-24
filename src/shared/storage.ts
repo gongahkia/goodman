@@ -30,7 +30,6 @@ export interface VersionEntry {
   domain: string;
   textHash: string;
   summary: StoredSummary;
-  fullText: string;
   timestamp: number;
   version: number;
 }
@@ -49,7 +48,9 @@ export interface StorageSchema {
   pageAnalysisTabs: Record<string, string>;
   versionHistory: Record<string, VersionEntry[]>;
   domainNotificationPreferences: Record<string, boolean>;
+  domainBlacklist: string[];
   pendingNotifications: PendingNotification[];
+  onboardingCompleted: boolean;
   storageVersion: number;
 }
 
@@ -89,9 +90,44 @@ const STORAGE_DEFAULTS: StorageSchema = {
   pageAnalysisTabs: {},
   versionHistory: {},
   domainNotificationPreferences: {},
+  domainBlacklist: [],
   pendingNotifications: [],
+  onboardingCompleted: false,
   storageVersion: STORAGE_VERSION,
 };
+
+type MigrationFn = () => Promise<void>;
+
+const MIGRATIONS: Record<number, MigrationFn> = {
+  // 1 → 2: strip fullText from versionHistory entries
+  1: async () => {
+    const result = await browser.storage.local.get('versionHistory');
+    const history = (result['versionHistory'] ?? {}) as Record<string, Array<Record<string, unknown>>>;
+    let changed = false;
+    for (const entries of Object.values(history)) {
+      for (const entry of entries) {
+        if ('fullText' in entry) {
+          delete entry['fullText'];
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      await browser.storage.local.set({ versionHistory: history });
+    }
+  },
+};
+
+export async function runMigrations(): Promise<void> {
+  const raw = await browser.storage.local.get('storageVersion');
+  let current = (typeof raw['storageVersion'] === 'number' ? raw['storageVersion'] : 0) as number;
+  while (current < STORAGE_VERSION) {
+    const migrate = MIGRATIONS[current];
+    if (migrate) await migrate();
+    current++;
+    await browser.storage.local.set({ storageVersion: current });
+  }
+}
 
 const PAGE_ANALYSIS_TTL_MS = 1000 * 60 * 60 * 24 * 14;
 const MAX_PAGE_ANALYSIS_RECORDS = 100;
@@ -121,6 +157,16 @@ export async function setStorage<K extends keyof StorageSchema>(
   }
 }
 
+const writeLocks = new Map<string, Promise<void>>();
+export async function withStorageLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const prev = writeLocks.get(key) ?? Promise.resolve();
+  let resolve: () => void;
+  const next = new Promise<void>((r) => { resolve = r; });
+  writeLocks.set(key, next);
+  await prev;
+  try { return await fn(); } finally { resolve!(); }
+}
+
 export async function getPageAnalysis(
   tabId: number
 ): Promise<PageAnalysisRecord | null> {
@@ -136,77 +182,81 @@ export async function getPageAnalysis(
   return pageAnalysisResult.data[pageKey] ?? null;
 }
 
-export async function setPageAnalysisRecord(
+export function setPageAnalysisRecord(
   record: PageAnalysisRecord
 ): Promise<Result<void, Error>> {
-  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
-    getStorage('pageAnalysis'),
-    getStorage('pageAnalysisTabs'),
-  ]);
-  if (!pageAnalysisResult.ok) return pageAnalysisResult;
-  if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
+  return withStorageLock('pageAnalysis', async () => {
+    const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
+      getStorage('pageAnalysis'),
+      getStorage('pageAnalysisTabs'),
+    ]);
+    if (!pageAnalysisResult.ok) return pageAnalysisResult;
+    if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
 
-  const pageKey = getPageAnalysisKey(record.url);
-  const nextPageAnalysis = {
-    ...pageAnalysisResult.data,
-    [pageKey]: record,
-  };
-  const nextPageAnalysisTabs =
-    record.tabId >= 0
-      ? {
-          ...pageAnalysisTabsResult.data,
-          [String(record.tabId)]: pageKey,
-        }
-      : pageAnalysisTabsResult.data;
-  const { pageAnalysis, pageAnalysisTabs } = prunePageAnalysisMaps(
-    nextPageAnalysis,
-    nextPageAnalysisTabs
-  );
+    const pageKey = getPageAnalysisKey(record.url);
+    const nextPageAnalysis = {
+      ...pageAnalysisResult.data,
+      [pageKey]: record,
+    };
+    const nextPageAnalysisTabs =
+      record.tabId >= 0
+        ? {
+            ...pageAnalysisTabsResult.data,
+            [String(record.tabId)]: pageKey,
+          }
+        : pageAnalysisTabsResult.data;
+    const { pageAnalysis, pageAnalysisTabs } = prunePageAnalysisMaps(
+      nextPageAnalysis,
+      nextPageAnalysisTabs
+    );
 
-  try {
-    await browser.storage.local.set({
-      pageAnalysis,
-      pageAnalysisTabs,
-    });
-    return ok(undefined);
-  } catch (e) {
-    return err(e instanceof Error ? e : new Error(String(e)));
-  }
+    try {
+      await browser.storage.local.set({
+        pageAnalysis,
+        pageAnalysisTabs,
+      });
+      return ok(undefined);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
 }
 
-export async function removePageAnalysis(
+export function removePageAnalysis(
   tabId: number
 ): Promise<Result<void, Error>> {
-  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
-    getStorage('pageAnalysis'),
-    getStorage('pageAnalysisTabs'),
-  ]);
-  if (!pageAnalysisResult.ok) return pageAnalysisResult;
-  if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
+  return withStorageLock('pageAnalysis', async () => {
+    const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
+      getStorage('pageAnalysis'),
+      getStorage('pageAnalysisTabs'),
+    ]);
+    if (!pageAnalysisResult.ok) return pageAnalysisResult;
+    if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
 
-  const pageAnalysis = { ...pageAnalysisResult.data };
-  const pageAnalysisTabs = { ...pageAnalysisTabsResult.data };
-  const tabKey = String(tabId);
-  const pageKey = pageAnalysisTabs[tabKey];
+    const pageAnalysis = { ...pageAnalysisResult.data };
+    const pageAnalysisTabs = { ...pageAnalysisTabsResult.data };
+    const tabKey = String(tabId);
+    const pageKey = pageAnalysisTabs[tabKey];
 
-  delete pageAnalysisTabs[tabKey];
-  if (
-    pageKey &&
-    !Object.values(pageAnalysisTabs).some((mappedPageKey) => mappedPageKey === pageKey)
-  ) {
-    delete pageAnalysis[pageKey];
-  }
-  const prunedState = prunePageAnalysisMaps(pageAnalysis, pageAnalysisTabs);
+    delete pageAnalysisTabs[tabKey];
+    if (
+      pageKey &&
+      !Object.values(pageAnalysisTabs).some((mappedPageKey) => mappedPageKey === pageKey)
+    ) {
+      delete pageAnalysis[pageKey];
+    }
+    const prunedState = prunePageAnalysisMaps(pageAnalysis, pageAnalysisTabs);
 
-  try {
-    await browser.storage.local.set({
-      pageAnalysis: prunedState.pageAnalysis,
-      pageAnalysisTabs: prunedState.pageAnalysisTabs,
-    });
-    return ok(undefined);
-  } catch (e) {
-    return err(e instanceof Error ? e : new Error(String(e)));
-  }
+    try {
+      await browser.storage.local.set({
+        pageAnalysis: prunedState.pageAnalysis,
+        pageAnalysisTabs: prunedState.pageAnalysisTabs,
+      });
+      return ok(undefined);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
 }
 
 export async function getPageAnalysisByUrl(
@@ -228,28 +278,30 @@ export async function setPageAnalysisByUrl(
   });
 }
 
-export async function prunePageAnalysisState(): Promise<Result<void, Error>> {
-  const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
-    getStorage('pageAnalysis'),
-    getStorage('pageAnalysisTabs'),
-  ]);
-  if (!pageAnalysisResult.ok) return pageAnalysisResult;
-  if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
+export function prunePageAnalysisState(): Promise<Result<void, Error>> {
+  return withStorageLock('pageAnalysis', async () => {
+    const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
+      getStorage('pageAnalysis'),
+      getStorage('pageAnalysisTabs'),
+    ]);
+    if (!pageAnalysisResult.ok) return pageAnalysisResult;
+    if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
 
-  const prunedState = prunePageAnalysisMaps(
-    pageAnalysisResult.data,
-    pageAnalysisTabsResult.data
-  );
+    const prunedState = prunePageAnalysisMaps(
+      pageAnalysisResult.data,
+      pageAnalysisTabsResult.data
+    );
 
-  try {
-    await browser.storage.local.set({
-      pageAnalysis: prunedState.pageAnalysis,
-      pageAnalysisTabs: prunedState.pageAnalysisTabs,
-    });
-    return ok(undefined);
-  } catch (e) {
-    return err(e instanceof Error ? e : new Error(String(e)));
-  }
+    try {
+      await browser.storage.local.set({
+        pageAnalysis: prunedState.pageAnalysis,
+        pageAnalysisTabs: prunedState.pageAnalysisTabs,
+      });
+      return ok(undefined);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
 }
 
 export async function getDomainNotificationPreference(
@@ -261,19 +313,21 @@ export async function getDomainNotificationPreference(
   return result.data[domain] ?? true;
 }
 
-export async function setDomainNotificationPreference(
+export function setDomainNotificationPreference(
   domain: string,
   enabled: boolean
 ): Promise<Result<void, Error>> {
-  const result = await getStorage('domainNotificationPreferences');
-  if (!result.ok) return result;
+  return withStorageLock('domainNotificationPreferences', async () => {
+    const result = await getStorage('domainNotificationPreferences');
+    if (!result.ok) return result;
 
-  const preferences = {
-    ...result.data,
-    [domain]: enabled,
-  };
+    const preferences = {
+      ...result.data,
+      [domain]: enabled,
+    };
 
-  return setStorage('domainNotificationPreferences', preferences);
+    return setStorage('domainNotificationPreferences', preferences);
+  });
 }
 
 function getPageAnalysisKey(url: string): string {

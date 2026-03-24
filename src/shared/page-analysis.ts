@@ -2,6 +2,7 @@ import type { Summary } from '@providers/types';
 
 export type DetectionType = 'checkbox' | 'modal' | 'banner' | 'fullpage';
 export type AnalysisSourceType = 'inline' | 'linked' | 'pdf';
+export type PageAnalysisLogLevel = 'info' | 'success' | 'warning' | 'error';
 export type PageAnalysisStatus =
   | 'idle'
   | 'analyzing'
@@ -12,6 +13,13 @@ export type PageAnalysisStatus =
   | 'service_unavailable'
   | 'error'
   | 'ready';
+
+export interface PageAnalysisLogEntry {
+  timestamp: number;
+  message: string;
+  progress: number;
+  level: PageAnalysisLogLevel;
+}
 
 export interface PageAnalysisRecord {
   tabId: number;
@@ -24,5 +32,8 @@ export interface PageAnalysisRecord {
   textHash: string | null;
   summary: Summary | null;
   error: string | null;
+  progressPercent?: number | null;
+  progressLabel?: string | null;
+  progressLogs?: PageAnalysisLogEntry[];
   updatedAt: number;
 }

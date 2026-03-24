@@ -1,11 +1,14 @@
 export class TCGuardError extends Error {
+  public readonly retryable: boolean;
   constructor(
     message: string,
     public readonly userMessage: string,
-    public readonly code: string
+    public readonly code: string,
+    retryable = false
   ) {
     super(message);
     this.name = 'TCGuardError';
+    this.retryable = retryable;
   }
 }
 
@@ -14,7 +17,8 @@ export class NetworkError extends TCGuardError {
     super(
       `Network error connecting to ${provider}`,
       `Could not connect to ${provider}. Check your internet connection.`,
-      'NETWORK_ERROR'
+      'NETWORK_ERROR',
+      true
     );
     this.name = 'NetworkError';
   }
@@ -25,7 +29,8 @@ export class RateLimitError extends TCGuardError {
     super(
       `Rate limited by ${provider}`,
       `Rate limited by ${provider}. Please wait ${retryAfterSeconds} seconds.`,
-      'RATE_LIMIT'
+      'RATE_LIMIT',
+      true
     );
     this.name = 'RateLimitError';
   }
@@ -58,7 +63,8 @@ export class ServiceUnavailableError extends TCGuardError {
     super(
       `${service} unavailable: ${detail}`,
       `${service} is temporarily unavailable. Please try again shortly.`,
-      'SERVICE_UNAVAILABLE'
+      'SERVICE_UNAVAILABLE',
+      true
     );
     this.name = 'ServiceUnavailableError';
   }

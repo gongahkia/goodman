@@ -125,6 +125,21 @@ export class HostedProvider implements LLMProvider {
   async validateApiKey(): Promise<boolean> {
     return this.baseUrl.trim().length > 0;
   }
+
+  async checkHealth(): Promise<boolean> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 3000);
+    try {
+      const response = await fetch(`${this.baseUrl}/v1/health`, {
+        signal: controller.signal,
+      });
+      return response.ok;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
 }
 
 function parseTimeoutMs(

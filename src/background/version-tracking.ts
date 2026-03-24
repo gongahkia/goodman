@@ -1,7 +1,7 @@
 import type { Summary } from '@providers/types';
 import type { StoredSummary } from '@shared/storage';
 import { checkForChanges } from '@versioning/detector';
-import { computeDiff, type DiffResult } from '@versioning/diff';
+import type { DiffResult } from '@versioning/diff';
 import { notifyChange } from '@versioning/notifications';
 import { addVersion } from '@versioning/schema';
 import { compareSummaries, type SummaryDiff } from '@versioning/summary-diff';
@@ -44,7 +44,6 @@ export async function syncVersionHistory(
 
   const previousSummary = toSummary(changeResult.previousVersion.summary);
   const summaryDiff = compareSummaries(previousSummary, summary);
-  const textDiff = computeDiff(changeResult.previousVersion.fullText, text);
   const meaningfulChange = isMeaningfulSummaryChange(summaryDiff);
   const notified = meaningfulChange
     ? await notifyChange(domain, summaryDiff)
@@ -55,7 +54,7 @@ export async function syncVersionHistory(
     notified,
     versionNumber: versionEntry.version,
     summaryDiff,
-    textDiff,
+    textDiff: null, // fullText no longer stored; text diff unavailable
   };
 }
 

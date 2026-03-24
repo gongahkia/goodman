@@ -2,6 +2,7 @@ import {
   getDomainNotificationPreference,
   getStorage,
   setStorage,
+  withStorageLock,
 } from '@shared/storage';
 import type { PendingNotification } from '@shared/storage';
 import type { SummaryDiff } from './summary-diff';
@@ -25,18 +26,20 @@ export async function notifyChange(
     // may fail in non-extension context
   }
 
-  const notificationsResult = await getStorage('pendingNotifications');
-  if (!notificationsResult.ok) return false;
+  return withStorageLock('pendingNotifications', async () => {
+    const notificationsResult = await getStorage('pendingNotifications');
+    if (!notificationsResult.ok) return false;
 
-  const notifications = upsertPendingNotification(notificationsResult.data, {
-    domain,
-    addedRedFlags: diff.addedRedFlags.length,
-    timestamp: Date.now(),
-    viewed: false,
+    const notifications = upsertPendingNotification(notificationsResult.data, {
+      domain,
+      addedRedFlags: diff.addedRedFlags.length,
+      timestamp: Date.now(),
+      viewed: false,
+    });
+
+    await setStorage('pendingNotifications', notifications);
+    return true;
   });
-
-  await setStorage('pendingNotifications', notifications);
-  return true;
 }
 
 export async function getPendingNotifications(): Promise<PendingNotification[]> {
@@ -45,23 +48,25 @@ export async function getPendingNotifications(): Promise<PendingNotification[]> 
   return deduplicatePendingNotifications(result.data.filter((n) => !n.viewed));
 }
 
-export async function clearNotification(domain: string): Promise<void> {
-  const result = await getStorage('pendingNotifications');
-  if (!result.ok) return;
+export function clearNotification(domain: string): Promise<void> {
+  return withStorageLock('pendingNotifications', async () => {
+    const result = await getStorage('pendingNotifications');
+    if (!result.ok) return;
 
-  const updated = result.data.map((n) =>
-    n.domain === domain ? { ...n, viewed: true } : n
-  );
-  await setStorage('pendingNotifications', updated);
+    const updated = result.data.map((n) =>
+      n.domain === domain ? { ...n, viewed: true } : n
+    );
+    await setStorage('pendingNotifications', updated);
 
-  const remaining = updated.filter((n) => !n.viewed);
-  if (remaining.length === 0) {
-    try {
-      await chrome.action.setBadgeText({ text: '' });
-    } catch {
-      // may fail in non-extension context
+    const remaining = updated.filter((n) => !n.viewed);
+    if (remaining.length === 0) {
+      try {
+        await chrome.action.setBadgeText({ text: '' });
+      } catch {
+        // may fail in non-extension context
+      }
     }
-  }
+  });
 }
 
 function upsertPendingNotification(

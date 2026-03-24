@@ -59,7 +59,9 @@ export function createButton(
   );
   button.type = 'button';
   if (onClick) {
-    button.addEventListener('click', onClick);
+    button.addEventListener('click', () => {
+      onClick();
+    });
   }
   return button;
 }

@@ -18,7 +18,7 @@ export function parseSummaryResponse(
   raw: string
 ): Result<Summary, TCGuardError> {
   try {
-    const cleaned = raw.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+    const cleaned = extractJsonObject(raw);
     const parsed = JSON.parse(cleaned) as unknown;
 
     if (!parsed || typeof parsed !== 'object') {
@@ -77,4 +77,13 @@ function validateRedFlag(raw: unknown): RedFlag | null {
   const quote = typeof obj['quote'] === 'string' ? obj['quote'] : '';
 
   return { category, description, severity, quote };
+}
+
+function extractJsonObject(raw: string): string {
+  const first = raw.indexOf('{');
+  const last = raw.lastIndexOf('}');
+  if (first === -1 || last === -1 || last <= first) {
+    return raw.trim(); // let JSON.parse surface the error
+  }
+  return raw.slice(first, last + 1);
 }

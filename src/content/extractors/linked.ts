@@ -13,7 +13,7 @@ export interface RelatedLink {
   label: string;
 }
 
-const FETCH_TIMEOUT_MS = 500;
+const FETCH_TIMEOUT_MS = 5000;
 
 export async function extractLinkedText(
   url: string
@@ -32,39 +32,30 @@ export async function extractLinkedText(
 
 async function fetchHtml(url: string): Promise<string> {
   const requestUrl = resolveUrl(url);
+  const msg = { type: 'FETCH_URL' as const, payload: { url: requestUrl, responseType: 'text' as const } };
 
-  try {
-    const response = await fetchWithTimeout<{
-      ok: boolean;
-      data?: string;
-      error?: string;
-    }>({
-      type: 'FETCH_URL',
-      payload: { url: requestUrl, responseType: 'text' },
-    });
-
-    if (response.ok && response.data) {
-      return response.data;
-    }
-  } catch {
-    // Fall through to direct fetch for same-origin URLs.
+  for (const timeout of [FETCH_TIMEOUT_MS, Math.round(FETCH_TIMEOUT_MS * 1.5)]) {
+    try {
+      const response = await fetchWithTimeout<{ ok: boolean; data?: string; error?: string }>(msg, timeout);
+      if (response.ok && response.data) return response.data;
+    } catch { /* retry or fall through */ }
   }
 
   const directResponse = await fetch(requestUrl);
   if (!directResponse.ok) {
     throw new Error(`Failed to fetch URL: HTTP ${directResponse.status}`);
   }
-
   return directResponse.text();
 }
 
 async function fetchWithTimeout<T>(
-  message: Parameters<typeof sendToBackground>[0]
+  message: Parameters<typeof sendToBackground>[0],
+  timeoutMs: number = FETCH_TIMEOUT_MS
 ): Promise<T> {
   return Promise.race([
     sendToBackground(message) as Promise<T>,
     new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error('Background fetch timed out')), FETCH_TIMEOUT_MS);
+      setTimeout(() => reject(new Error('Background fetch timed out')), timeoutMs);
     }),
   ]);
 }

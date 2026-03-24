@@ -43,57 +43,28 @@ More detail lives in [docs/ARCHITECTURE.md](/Users/gongahkia/Desktop/coding/proj
 
 ## Usage
 
-## Installation
+The below instructions are for locally running `Goodman`.
 
-Goodman is pinned to Node 20.x and `pnpm@10.32.1`.
+1. First run the below to install `Goodman` and its dependencies on your local machine.
 
-```bash
-nvm use
-corepack enable
-corepack use pnpm@10.32.1
-pnpm install
-pnpm build
+```console
+$ git clone https://github.com/gongahkia/goodman && cd goodman
+$ nvm use
+$ corepack enable && corepack use pnpm@10.32.1
+$ pnpm install && pnpm build
 ```
 
-Load the built `dist/` directory as an unpacked extension in Chrome or Chromium.
+2. Then load the built `dist/` directory as an unpacked extension in Firefox, Chrome or Chromium.
 
-## Configuration
+3. Optionally run the below to run tests on `Goodman`.
 
-1. Open the extension popup.
-2. Go to `Settings`.
-3. Choose a provider.
-4. Enter the provider credentials and model settings.
-5. Return to the page and re-run analysis if the page was already open.
-
-For Ollama, the extension expects a reachable local endpoint, defaulting to `http://localhost:11434`.
-
-Without provider setup, the extension can still detect likely consent surfaces and persist `no_detection` or `needs_provider` states, but it cannot produce summaries, version history, or change alerts.
-
-## Privacy And Tradeoffs
-
-- No app telemetry or analytics are built into the extension.
-- Summaries, page-analysis state, version history, notification state, and settings live in browser local storage.
-- Extracted legal text is sent only to the provider you configure. Remote providers receive the text you ask them to summarize.
-- API keys are stored in browser-managed local extension storage. Goodman does not add its own encryption layer on top of that storage.
-
-## Interview Notes
-
-If you need to explain this project in an interview, the strongest framing is:
-
-- The product goal is informed consent at the point of agreement, not generic legal research.
-- MV3 boundaries are deliberate: content script for detection and extraction, background worker for provider calls and persistent orchestration, popup for reconstructed state and controls.
-- The key tradeoff is privacy versus onboarding friction: no hosted backend means users keep control, but they must configure a provider before summaries and change tracking become useful.
-- Version tracking is the differentiator because it turns one-off summarization into an ongoing monitoring workflow for domains the user revisits.
-
-## Development
-
-```bash
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
-pnpm exec playwright install chromium
-pnpm test:e2e
+```console
+$ pnpm typecheck
+$ pnpm lint
+$ pnpm test
+$ pnpm build
+$ pnpm exec playwright install chromium
+$ pnpm test:e2e
 ```
 
 ## Architecture
@@ -102,4 +73,6 @@ pnpm test:e2e
 
 ## Reference
 
-...
+The name `Goodman` is in reference to the American criminal defense lawyer [Saul Goodman](https://en.wikipedia.org/wiki/Saul_Goodman) *(the professional alias of [James Morgan "Jimmy" McGill](https://breakingbad.fandom.com/wiki/Jimmy_McGill))* who also acts as the titular protagonist of the acclaimed television series [*Breaking Bad*](https://breakingbad.fandom.com/wiki/Breaking_Bad_Wiki).
+
+![](./asset/logo/saul_goodman.png)

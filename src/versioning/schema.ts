@@ -1,7 +1,7 @@
 import { getStorage, setStorage } from '@shared/storage';
 import type { VersionEntry } from '@shared/storage';
 import type { Summary } from '@providers/types';
-import { MAX_VERSIONS_PER_DOMAIN } from '@shared/constants';
+import { MAX_VERSIONS_PER_DOMAIN, MAX_TRACKED_DOMAINS } from '@shared/constants';
 import { computeTextHash } from '@summarizer/cache';
 
 export type { VersionEntry };
@@ -39,7 +39,6 @@ export async function addVersion(
       })),
       severity: summary.severity,
     },
-    fullText: text,
     timestamp: Date.now(),
     version,
   };
@@ -51,6 +50,7 @@ export async function addVersion(
   }
 
   history[domain] = domainHistory;
+  pruneDomains(history);
   await setStorage('versionHistory', history);
 
   return entry;
@@ -71,4 +71,22 @@ export async function getAllTrackedDomains(): Promise<string[]> {
   if (!historyResult.ok) return [];
 
   return Object.keys(historyResult.data);
+}
+
+function pruneDomains(history: Record<string, VersionEntry[]>): void {
+  const domains = Object.keys(history);
+  if (domains.length <= MAX_TRACKED_DOMAINS) return;
+
+  const sorted = domains
+    .map((d) => {
+      const entries = history[d] ?? [];
+      const latest = entries[entries.length - 1];
+      return { domain: d, latestTs: latest?.timestamp ?? 0 };
+    })
+    .sort((a, b) => b.latestTs - a.latestTs);
+
+  for (let i = MAX_TRACKED_DOMAINS; i < sorted.length; i++) {
+    const item = sorted[i];
+    if (item) delete history[item.domain];
+  }
 }

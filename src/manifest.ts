@@ -7,7 +7,7 @@ const baseManifest = {
   name: 'TC Guard',
   description: 'Automatically detect, summarize, and track Terms & Conditions changes',
   version: '1.0.0',
-  permissions: ['activeTab', 'storage', 'scripting'],
+  permissions: ['activeTab', 'storage', 'scripting', 'alarms'],
   host_permissions: ['<all_urls>'],
   content_scripts: [
     {
@@ -17,7 +17,6 @@ const baseManifest = {
     },
   ],
   action: {
-    default_popup: 'src/popup/index.html',
     default_icon: {
       '16': 'icons/tc-guard-16.png',
       '48': 'icons/tc-guard-48.png',
@@ -38,6 +37,10 @@ const baseManifest = {
 function getChromeManifest() {
   return {
     ...baseManifest,
+    permissions: [...baseManifest.permissions, 'sidePanel'],
+    side_panel: {
+      default_path: 'src/popup/index.html',
+    },
     background: {
       service_worker: 'src/background/index.ts',
       type: 'module',
@@ -48,6 +51,10 @@ function getChromeManifest() {
 function getFirefoxManifest() {
   return {
     ...baseManifest,
+    action: {
+      ...baseManifest.action,
+      default_popup: 'src/popup/index.html',
+    },
     background: {
       service_worker: 'src/background/index.ts',
     },

@@ -98,6 +98,17 @@ describe('processPageAnalysis', () => {
     expect(result).toEqual({ ok: true, data: mockSummary });
     expect(singleShotSummarizeWithProvider).toHaveBeenCalledOnce();
     expect(cacheSummary).toHaveBeenCalledWith('hash-1', mockSummary, 'example.com');
+
+    const storedRecord = (
+      mockStorage.pageAnalysis as Record<
+        string,
+        { progressPercent?: number | null; progressLogs?: Array<{ message: string }> }
+      >
+    )['https://example.com'];
+    expect(storedRecord.progressPercent).toBe(100);
+    expect(storedRecord.progressLogs?.map((log) => log.message)).toContain(
+      'Analysis complete. Summary, cache, and version history are up to date.'
+    );
   });
 
   it('uses chunked summarization for long text', async () => {
@@ -195,6 +206,7 @@ describe('processPageAnalysis', () => {
   });
 
   it('maps hosted rate limits to a service_unavailable state', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(getCachedSummary).mockResolvedValue(null);
     vi.mocked(getProviderByName).mockResolvedValue({
       ok: true,
@@ -209,7 +221,7 @@ describe('processPageAnalysis', () => {
       error: new RateLimitError('TC Guard Cloud', 30),
     });
 
-    const result = await processPageAnalysis({
+    const resultPromise = processPageAnalysis({
       tabId: 12,
       url: 'https://example.com/rate-limited',
       domain: 'example.com',
@@ -220,10 +232,14 @@ describe('processPageAnalysis', () => {
       confidence: 0.9,
     });
 
+    await vi.advanceTimersByTimeAsync(6000);
+    const result = await resultPromise;
+
     expect(result.ok).toBe(false);
     const storedRecord = (
       mockStorage.pageAnalysis as Record<string, { status: string }>
     )['https://example.com/rate-limited'];
     expect(storedRecord.status).toBe('service_unavailable');
+    vi.useRealTimers();
   });
 });

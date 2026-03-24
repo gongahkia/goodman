@@ -1,7 +1,7 @@
-import { getStorage, setStorage } from '@shared/storage';
+import { getStorage, setStorage, withStorageLock } from '@shared/storage';
 import type { CachedSummary } from '@shared/storage';
 import type { Summary } from '@providers/types';
-import { CACHE_TTL_MS } from '@shared/constants';
+import { CACHE_TTL_MS, MAX_CACHE_ENTRIES } from '@shared/constants';
 
 export async function getCachedSummary(
   textHash: string
@@ -19,52 +19,75 @@ export async function getCachedSummary(
   return entry;
 }
 
-export async function cacheSummary(
+export function cacheSummary(
   textHash: string,
   summary: Summary,
   domain: string
 ): Promise<void> {
-  const cacheResult = await getStorage('cache');
-  if (!cacheResult.ok) return;
+  return withStorageLock('cache', async () => {
+    const cacheResult = await getStorage('cache');
+    if (!cacheResult.ok) return;
 
-  const cache = { ...cacheResult.data };
-  cache[textHash] = {
-    summary: {
-      summary: summary.summary,
-      keyPoints: summary.keyPoints,
-      redFlags: summary.redFlags.map((f) => ({
-        category: f.category,
-        description: f.description,
-        severity: f.severity,
-        quote: f.quote,
-      })),
-      severity: summary.severity,
-    },
-    domain,
-    textHash,
-    timestamp: Date.now(),
-  };
+    const cache = { ...cacheResult.data };
+    cache[textHash] = {
+      summary: {
+        summary: summary.summary,
+        keyPoints: summary.keyPoints,
+        redFlags: summary.redFlags.map((f) => ({
+          category: f.category,
+          description: f.description,
+          severity: f.severity,
+          quote: f.quote,
+        })),
+        severity: summary.severity,
+      },
+      domain,
+      textHash,
+      timestamp: Date.now(),
+    };
 
-  await setStorage('cache', cache);
+    await setStorage('cache', cache);
+    await pruneCacheEntries();
+  });
 }
 
-export async function clearCache(domain?: string): Promise<void> {
-  if (!domain) {
-    await setStorage('cache', {});
-    return;
-  }
+export function pruneCache(): Promise<void> {
+  return withStorageLock('cache', pruneCacheEntries);
+}
 
+async function pruneCacheEntries(): Promise<void> {
   const cacheResult = await getStorage('cache');
   if (!cacheResult.ok) return;
 
-  const filtered: Record<string, CachedSummary> = {};
-  for (const [key, entry] of Object.entries(cacheResult.data)) {
-    if (entry.domain !== domain) {
-      filtered[key] = entry;
-    }
-  }
+  const now = Date.now();
+  const entries = Object.entries(cacheResult.data);
+  const live = entries.filter(([, e]) => now - e.timestamp <= CACHE_TTL_MS);
+  if (live.length <= MAX_CACHE_ENTRIES && live.length === entries.length) return;
 
-  await setStorage('cache', filtered);
+  const sorted = live.sort((a, b) => b[1].timestamp - a[1].timestamp);
+  const kept = sorted.slice(0, MAX_CACHE_ENTRIES);
+  await setStorage('cache', Object.fromEntries(kept));
+}
+
+export function clearCache(domain?: string): Promise<void> {
+  return withStorageLock('cache', async () => {
+    if (!domain) {
+      await setStorage('cache', {});
+      return;
+    }
+
+    const cacheResult = await getStorage('cache');
+    if (!cacheResult.ok) return;
+
+    const filtered: Record<string, CachedSummary> = {};
+    for (const [key, entry] of Object.entries(cacheResult.data)) {
+      if (entry.domain !== domain) {
+        filtered[key] = entry;
+      }
+    }
+
+    await setStorage('cache', filtered);
+  });
 }
 
 export async function getCacheStats(): Promise<{

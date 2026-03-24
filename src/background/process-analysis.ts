@@ -4,16 +4,20 @@ import type { Summary } from '@providers/types';
 import type {
   AnalysisSourceType,
   DetectionType,
+  PageAnalysisLogEntry,
+  PageAnalysisLogLevel,
   PageAnalysisRecord,
 } from '@shared/page-analysis';
+import { MAX_INPUT_TEXT_LENGTH } from '@shared/constants';
 import type { StoredSummary } from '@shared/storage';
 import { cacheSummary, computeTextHash, getCachedSummary } from '@summarizer/cache';
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
-import { setPageAnalysisRecord } from '@shared/storage';
+import { getPageAnalysisByUrl, setPageAnalysisRecord } from '@shared/storage';
 import { syncVersionHistory } from './version-tracking';
 import type { SummarizeOptions } from '@providers/types';
 import type { TCGuardError } from '@shared/errors';
+import { appendProgressLog } from '@shared/analysis-progress';
 
 export interface ProcessPageAnalysisInput {
   tabId: number;
@@ -32,31 +36,94 @@ interface ProcessPageAnalysisResult {
   error?: string;
 }
 
+const MAX_CONCURRENT_LLM = 2;
+let activeLlmRequests = 0;
+const llmQueue: Array<() => void> = [];
+async function withLlmLimit<T>(fn: () => Promise<T>): Promise<T> {
+  if (activeLlmRequests >= MAX_CONCURRENT_LLM) {
+    await new Promise<void>((resolve) => llmQueue.push(resolve));
+  }
+  activeLlmRequests++;
+  try { return await fn(); } finally {
+    activeLlmRequests--;
+    llmQueue.shift()?.();
+  }
+}
+
 export async function processPageAnalysis(
   input: ProcessPageAnalysisInput
 ): Promise<ProcessPageAnalysisResult> {
-  const textHash = await computeTextHash(input.text);
+  if (input.text.length > MAX_INPUT_TEXT_LENGTH) {
+    console.warn('[TC Guard] input text truncated from', input.text.length, 'to', MAX_INPUT_TEXT_LENGTH);
+    input.text = input.text.slice(0, MAX_INPUT_TEXT_LENGTH);
+  }
 
-  await setPageAnalysisRecord(
-    buildPageAnalysisRecord(input, {
+  const textHash = await computeTextHash(input.text);
+  const existingRecord = await getPageAnalysisByUrl(input.url);
+  let progressLogs: PageAnalysisLogEntry[] = existingRecord?.progressLogs ?? [];
+
+  const persistAnalysisUpdate = async (
+    overrides: {
+      status: PageAnalysisRecord['status'];
+      textHash: string | null;
+      summary: Summary | null;
+      error: string | null;
+    },
+    progressPercent: number,
+    progressLabel: string,
+    logMessage: string,
+    level: PageAnalysisLogLevel = 'info'
+  ): Promise<void> => {
+    progressLogs = appendProgressLog(progressLogs, logMessage, progressPercent, level);
+    await setPageAnalysisRecord(
+      buildPageAnalysisRecord(input, {
+        ...overrides,
+        progressPercent,
+        progressLabel,
+        progressLogs,
+      })
+    );
+  };
+
+  await persistAnalysisUpdate(
+    {
       status: 'analyzing',
       textHash,
       summary: null,
       error: null,
-    })
+    },
+    72,
+    'Checking cache',
+    'Computed a text fingerprint and started checking the local summary cache.'
   );
 
   const cachedSummary = await getCachedSummary(textHash);
   if (cachedSummary) {
     const summary = toSummary(cachedSummary.summary);
+    await persistAnalysisUpdate(
+      {
+        status: 'analyzing',
+        textHash,
+        summary: null,
+        error: null,
+      },
+      88,
+      'Cache hit',
+      'Loaded a cached summary and started syncing version history.',
+      'success'
+    );
     await syncVersionHistory(input.domain, input.text, summary);
-    await setPageAnalysisRecord(
-      buildPageAnalysisRecord(input, {
+    await persistAnalysisUpdate(
+      {
         status: 'ready',
         textHash,
         summary,
         error: null,
-      })
+      },
+      100,
+      'Summary ready',
+      'Cached analysis is ready to review.',
+      'success'
     );
 
     return { ok: true, data: summary };
@@ -70,13 +137,19 @@ export async function processPageAnalysis(
       ? 'service_unavailable'
       : 'needs_provider';
 
-    await setPageAnalysisRecord(
-      buildPageAnalysisRecord(input, {
+    await persistAnalysisUpdate(
+      {
         status,
         textHash,
         summary: null,
         error: errorMessage,
-      })
+      },
+      100,
+      status === 'needs_provider'
+        ? 'Provider setup required'
+        : 'Hosted analysis unavailable',
+      errorMessage,
+      status === 'needs_provider' ? 'warning' : 'error'
     );
 
     return { ok: false, error: errorMessage };
@@ -84,24 +157,78 @@ export async function processPageAnalysis(
 
   const chunks = chunkText(input.text);
   const summarizeMetadata = buildSummarizeMetadata(input);
-  const summaryResult =
-    input.provider === 'hosted'
-      ? await singleShotSummarizeWithProvider(
-          input.text,
-          input.provider,
-          summarizeMetadata
-        )
-      : chunks.length > 1
-        ? await chunkedSummarizeWithProvider(
-            chunks,
-            input.provider,
-            summarizeMetadata
-          )
-        : await singleShotSummarizeWithProvider(
+  if (activeLlmRequests >= MAX_CONCURRENT_LLM) {
+    await persistAnalysisUpdate(
+      {
+        status: 'analyzing',
+        textHash,
+        summary: null,
+        error: null,
+      },
+      78,
+      'Waiting for worker slot',
+      'Waiting for an available summarization worker slot.'
+    );
+  }
+
+  await persistAnalysisUpdate(
+    {
+      status: 'analyzing',
+      textHash,
+      summary: null,
+      error: null,
+    },
+    chunks.length > 1 ? 82 : 84,
+    chunks.length > 1 ? 'Summarizing in chunks' : 'Requesting summary',
+    chunks.length > 1
+      ? `Started summarizing the document in ${chunks.length} chunks.`
+      : 'Started requesting a summary from the configured provider.'
+  );
+
+  const runSummarize = () => withLlmLimit(async () => {
+    try { chrome.alarms?.create('analysis-heartbeat', { delayInMinutes: 0.45 }); } catch { /* noop */ }
+    const result =
+      input.provider === 'hosted'
+        ? await singleShotSummarizeWithProvider(
             input.text,
             input.provider,
             summarizeMetadata
-          );
+          )
+        : chunks.length > 1
+          ? await chunkedSummarizeWithProvider(
+              chunks,
+              input.provider,
+              summarizeMetadata
+            )
+          : await singleShotSummarizeWithProvider(
+              input.text,
+              input.provider,
+              summarizeMetadata
+            );
+    try { chrome.alarms?.clear('analysis-heartbeat'); } catch { /* noop */ }
+    return result;
+  });
+
+  let summaryResult = await runSummarize();
+  if (!summaryResult.ok && summaryResult.error.retryable) {
+    const delayMs = 'retryAfterSeconds' in summaryResult.error
+      ? Math.min((summaryResult.error as { retryAfterSeconds: number }).retryAfterSeconds * 1000, 5_000)
+      : 2000;
+    await persistAnalysisUpdate(
+      {
+        status: 'analyzing',
+        textHash,
+        summary: null,
+        error: null,
+      },
+      88,
+      'Retry scheduled',
+      `Temporary provider error detected. Retrying in ${Math.ceil(delayMs / 1000)}s.`,
+      'warning'
+    );
+    await new Promise((r) => setTimeout(r, delayMs));
+    summaryResult = await runSummarize();
+  }
 
   if (!summaryResult.ok) {
     const errorMessage =
@@ -111,27 +238,46 @@ export async function processPageAnalysis(
         ? 'service_unavailable'
         : 'error';
 
-    await setPageAnalysisRecord(
-      buildPageAnalysisRecord(input, {
+    await persistAnalysisUpdate(
+      {
         status,
         textHash,
         summary: null,
         error: errorMessage,
-      })
+      },
+      100,
+      'Analysis failed',
+      errorMessage,
+      'error'
     );
 
     return { ok: false, error: errorMessage };
   }
 
+  await persistAnalysisUpdate(
+    {
+      status: 'analyzing',
+      textHash,
+      summary: null,
+      error: null,
+    },
+    94,
+    'Saving results',
+    'Summary received. Caching the result and syncing version history.'
+  );
   await cacheSummary(textHash, summaryResult.data, input.domain);
   await syncVersionHistory(input.domain, input.text, summaryResult.data);
-  await setPageAnalysisRecord(
-    buildPageAnalysisRecord(input, {
+  await persistAnalysisUpdate(
+    {
       status: 'ready',
       textHash,
       summary: summaryResult.data,
       error: null,
-    })
+    },
+    100,
+    'Summary ready',
+    'Analysis complete. Summary, cache, and version history are up to date.',
+    'success'
   );
 
   return { ok: true, data: summaryResult.data };
@@ -164,6 +310,9 @@ function buildPageAnalysisRecord(
     textHash: string | null;
     summary: Summary | null;
     error: string | null;
+    progressPercent?: number | null;
+    progressLabel?: string | null;
+    progressLogs?: PageAnalysisLogEntry[];
   }
 ): PageAnalysisRecord {
   return {
@@ -177,6 +326,9 @@ function buildPageAnalysisRecord(
     textHash: overrides.textHash,
     summary: overrides.summary,
     error: overrides.error,
+    progressPercent: overrides.progressPercent ?? null,
+    progressLabel: overrides.progressLabel ?? null,
+    progressLogs: overrides.progressLogs ?? [],
     updatedAt: Date.now(),
   };
 }

@@ -43,6 +43,12 @@ function getTabRemovedListener(): (tabId: number) => Promise<void> {
   ) => Promise<void>;
 }
 
+function getActionClickListener(): (tab?: { windowId?: number }) => Promise<void> | void {
+  return chrome.action.onClicked.addListener.mock.calls[0]?.[0] as (
+    tab?: { windowId?: number }
+  ) => Promise<void> | void;
+}
+
 describe('background page analysis contracts', () => {
   beforeEach(() => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
@@ -51,6 +57,7 @@ describe('background page analysis contracts', () => {
 
   it('saves and retrieves page analysis through messages', async () => {
     await importBackground();
+    expect(chrome.action.onClicked.addListener).toHaveBeenCalled();
     const listener = getRuntimeListener();
     const record = makePageAnalysisRecord();
 
@@ -65,6 +72,40 @@ describe('background page analysis contracts', () => {
       {}
     );
     expect(getResponse).toEqual({ ok: true, data: record });
+  });
+
+  it('opens the TC Guard side panel when the action icon is clicked', async () => {
+    await importBackground();
+    const onClicked = getActionClickListener();
+
+    await onClicked({ windowId: 22 });
+
+    expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
+      enabled: true,
+      path: 'src/popup/index.html',
+    });
+    expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
+  });
+
+  it('falls back to a popup window when side panel support is unavailable', async () => {
+    const originalOpen = chrome.sidePanel.open;
+    // Simulate a browser that does not expose the side panel open API.
+    (chrome.sidePanel as { open?: unknown }).open = undefined;
+
+    await importBackground();
+    const onClicked = getActionClickListener();
+
+    await onClicked({ windowId: 22 });
+
+    expect(chrome.windows.create).toHaveBeenCalledWith({
+      url: 'chrome-extension://mock-id/src/popup/index.html',
+      type: 'popup',
+      width: 500,
+      height: 900,
+      focused: true,
+    });
+
+    chrome.sidePanel.open = originalOpen;
   });
 
   it('cleans up page analysis when a tab closes', async () => {

@@ -2,7 +2,7 @@ import { ok, err } from '@shared/result';
 import type { Result } from '@shared/result';
 import { sendToBackground } from '@shared/messaging';
 
-const FETCH_TIMEOUT_MS = 500;
+const FETCH_TIMEOUT_MS = 5000;
 
 export async function extractPdfText(url: string): Promise<Result<string, Error>> {
   try {

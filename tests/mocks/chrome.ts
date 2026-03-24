@@ -27,6 +27,12 @@ export const chrome = {
   tabs: {
     sendMessage: vi.fn(),
     query: vi.fn(),
+    onActivated: {
+      addListener: vi.fn(),
+    },
+    onUpdated: {
+      addListener: vi.fn(),
+    },
     onRemoved: {
       addListener: vi.fn(),
     },
@@ -34,6 +40,20 @@ export const chrome = {
   action: {
     setBadgeText: vi.fn(),
     setBadgeBackgroundColor: vi.fn(),
+    onClicked: {
+      addListener: vi.fn(),
+    },
+  },
+  sidePanel: {
+    open: vi.fn().mockResolvedValue(undefined),
+    setOptions: vi.fn().mockResolvedValue(undefined),
+    setPanelBehavior: vi.fn().mockResolvedValue(undefined),
+  },
+  windows: {
+    create: vi.fn().mockResolvedValue(undefined),
+    onFocusChanged: {
+      addListener: vi.fn(),
+    },
   },
   i18n: {
     getMessage: vi.fn((key: string) => key),
