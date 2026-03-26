@@ -22,7 +22,7 @@ We all should.
 
 And yes, feel free to use `Goodman` on the [*Legal Disclaimer* section of this README.md](#legal-disclaimer).
 
-![](./asset/reference/goodman-in-action.gif)
+![](./asset/reference/goodman.gif)
 
 ## Stack
 
