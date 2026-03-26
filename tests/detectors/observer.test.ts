@@ -24,14 +24,14 @@ describe('startObserver', () => {
     expect(callback).toHaveBeenCalledTimes(1);
   });
 
-  it('ignores TC Guard overlay mutations', async () => {
+  it('ignores Goodman overlay mutations', async () => {
     vi.useFakeTimers();
     const callback = vi.fn();
 
     startObserver(callback);
 
     const overlayHost = document.createElement('div');
-    overlayHost.id = 'tc-guard-overlay-host';
+    overlayHost.id = 'goodman-overlay-host';
     document.body.appendChild(overlayHost);
 
     await Promise.resolve();

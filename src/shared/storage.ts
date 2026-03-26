@@ -67,7 +67,7 @@ export const DEFAULT_SETTINGS: Settings = {
   providers: {
     hosted: {
       apiKey: '',
-      model: 'tc-guard-cloud',
+      model: 'goodman-cloud',
       baseUrl: DEFAULT_HOSTED_API_BASE_URL,
     },
     openai: { apiKey: '', model: 'gpt-4o' },

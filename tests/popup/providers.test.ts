@@ -45,10 +45,10 @@ describe('provider settings', () => {
     expect(container.textContent).not.toContain('API Key');
   });
 
-  it('renders TC Guard Cloud as the default recommended option', async () => {
+  it('renders Goodman Cloud as the default recommended option', async () => {
     const container = await renderSettings();
 
-    expect(container.textContent).toContain('TC Guard Cloud');
+    expect(container.textContent).toContain('Goodman Cloud');
     expect(container.textContent).toContain('No API key required');
     expect(container.textContent).toContain('Selected');
   });

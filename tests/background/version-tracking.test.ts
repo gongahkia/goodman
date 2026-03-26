@@ -77,7 +77,7 @@ describe('syncVersionHistory', () => {
       providers: {
         hosted: {
           apiKey: '',
-          model: 'tc-guard-cloud',
+          model: 'goodman-cloud',
           baseUrl: 'http://127.0.0.1:8787',
         },
         openai: { apiKey: '', model: 'gpt-4o' },

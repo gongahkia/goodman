@@ -130,19 +130,19 @@ async function requestUpstreamSummary(
 
     if (response.status === 429) {
       const retryAfter = parseInt(response.headers.get('retry-after') ?? '60', 10);
-      throw new RateLimitError('TC Guard Cloud upstream', retryAfter);
+      throw new RateLimitError('Goodman Cloud upstream', retryAfter);
     }
 
     if (response.status >= 500) {
       throw new ServiceUnavailableError(
-        'TC Guard Cloud upstream',
+        'Goodman Cloud upstream',
         `HTTP ${response.status}`
       );
     }
 
     if (!response.ok) {
       throw new ProviderError(
-        'TC Guard Cloud upstream',
+        'Goodman Cloud upstream',
         `HTTP ${response.status}`
       );
     }
@@ -166,12 +166,12 @@ async function requestUpstreamSummary(
 
     if (error instanceof Error && error.name === 'AbortError') {
       throw new ServiceUnavailableError(
-        'TC Guard Cloud upstream',
+        'Goodman Cloud upstream',
         'Timed out waiting for the hosted model.'
       );
     }
 
-    throw new NetworkError('TC Guard Cloud upstream');
+    throw new NetworkError('Goodman Cloud upstream');
   } finally {
     clearTimeout(timeoutId);
   }

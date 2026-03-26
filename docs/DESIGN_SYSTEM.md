@@ -1,6 +1,6 @@
-# TC-Guard Design System
+# Goodman Design System
 
-Visual design tokens and component patterns for TC-Guard's overlay, popup, and settings UI. All UI components must use these tokens via CSS custom properties.
+Visual design tokens and component patterns for Goodman's overlay, popup, and settings UI. All UI components must use these tokens via CSS custom properties.
 
 ## Design Philosophy
 
@@ -184,7 +184,7 @@ Base unit: 4px. All spacing is a multiple of 4.
   }
 }
 
-.tc-guard-overlay {
+.goodman-overlay {
   animation: tc-slide-in var(--tc-duration-normal) var(--tc-ease-out);
 }
 ```
@@ -197,7 +197,7 @@ Base unit: 4px. All spacing is a multiple of 4.
   to { opacity: 0; }
 }
 
-.tc-guard-overlay--dismissing {
+.goodman-overlay--dismissing {
   animation: tc-fade-out var(--tc-duration-fast) var(--tc-ease-out) forwards;
 }
 ```
@@ -205,13 +205,13 @@ Base unit: 4px. All spacing is a multiple of 4.
 ### Expandable card toggle
 
 ```css
-.tc-guard-card-content {
+.goodman-card-content {
   overflow: hidden;
   max-height: 0;
   transition: max-height var(--tc-duration-normal) var(--tc-ease-out);
 }
 
-.tc-guard-card-content--expanded {
+.goodman-card-content--expanded {
   max-height: 300px; /* generous max, actual height determined by content */
 }
 ```
@@ -219,15 +219,15 @@ Base unit: 4px. All spacing is a multiple of 4.
 ### Button and interactive hover
 
 ```css
-.tc-guard-btn {
+.goodman-btn {
   transition: background-color var(--tc-duration-fast), box-shadow var(--tc-duration-fast);
 }
 
-.tc-guard-btn:hover {
+.goodman-btn:hover {
   background-color: var(--tc-accent-hover);
 }
 
-.tc-guard-btn:focus-visible {
+.goodman-btn:focus-visible {
   box-shadow: 0 0 0 3px var(--tc-focus-ring);
   outline: none;
 }
@@ -236,11 +236,11 @@ Base unit: 4px. All spacing is a multiple of 4.
 ### Trigger icon hover
 
 ```css
-.tc-guard-trigger {
+.goodman-trigger {
   transition: transform var(--tc-duration-fast), box-shadow var(--tc-duration-fast);
 }
 
-.tc-guard-trigger:hover {
+.goodman-trigger:hover {
   transform: scale(1.1);
   box-shadow: var(--tc-shadow-md);
 }
@@ -253,7 +253,7 @@ Base unit: 4px. All spacing is a multiple of 4.
 ```
 +--[Overlay Panel, max 380x500px]--------+
 |                                         |
-|  [severity dot] TC Guard           [X]  |  <- Header row
+|  [severity dot] Goodman           [X]  |  <- Header row
 |                                         |
 |-----------------------------------------|
 |                                         |
@@ -371,7 +371,7 @@ Base unit: 4px. All spacing is a multiple of 4.
 ```
 +--[Popup, 400px wide, max 600px tall]---+
 |                                         |
-|  [logo] TC Guard       example.com      |  <- Header
+|  [logo] Goodman       example.com      |  <- Header
 |                                         |
 |-----------------------------------------|
 |                                         |
@@ -404,7 +404,7 @@ Base unit: 4px. All spacing is a multiple of 4.
 ```
 +-----------------------------------------+
 |                                         |
-|  [logo] TC Guard       example.com      |
+|  [logo] Goodman       example.com      |
 |                                         |
 |-----------------------------------------|
 |                                         |
@@ -502,7 +502,7 @@ Never use `outline: none` without a replacement focus indicator.
 
 ### ARIA attributes
 
-- Overlay: `role="complementary"` or `role="region"`, `aria-label="TC Guard summary"`
+- Overlay: `role="complementary"` or `role="region"`, `aria-label="Goodman summary"`
 - Close button: `aria-label="Close"` (via i18n)
 - Expandable cards: `aria-expanded="true|false"`
 - Severity badge: text label alongside colored dot (color alone never conveys meaning)

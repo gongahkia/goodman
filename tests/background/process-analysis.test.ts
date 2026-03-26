@@ -188,7 +188,7 @@ describe('processPageAnalysis', () => {
     });
     vi.mocked(singleShotSummarizeWithProvider).mockResolvedValue({
       ok: false,
-      error: new NetworkError('TC Guard Cloud'),
+      error: new NetworkError('Goodman Cloud'),
     });
 
     const result = await processPageAnalysis({
@@ -207,7 +207,7 @@ describe('processPageAnalysis', () => {
       mockStorage.pageAnalysis as Record<string, { status: string; error: string }>
     )['https://example.com/checkout'];
     expect(storedRecord.status).toBe('service_unavailable');
-    expect(storedRecord.error).toContain('Could not connect to TC Guard Cloud');
+    expect(storedRecord.error).toContain('Could not connect to Goodman Cloud');
   });
 
   it('maps hosted rate limits to a service_unavailable state', async () => {
@@ -223,7 +223,7 @@ describe('processPageAnalysis', () => {
     });
     vi.mocked(singleShotSummarizeWithProvider).mockResolvedValue({
       ok: false,
-      error: new RateLimitError('TC Guard Cloud', 30),
+      error: new RateLimitError('Goodman Cloud', 30),
     });
 
     const resultPromise = processPageAnalysis({

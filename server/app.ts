@@ -40,7 +40,7 @@ export function createHostedApp(options: CreateHostedAppOptions = {}): Hono {
     (async (input: AnalyzeRequestBody) => {
       if (!config) {
         throw new ServiceUnavailableError(
-          'TC Guard Cloud',
+          'Goodman Cloud',
           'Hosted analysis is not configured on the server.'
         );
       }

@@ -1,6 +1,6 @@
-# TC-Guard Implementation Guide
+# Goodman Implementation Guide
 
-Step-by-step execution playbook for implementing TC-Guard. This document tells you exactly what order to build things in, how to apply TDD, and what pitfalls to avoid.
+Step-by-step execution playbook for implementing Goodman. This document tells you exactly what order to build things in, how to apply TDD, and what pitfalls to avoid.
 
 ## Pre-Implementation Checklist
 

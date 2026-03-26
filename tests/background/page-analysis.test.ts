@@ -74,7 +74,7 @@ describe('background page analysis contracts', () => {
     expect(getResponse).toEqual({ ok: true, data: record });
   });
 
-  it('opens the TC Guard side panel when the action icon is clicked', async () => {
+  it('opens the Goodman side panel when the action icon is clicked', async () => {
     await importBackground();
     const onClicked = getActionClickListener();
 
@@ -82,12 +82,12 @@ describe('background page analysis contracts', () => {
 
     expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
       enabled: true,
-      path: 'src/popup/index.html?surface=panel',
+      path: 'src/popup/index.html#panel',
     });
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
   });
 
-  it('opens the TC Guard workspace from a background message', async () => {
+  it('opens the Goodman workspace from a background message', async () => {
     await importBackground();
     const listener = getRuntimeListener();
 
@@ -99,7 +99,7 @@ describe('background page analysis contracts', () => {
     expect(response).toEqual({ ok: true, data: null });
     expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
       enabled: true,
-      path: 'src/popup/index.html?surface=panel',
+      path: 'src/popup/index.html#panel',
     });
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
   });

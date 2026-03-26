@@ -30,8 +30,8 @@ export function getMissingProviderMessage(
   providerName: Settings['activeProvider']
 ): string {
   if (providerName === 'hosted') {
-    return 'TC Guard Cloud is unavailable right now. Please try again shortly.';
+    return 'Goodman Cloud is unavailable right now. Please try again shortly.';
   }
 
-  return `${providerName} is not configured. Open TC Guard settings to add the required connection details.`;
+  return `${providerName} is not configured. Open Goodman settings to add the required connection details.`;
 }

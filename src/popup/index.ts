@@ -54,7 +54,11 @@ interface PopupState {
 
 function getSurfaceMode(): 'popup' | 'panel' {
   const params = new URLSearchParams(window.location.search);
-  return params.get('surface') === 'panel' ? 'panel' : 'popup';
+  if (params.get('surface') === 'panel') {
+    return 'panel';
+  }
+
+  return window.location.hash === '#panel' ? 'panel' : 'popup';
 }
 const surfaceMode = getSurfaceMode();
 
@@ -173,7 +177,7 @@ function renderPopup(container: HTMLElement): void {
     case 'needs_consent':
       container.appendChild(createCompactActionState(
         iconShield(28),
-        'Enable TC Guard Cloud',
+        'Enable Goodman Cloud',
         'Send T&C text to an LLM for analysis. Not stored or shared.',
         'Accept & Analyze', () => { void acceptHostedConsentAndAnalyze(); },
         'Settings', showSettings
@@ -218,9 +222,9 @@ function createCompactHeader(): HTMLElement {
   const header = createElement('div', 'tc-compact-header');
   const brand = createElement('div', 'tc-header-brand');
   const logo = createElement('img', 'tc-header-logo') as HTMLImageElement;
-  logo.src = chrome.runtime.getURL('icons/tc-guard-48.png');
-  logo.alt = 'TC Guard';
-  const name = createElement('span', 'tc-header-name', 'TC Guard');
+  logo.src = chrome.runtime.getURL('icons/goodman-48.png');
+  logo.alt = 'Goodman';
+  const name = createElement('span', 'tc-header-name', 'Goodman');
   const domain = createPill(getCurrentDomain() || 'No domain', 'muted');
   domain.classList.add('tc-domain-chip');
   appendChildren(brand, logo, name);
@@ -289,7 +293,7 @@ function createCompactIdleState(): HTMLElement {
 function createCompactWelcome(): HTMLElement {
   const card = createElement('div', 'tc-state-card');
   const icon = createIcon(iconShield(32), 'tc-state-icon');
-  const title = createElement('div', 'tc-state-title', 'Welcome to TC Guard');
+  const title = createElement('div', 'tc-state-title', 'Welcome to Goodman');
   const copy = createElement('p', 'tc-state-copy', 'Detect, summarize, and track T&C changes with AI.');
   const actions = createElement('div', 'tc-state-actions');
   actions.appendChild(createButton('Get Started', 'primary', () => { void acceptHostedConsentAndAnalyze(); }));
@@ -434,7 +438,7 @@ function renderPanel(container: HTMLElement): void {
         state.analysis.error ?? 'Configure a provider in Settings.', 'Open Settings', showSettings));
       break;
     case 'needs_consent':
-      container.appendChild(createCompactActionState(iconShield(28), 'Enable TC Guard Cloud',
+      container.appendChild(createCompactActionState(iconShield(28), 'Enable Goodman Cloud',
         'Send T&C text to an LLM for analysis.', 'Accept & Analyze',
         () => { void acceptHostedConsentAndAnalyze(); }, 'Settings', showSettings));
       break;
@@ -667,11 +671,11 @@ async function handleKeepOpen(): Promise<void> {
       payload: { tabId: state.tabId ?? undefined, windowId: state.windowId ?? undefined },
     });
     if (response && typeof response === 'object' && 'ok' in response && response.ok === false) {
-      state.error = 'Could not open a persistent TC Guard workspace.';
+      state.error = 'Could not open a persistent Goodman workspace.';
       renderCurrentApp();
     }
   } catch {
-    state.error = 'Could not open a persistent TC Guard workspace.';
+    state.error = 'Could not open a persistent Goodman workspace.';
     renderCurrentApp();
   }
 }

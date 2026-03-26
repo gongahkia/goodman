@@ -1,5 +1,5 @@
 {
-  "name": "tc-guard",
+  "name": "goodman",
   "version": "1.0.0",
   "description": "Automatically detect, summarize, and track Terms & Conditions changes",
   "type": "module",
@@ -18,8 +18,8 @@
     "test:e2e": "playwright test",
     "lint": "eslint src/ --ext .ts",
     "typecheck": "tsc --noEmit",
-    "package:chrome": "pnpm build && cd dist && zip -r ../tc-guard-chrome-v$npm_package_version.zip .",
-    "package:firefox": "pnpm build:firefox && cd dist && zip -r ../tc-guard-firefox-v$npm_package_version.xpi ."
+    "package:chrome": "pnpm build && cd dist && zip -r ../goodman-chrome-v$npm_package_version.zip .",
+    "package:firefox": "pnpm build:firefox && cd dist && zip -r ../goodman-firefox-v$npm_package_version.xpi ."
   },
   "keywords": [],
   "author": "",

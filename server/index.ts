@@ -17,6 +17,6 @@ serve(
     port,
   },
   (info) => {
-    console.log(`TC Guard Cloud listening on http://127.0.0.1:${info.port}`);
+    console.log(`Goodman Cloud listening on http://127.0.0.1:${info.port}`);
   }
 );

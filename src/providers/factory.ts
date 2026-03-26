@@ -28,7 +28,7 @@ export async function getActiveProvider(): Promise<Result<LLMProvider, TCGuardEr
     return err(
       new ProviderError(
         providerName,
-        'Missing provider configuration. Open TC Guard settings to add the required credentials.'
+        'Missing provider configuration. Open Goodman settings to add the required credentials.'
       )
     );
   }
@@ -72,7 +72,7 @@ export async function getProviderByName(
     return err(
       new ProviderError(
         name,
-        'Missing provider configuration. Open TC Guard settings to configure it.'
+        'Missing provider configuration. Open Goodman settings to configure it.'
       )
     );
   }

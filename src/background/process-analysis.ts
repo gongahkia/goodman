@@ -116,7 +116,7 @@ export async function processPageAnalysis(
 
   if (input.text.length > MAX_INPUT_TEXT_LENGTH) {
     console.warn(
-      '[TC Guard] input text truncated from',
+      '[Goodman] input text truncated from',
       input.text.length,
       'to',
       MAX_INPUT_TEXT_LENGTH

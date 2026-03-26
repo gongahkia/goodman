@@ -18,7 +18,7 @@ export function createOverlay(
   cachedSummary = summary;
 
   const host = document.createElement('div');
-  host.id = 'tc-guard-overlay-host';
+  host.id = 'goodman-overlay-host';
   host.style.cssText = 'position:fixed;z-index:2147483647;top:0;left:0;pointer-events:none';
   // pointer-events:none on host so page remains clickable; overlay content re-enables it via CSS
 
@@ -31,9 +31,9 @@ export function createOverlay(
 
   const themeClass = `tc-theme-${getTheme(themePreference)}`;
   const container = document.createElement('div');
-  container.className = `tc-guard-overlay ${themeClass}`;
+  container.className = `goodman-overlay ${themeClass}`;
   container.setAttribute('role', 'complementary');
-  container.setAttribute('aria-label', 'TC Guard summary');
+  container.setAttribute('aria-label', 'Goodman summary');
 
   container.appendChild(createHeader(summary.severity));
   container.appendChild(createSummarySection(summary.summary));
@@ -78,24 +78,24 @@ export function getCachedSummaryData(): Summary | null {
 
 function createHeader(severityValue: string): HTMLElement {
   const header = document.createElement('div');
-  header.className = 'tc-guard-header';
+  header.className = 'goodman-header';
 
   const left = document.createElement('div');
-  left.className = 'tc-guard-header-left';
+  left.className = 'goodman-header-left';
 
   const eyebrow = document.createElement('p');
-  eyebrow.className = 'tc-guard-eyebrow';
+  eyebrow.className = 'goodman-eyebrow';
   eyebrow.textContent = 'Page snapshot';
 
   const titleRow = document.createElement('div');
-  titleRow.className = 'tc-guard-title-row';
+  titleRow.className = 'goodman-title-row';
 
   const title = document.createElement('span');
-  title.className = 'tc-guard-title';
-  title.textContent = 'TC Guard';
+  title.className = 'goodman-title';
+  title.textContent = 'Goodman';
 
   const severityBadge = document.createElement('span');
-  severityBadge.className = `tc-guard-severity-pill tc-guard-severity-${normalizeSeverity(
+  severityBadge.className = `goodman-severity-pill goodman-severity-${normalizeSeverity(
     severityValue
   )}`;
   severityBadge.textContent = severityValue.toUpperCase();
@@ -106,7 +106,7 @@ function createHeader(severityValue: string): HTMLElement {
   left.appendChild(titleRow);
 
   const closeBtn = document.createElement('button');
-  closeBtn.className = 'tc-guard-close';
+  closeBtn.className = 'goodman-close';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = 'x';
   closeBtn.addEventListener('click', handleDismiss);
@@ -118,14 +118,14 @@ function createHeader(severityValue: string): HTMLElement {
 
 function createSummarySection(text: string): HTMLElement {
   const section = document.createElement('section');
-  section.className = 'tc-guard-section tc-guard-summary-card';
+  section.className = 'goodman-section goodman-summary-card';
 
   const heading = document.createElement('h3');
-  heading.className = 'tc-guard-section-title';
+  heading.className = 'goodman-section-title';
   heading.textContent = 'Summary';
 
   const p = document.createElement('p');
-  p.className = 'tc-guard-summary-text';
+  p.className = 'goodman-summary-text';
   p.textContent = text;
 
   section.appendChild(heading);
@@ -135,26 +135,26 @@ function createSummarySection(text: string): HTMLElement {
 
 function createKeyPoints(points: string[]): HTMLElement {
   const section = document.createElement('section');
-  section.className = 'tc-guard-section';
+  section.className = 'goodman-section';
 
   const heading = document.createElement('h3');
-  heading.className = 'tc-guard-section-title';
+  heading.className = 'goodman-section-title';
   heading.textContent = 'Key Points';
   section.appendChild(heading);
 
   const list = document.createElement('div');
-  list.className = 'tc-guard-keypoints';
+  list.className = 'goodman-keypoints';
 
   for (const point of points) {
     const row = document.createElement('div');
-    row.className = 'tc-guard-keypoint-row';
+    row.className = 'goodman-keypoint-row';
 
     const bullet = document.createElement('span');
-    bullet.className = 'tc-guard-keypoint-bullet';
+    bullet.className = 'goodman-keypoint-bullet';
     bullet.textContent = '+';
 
     const copy = document.createElement('p');
-    copy.className = 'tc-guard-keypoint-copy';
+    copy.className = 'goodman-keypoint-copy';
     copy.textContent = point;
 
     row.appendChild(bullet);
@@ -170,29 +170,29 @@ function createRedFlags(
   flags: Array<{ category: string; description: string; severity: string; quote: string }>
 ): HTMLElement {
   const section = document.createElement('section');
-  section.className = 'tc-guard-section';
+  section.className = 'goodman-section';
 
   const heading = document.createElement('h3');
-  heading.className = 'tc-guard-section-title';
+  heading.className = 'goodman-section-title';
   heading.textContent = `Red Flags (${flags.length})`;
   section.appendChild(heading);
 
   for (const flag of flags) {
     const card = document.createElement('div');
-    card.className = `tc-guard-flag-card tc-guard-flag-${normalizeSeverity(flag.severity)}`;
+    card.className = `goodman-flag-card goodman-flag-${normalizeSeverity(flag.severity)}`;
     card.setAttribute('role', 'button');
     card.setAttribute('tabindex', '0');
     card.setAttribute('aria-expanded', 'false');
 
     const cardHeader = document.createElement('div');
-    cardHeader.className = 'tc-guard-flag-header';
+    cardHeader.className = 'goodman-flag-header';
 
     const name = document.createElement('span');
-    name.className = 'tc-guard-flag-name';
+    name.className = 'goodman-flag-name';
     name.textContent = flag.category.replace(/_/g, ' ');
 
     const pill = document.createElement('span');
-    pill.className = `tc-guard-severity-pill tc-guard-severity-${normalizeSeverity(
+    pill.className = `goodman-severity-pill goodman-severity-${normalizeSeverity(
       flag.severity
     )}`;
     pill.textContent = flag.severity.toUpperCase();
@@ -202,16 +202,16 @@ function createRedFlags(
     card.appendChild(cardHeader);
 
     const details = document.createElement('div');
-    details.className = 'tc-guard-flag-details';
+    details.className = 'goodman-flag-details';
 
     const desc = document.createElement('p');
-    desc.className = 'tc-guard-flag-description';
+    desc.className = 'goodman-flag-description';
     desc.textContent = flag.description;
     details.appendChild(desc);
 
     if (flag.quote) {
       const quote = document.createElement('blockquote');
-      quote.className = 'tc-guard-flag-quote';
+      quote.className = 'goodman-flag-quote';
       quote.textContent = flag.quote;
       details.appendChild(quote);
     }
@@ -240,11 +240,11 @@ function toggleCard(card: HTMLElement, details: HTMLElement): void {
 
 function createOverlayFooter(): HTMLElement {
   const footer = document.createElement('div');
-  footer.className = 'tc-guard-footer';
+  footer.className = 'goodman-footer';
 
   const note = document.createElement('p');
-  note.className = 'tc-guard-footer-note';
-  note.textContent = 'Open TC Guard for settings, history, and a full persisted snapshot.';
+  note.className = 'goodman-footer-note';
+  note.textContent = 'Open Goodman for settings, history, and a full persisted snapshot.';
   footer.appendChild(note);
   return footer;
 }
@@ -258,9 +258,9 @@ function normalizeSeverity(value: string): 'low' | 'medium' | 'high' | 'critical
 
 function handleDismiss(): void {
   if (currentShadow) {
-    const overlay = currentShadow.querySelector('.tc-guard-overlay');
+    const overlay = currentShadow.querySelector('.goodman-overlay');
     if (overlay) {
-      (overlay as HTMLElement).classList.add('tc-guard-overlay--dismissing');
+      (overlay as HTMLElement).classList.add('goodman-overlay--dismissing');
       setTimeout(removeOverlay, 150);
     }
   }

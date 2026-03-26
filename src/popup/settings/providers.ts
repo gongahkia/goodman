@@ -21,7 +21,7 @@ const ADVANCED_PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as
 type ProviderName = (typeof ADVANCED_PROVIDERS)[number];
 
 const PROVIDER_LABELS: Record<string, string> = {
-  hosted: 'TC Guard Cloud',
+  hosted: 'Goodman Cloud',
   openai: 'OpenAI',
   claude: 'Claude',
   gemini: 'Gemini',
@@ -31,7 +31,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 
 const PROVIDER_DESCRIPTIONS: Record<ProviderName, string> = {
   openai: 'Use your own OpenAI account and model selection.',
-  claude: 'Point TC Guard at Anthropic for stronger legal summarization.',
+  claude: 'Point Goodman at Anthropic for stronger legal summarization.',
   gemini: 'Use a Google-hosted model if that is already in your workflow.',
   ollama: 'Run analysis against a local Ollama model on your machine.',
   custom: 'Connect any OpenAI-compatible endpoint or internal proxy.',
@@ -51,7 +51,7 @@ function renderProviderSettingsView(
   container.appendChild(
     createSectionHeading(
       'Provider configuration',
-      'Choose the analysis backend you want TC Guard to call when it summarizes detected agreements.'
+      'Choose the analysis backend you want Goodman to call when it summarizes detected agreements.'
     )
   );
 
@@ -87,16 +87,16 @@ function createHostedProviderCard(
   const copy = createElement('div');
   appendChildren(
     copy,
-    createElement('div', 'tc-callout-title', 'TC Guard Cloud'),
+    createElement('div', 'tc-callout-title', 'Goodman Cloud'),
     createElement(
       'p',
       'tc-callout-copy',
-      'No API key required. Analysis runs through the TC Guard hosted service.'
+      'No API key required. Analysis runs through the Goodman hosted service.'
     )
   );
 
   const button = createButton(
-    settings.activeProvider === 'hosted' ? 'Selected' : 'Use TC Guard Cloud',
+    settings.activeProvider === 'hosted' ? 'Selected' : 'Use Goodman Cloud',
     settings.activeProvider === 'hosted' ? 'secondary' : 'primary',
     () => {
       void saveActiveProvider('hosted').then((updatedSettings) => {
@@ -188,7 +188,7 @@ function renderProviderConfig(
       'p',
       'tc-callout-copy',
       name === 'ollama'
-        ? 'Set the local model endpoint and model name that TC Guard should call.'
+        ? 'Set the local model endpoint and model name that Goodman should call.'
         : 'Fill in the credentials and model details that should be used for analysis.'
     )
   );

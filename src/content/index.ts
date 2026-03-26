@@ -303,11 +303,11 @@ async function handleDetectTC(
         textHash,
         summary: null,
         error:
-          'Accept the TC Guard Cloud privacy disclosure before hosted analysis can run.',
+          'Accept the Goodman Cloud privacy disclosure before hosted analysis can run.',
       },
       100,
       'Waiting for consent',
-      'Hosted analysis is blocked until you accept the TC Guard Cloud privacy disclosure.',
+      'Hosted analysis is blocked until you accept the Goodman Cloud privacy disclosure.',
       'warning'
     );
     return {

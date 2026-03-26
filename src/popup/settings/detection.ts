@@ -30,7 +30,7 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
     container,
     createSectionHeading(
       'Detection sensitivity',
-      'Control how aggressively TC Guard tries to interpret consent surfaces on the active page.'
+      'Control how aggressively Goodman tries to interpret consent surfaces on the active page.'
     )
   );
 

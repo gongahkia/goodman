@@ -11,7 +11,7 @@ describe('hosted app', () => {
         redFlags: [],
         severity: 'low' as const,
       },
-      model: 'tc-guard-cloud',
+      model: 'goodman-cloud',
     }));
     const app = createHostedApp({ analyze });
 
@@ -29,7 +29,7 @@ describe('hosted app', () => {
       'chrome-extension://test-id'
     );
     const body = await response.json();
-    expect(body.model).toBe('tc-guard-cloud');
+    expect(body.model).toBe('goodman-cloud');
     expect(body.summary.summary).toBe('A concise summary.');
     expect(analyze).toHaveBeenCalledWith(validRequest());
   });
@@ -61,7 +61,7 @@ describe('hosted app', () => {
           redFlags: [],
           severity: 'low' as const,
         },
-        model: 'tc-guard-cloud',
+        model: 'goodman-cloud',
       })),
       rateLimit: {
         maxRequests: 1,

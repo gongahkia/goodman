@@ -1,10 +1,10 @@
-# TC Guard Architecture
+# Goodman Architecture
 
 This document describes the runtime that actually ships in the repository today.
 
 ## Product Intent
 
-TC Guard is trying to solve a narrow problem well: when a page asks the user to agree to terms, explain what that agreement means right now, then remember that domain so later term changes can be surfaced.
+Goodman is trying to solve a narrow problem well: when a page asks the user to agree to terms, explain what that agreement means right now, then remember that domain so later term changes can be surfaced.
 
 That means the product is built around three linked jobs:
 
@@ -16,7 +16,7 @@ The current scope is still privacy-first and bring-your-own-provider. There is n
 
 ## MV3 Execution Model
 
-TC Guard is a Manifest V3 extension with three important contexts:
+Goodman is a Manifest V3 extension with three important contexts:
 
 ```text
 +------------------+        runtime messages        +----------------------+

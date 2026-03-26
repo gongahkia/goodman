@@ -65,5 +65,5 @@ function isRelevantMutation(mutation: MutationRecord): boolean {
 }
 
 function isOverlayNode(node: Element): boolean {
-  return node.id === 'tc-guard-overlay-host';
+  return node.id === 'goodman-overlay-host';
 }

@@ -12,7 +12,7 @@ export async function renderCacheSettings(container: HTMLElement): Promise<void>
   container.appendChild(
     createSectionHeading(
       'Cache management',
-      'Inspect saved summaries and clear stored entries when you want TC Guard to analyze from scratch.'
+      'Inspect saved summaries and clear stored entries when you want Goodman to analyze from scratch.'
     )
   );
 

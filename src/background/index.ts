@@ -74,7 +74,7 @@ async function handleFetchUrl(
     const html = await response.text();
     return { ok: true, data: html };
   } catch (e) {
-    console.error('[TC Guard] fetch failed:', url, e);
+    console.error('[Goodman] fetch failed:', url, e);
     return { ok: false, error: 'Failed to fetch URL' };
   }
 }
@@ -159,7 +159,7 @@ async function handleProcessPageAnalysis(
   }
 
   if (!result.ok) {
-    console.error('[TC Guard] analysis failed:', payload.url, result.error);
+    console.error('[Goodman] analysis failed:', payload.url, result.error);
     return { ok: false, error: result.error ?? 'Failed to process page analysis' };
   }
 
@@ -171,7 +171,7 @@ async function handleSummarize(
 ): Promise<MessageResponse> {
   const result = await singleShotSummarizeWithProvider(payload.text, payload.provider);
   if (!result.ok) {
-    console.error('[TC Guard] summarize failed:', result.error.message);
+    console.error('[Goodman] summarize failed:', result.error.message);
     return { ok: false, error: result.error.userMessage ?? result.error.message };
   }
   return { ok: true, data: result.data };
@@ -224,7 +224,7 @@ async function openWorkspaceSurface(
     try {
       await chrome.sidePanel.setOptions?.({
         enabled: true,
-        path: 'src/popup/index.html?surface=panel',
+        path: 'src/popup/index.html#panel',
       });
 
       if (typeof windowId === 'number') {
@@ -232,7 +232,7 @@ async function openWorkspaceSurface(
         return true;
       }
     } catch (error) {
-      console.warn('[TC Guard] side panel open failed, falling back:', error);
+      console.warn('[Goodman] side panel open failed, falling back:', error);
     }
   }
 
@@ -247,7 +247,7 @@ async function openWorkspaceSurface(
       });
       return true;
     } catch (error) {
-      console.warn('[TC Guard] popup window open failed, falling back:', error);
+      console.warn('[Goodman] popup window open failed, falling back:', error);
     }
   }
 
@@ -255,7 +255,7 @@ async function openWorkspaceSurface(
     await chrome.tabs.create({ url: extensionPage });
     return true;
   } catch (error) {
-    console.error('[TC Guard] could not open workspace surface:', error);
+    console.error('[Goodman] could not open workspace surface:', error);
   }
 
   return false;
@@ -276,7 +276,7 @@ async function resolveWorkspaceWindowId(
         return activeTab.windowId;
       }
     } catch (error) {
-      console.warn('[TC Guard] could not resolve active window id:', error);
+      console.warn('[Goodman] could not resolve active window id:', error);
     }
   }
 

@@ -15,7 +15,7 @@ describe('hosted provider', () => {
     const fetchMock = vi.fn().mockResolvedValue(
       jsonResponse({
         summary: validSummary(),
-        model: 'tc-guard-cloud',
+        model: 'goodman-cloud',
         requestId: 'req-1',
       })
     );
@@ -29,7 +29,7 @@ describe('hosted provider', () => {
         ...DEFAULT_SETTINGS.providers,
         hosted: {
           apiKey: '',
-          model: 'tc-guard-cloud',
+          model: 'goodman-cloud',
           baseUrl: 'https://cloud.example.test',
         },
       },
@@ -135,7 +135,7 @@ describe('hosted provider', () => {
 
     const provider = new HostedProvider(
       'https://cloud.example.test',
-      'tc-guard-cloud',
+      'goodman-cloud',
       30_000
     );
 

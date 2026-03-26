@@ -23,7 +23,7 @@ if [ -z "${CHROME_CLIENT_ID:-}" ] || [ -z "${CHROME_CLIENT_SECRET:-}" ] || [ -z 
 fi
 
 VERSION=$(node -p "require('./package.json').version")
-ZIP_FILE="tc-guard-chrome-v${VERSION}.zip"
+ZIP_FILE="goodman-chrome-v${VERSION}.zip"
 
 if [ ! -f "$ZIP_FILE" ]; then
   echo "Building and packaging..."

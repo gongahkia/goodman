@@ -24,7 +24,7 @@ let baseUrl = '';
 let userDataDir = '';
 
 test.beforeAll(async () => {
-  userDataDir = await mkdtemp(resolve(tmpdir(), 'tc-guard-e2e-'));
+  userDataDir = await mkdtemp(resolve(tmpdir(), 'goodman-e2e-'));
   fixtureServer = createFixtureServer();
   await new Promise<void>((resolveServer) => {
     fixtureServer.listen(0, '127.0.0.1', () => resolveServer());

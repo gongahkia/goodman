@@ -1,4 +1,4 @@
-# TC-Guard: Browser Extension for T&C Summarization
+# Goodman: Browser Extension for T&C Summarization
 # Stack: TypeScript, Chrome Manifest V3 + Firefox (webextension-polyfill), Vite + crxjs
 # LLM Providers: Claude, OpenAI, Gemini, Ollama (local + custom OpenAI-compatible endpoints)
 # Feature highlight: T&C version tracking + diff comparison
@@ -46,7 +46,7 @@ blockedBy: [0]
 3. Set `host_permissions: ["<all_urls>"]` — WHY: content script needs to run on any page to detect T&C.
 4. Register the service worker: `"background": { "service_worker": "src/background/index.ts", "type": "module" }`.
 5. Register the content script: `"content_scripts": [{ "matches": ["<all_urls>"], "js": ["src/content/index.ts"], "run_at": "document_idle" }]` — WHY: `document_idle` ensures the DOM is ready before detection begins.
-6. Register the popup: `"action": { "default_popup": "src/popup/index.html", "default_icon": "icons/tc-guard-48.png" }`.
+6. Register the popup: `"action": { "default_popup": "src/popup/index.html", "default_icon": "icons/goodman-48.png" }`.
 7. Add placeholder icons at `public/icons/` (16, 48, 128 px).
 
 **DONE WHEN**
@@ -499,7 +499,7 @@ blockedBy: [15, 16, 17, 18, 19]
 2. Export `getActiveProvider(): Promise<LLMProvider>`:
    - Read `settings.activeProvider` from storage.
    - Instantiate and return the corresponding provider.
-   - If no provider is configured, throw a descriptive error ("No LLM provider configured. Open TC Guard settings to add an API key.").
+   - If no provider is configured, throw a descriptive error ("No LLM provider configured. Open Goodman settings to add an API key.").
 3. Export `getAllProviders(): LLMProvider[]` returning instances of all registered providers.
 4. Export `validateProvider(name: string): Promise<boolean>` to test a specific provider's API key.
 
@@ -658,7 +658,7 @@ blockedBy: [22, 3]
 ### Task 26 (B) +versioning
 blockedBy: [25]
 
-**PURPOSE** — Version tracking is the killer feature that differentiates TC Guard from simple summarizers. The storage schema must support storing multiple versions of T&C per domain with full history.
+**PURPOSE** — Version tracking is the killer feature that differentiates Goodman from simple summarizers. The storage schema must support storing multiple versions of T&C per domain with full history.
 
 **WHAT TO DO**
 1. Create `src/versioning/schema.ts`.
@@ -788,7 +788,7 @@ blockedBy: [26, 29]
    - Between nodes, show change annotations: "+2 red flags", "-1 red flag", "severity: medium → high".
    - The latest version is highlighted at the top.
 5. Clicking a version node shows that version's full summary.
-6. Style with CSS classes scoped under `.tc-guard-timeline`.
+6. Style with CSS classes scoped under `.goodman-timeline`.
 
 **DONE WHEN**
 - [x] Timeline shows all versions for a domain in reverse chronological order
@@ -832,7 +832,7 @@ blockedBy: [8, 22]
 2. Export `createOverlay(detection: ScoredDetection, summary: Summary): HTMLElement`.
 3. Create a host `<div>` and attach a Shadow DOM (`mode: 'closed'`) — WHY: closed shadow DOM prevents host page CSS from leaking into the overlay and vice versa.
 4. Inside the shadow DOM, render:
-   - **Header**: severity badge (color-coded circle: green=low, yellow=medium, orange=high, red=critical) + "TC Guard" label + close button (X).
+   - **Header**: severity badge (color-coded circle: green=low, yellow=medium, orange=high, red=critical) + "Goodman" label + close button (X).
    - **Summary section**: `summary.summary` as a paragraph.
    - **Key points**: `summary.keyPoints` as a bulleted list.
    - **Red flags section**: each `RedFlag` as an expandable card showing category, severity pill, description, and the verbatim quote.
@@ -925,7 +925,7 @@ blockedBy: [20, 3]
 2. Create `src/popup/index.ts` as the popup entry point.
 3. On open, send a message to the active tab's content script requesting the current detection state and summary.
 4. Render the main popup layout:
-   - **Header**: TC Guard logo, current page domain.
+   - **Header**: Goodman logo, current page domain.
    - **Summary card**: severity badge, summary text, key point count, red flag count.
    - **Red flags list**: expandable cards (same component as overlay, shared code).
    - **"Analyze This Page" button**: triggers a manual full-page scan if no detection has occurred.
@@ -1085,7 +1085,7 @@ blockedBy: [32]
 **WHAT TO DO**
 1. In `src/content/ui/overlay.ts`, never use `innerHTML` with extracted T&C text. Use `textContent` or DOM APIs (`createElement`, `appendChild`) exclusively.
 2. In `src/content/extractors/normalizer.ts` (Task 13), ensure the sanitization step strips all HTML tags.
-3. In the Shadow DOM stylesheet, scope all styles with a unique prefix (`.tc-guard-*`) to prevent class name collisions.
+3. In the Shadow DOM stylesheet, scope all styles with a unique prefix (`.goodman-*`) to prevent class name collisions.
 4. Sanitize LLM output: if the LLM returns HTML in the summary or red flag descriptions, strip tags before rendering.
 
 **DONE WHEN**
@@ -1257,8 +1257,8 @@ blockedBy: [50]
 **PURPOSE** — Chrome and Firefox require different packaging formats for store submission. Automated packaging prevents manual errors.
 
 **WHAT TO DO**
-1. Add `pnpm package:chrome` script: runs `pnpm build`, then zips the `dist/` directory into `tc-guard-chrome-v{version}.zip`.
-2. Add `pnpm package:firefox` script: runs `pnpm build:firefox` (with Firefox manifest), then zips into `tc-guard-firefox-v{version}.xpi`.
+1. Add `pnpm package:chrome` script: runs `pnpm build`, then zips the `dist/` directory into `goodman-chrome-v{version}.zip`.
+2. Add `pnpm package:firefox` script: runs `pnpm build:firefox` (with Firefox manifest), then zips into `goodman-firefox-v{version}.xpi`.
 3. Read version from `package.json`.
 4. Add a `release` GitHub Actions workflow: on tag push (`v*`), build both packages, create a GitHub Release, attach the zip and xpi as assets.
 
@@ -1317,7 +1317,7 @@ blockedBy: [53, 1]
 1. Create `src/manifest.ts` (if not already from Task 1) as the single source of truth.
 2. Export two functions: `getChromeManifest()` and `getFirefoxManifest()`.
 3. Firefox differences:
-   - Add `"browser_specific_settings": { "gecko": { "id": "tc-guard@extension", "strict_min_version": "109.0" } }` — WHY: 109.0 is the minimum Firefox version with Manifest V3 support.
+   - Add `"browser_specific_settings": { "gecko": { "id": "goodman@extension", "strict_min_version": "109.0" } }` — WHY: 109.0 is the minimum Firefox version with Manifest V3 support.
    - Remove `"background.type": "module"` (Firefox handles this differently).
 4. In `vite.config.ts`, use an environment variable (`BUILD_TARGET=firefox`) to select the correct manifest.
 5. Add `pnpm build:firefox` script that sets the env var and builds.
@@ -1339,7 +1339,7 @@ blockedBy: [52]
 
 **WHAT TO DO**
 1. Create `README.md` with sections:
-   - **What is TC Guard**: one-paragraph description.
+   - **What is Goodman**: one-paragraph description.
    - **Features**: bullet list (T&C detection, LLM summarization, red flag analysis, version tracking, multi-provider support).
    - **Screenshots**: placeholder image links for overlay, popup, settings.
    - **Installation**: Chrome Web Store link, Firefox Add-ons link, manual build instructions.

@@ -1,6 +1,6 @@
-# TC-Guard Style Guide
+# Goodman Style Guide
 
-All code conventions for the TC-Guard browser extension. Read this before writing any TypeScript, CSS, or test file.
+All code conventions for the Goodman browser extension. Read this before writing any TypeScript, CSS, or test file.
 
 ## TypeScript Configuration
 
@@ -233,7 +233,7 @@ const styles = `
     color: var(--tc-text);
   }
 
-  .tc-guard-overlay {
+  .goodman-overlay {
     background: var(--tc-bg);
     border: 1px solid var(--tc-border);
     border-radius: var(--tc-radius-lg);
@@ -249,7 +249,7 @@ style.textContent = styles;
 shadowRoot.appendChild(style);
 ```
 
-- All class names prefixed with `tc-guard-` to avoid collisions.
+- All class names prefixed with `goodman-` to avoid collisions.
 - Use CSS custom properties (variables) for all design tokens. See `DESIGN_SYSTEM.md` for the complete token set.
 - `:host { all: initial }` resets inherited styles from the host page.
 
@@ -386,7 +386,7 @@ All user-facing strings go through Chrome's i18n API.
 ```json
 {
   "EXTENSION_NAME": {
-    "message": "TC Guard",
+    "message": "Goodman",
     "description": "Extension name shown in browser"
   },
   "OVERLAY_CLOSE": {

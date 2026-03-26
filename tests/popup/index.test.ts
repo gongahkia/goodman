@@ -119,7 +119,7 @@ describe('popup index', () => {
         status: 'needs_consent',
         summary: null,
         error:
-          'Accept the TC Guard Cloud privacy disclosure before hosted analysis can run.',
+          'Accept the Goodman Cloud privacy disclosure before hosted analysis can run.',
       },
     };
 
@@ -127,7 +127,7 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('Enable TC Guard Cloud');
+    expect(document.body.textContent).toContain('Enable Goodman Cloud');
     expect(document.body.textContent).toContain('Accept & Analyze');
   });
 
@@ -138,7 +138,7 @@ describe('popup index', () => {
         status: 'needs_consent',
         summary: null,
         error:
-          'Accept the TC Guard Cloud privacy disclosure before hosted analysis can run.',
+          'Accept the Goodman Cloud privacy disclosure before hosted analysis can run.',
       },
     };
     chrome.tabs.sendMessage.mockImplementation(async () => {
@@ -180,7 +180,7 @@ describe('popup index', () => {
         ...readyAnalysis(),
         status: 'service_unavailable',
         summary: null,
-        error: 'TC Guard Cloud is temporarily unavailable. Please try again shortly.',
+        error: 'Goodman Cloud is temporarily unavailable. Please try again shortly.',
       },
     };
 

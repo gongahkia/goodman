@@ -39,7 +39,7 @@ export class HostedProvider implements LLMProvider {
 
   constructor(
     private baseUrl: string = DEFAULT_BASE_URL,
-    private defaultModel: string = 'tc-guard-cloud',
+    private defaultModel: string = 'goodman-cloud',
     private requestTimeoutMs: number = DEFAULT_REQUEST_TIMEOUT_MS
   ) {}
 
@@ -71,7 +71,7 @@ export class HostedProvider implements LLMProvider {
 
       if (response.status === 429) {
         const retryAfter = parseInt(response.headers.get('retry-after') ?? '60', 10);
-        return err(new RateLimitError('TC Guard Cloud', retryAfter));
+        return err(new RateLimitError('Goodman Cloud', retryAfter));
       }
 
       const payload = (await response.json()) as
@@ -80,13 +80,13 @@ export class HostedProvider implements LLMProvider {
 
       if (response.status >= 500) {
         const message = getPayloadMessage(payload) ?? 'The hosted analysis service failed.';
-        return err(new ServiceUnavailableError('TC Guard Cloud', message));
+        return err(new ServiceUnavailableError('Goodman Cloud', message));
       }
 
       if (!response.ok) {
         return err(
           new ProviderError(
-            'TC Guard Cloud',
+            'Goodman Cloud',
             getPayloadMessage(payload) ?? `HTTP ${response.status}`
           )
         );
@@ -113,7 +113,7 @@ export class HostedProvider implements LLMProvider {
       if (e instanceof Error && e.name === 'AbortError') {
         return err(
           new ServiceUnavailableError(
-            'TC Guard Cloud',
+            'Goodman Cloud',
             'The hosted analysis request timed out.'
           )
         );
@@ -123,7 +123,7 @@ export class HostedProvider implements LLMProvider {
         return err(new InvalidResponseError('Hosted service returned invalid JSON'));
       }
 
-      return err(new NetworkError('TC Guard Cloud'));
+      return err(new NetworkError('Goodman Cloud'));
     } finally {
       clearTimeout(timeoutId);
       options.signal?.removeEventListener('abort', onAbort);

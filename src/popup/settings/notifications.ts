@@ -16,7 +16,7 @@ export async function renderNotificationSettings(container: HTMLElement): Promis
   container.appendChild(
     createSectionHeading(
       'Notification settings',
-      'Choose when TC Guard should surface stored terms changes for domains you revisit.'
+      'Choose when Goodman should surface stored terms changes for domains you revisit.'
     )
   );
 
@@ -49,7 +49,7 @@ export async function renderNotificationSettings(container: HTMLElement): Promis
   container.appendChild(
     createSectionHeading(
       'Tracked domains',
-      'Override notifications domain by domain once TC Guard has saved version history for them.'
+      'Override notifications domain by domain once Goodman has saved version history for them.'
     )
   );
 

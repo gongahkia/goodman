@@ -1,6 +1,6 @@
-# TC-Guard — Agent Instructions
+# Goodman — Agent Instructions
 
-TC-Guard is a Manifest V3 browser extension that automatically detects Terms & Conditions on any webpage, summarizes them using AI/LLM providers, highlights legally concerning "red flag" clauses, and tracks T&C changes over time per domain.
+Goodman is a Manifest V3 browser extension that automatically detects Terms & Conditions on any webpage, summarizes them using AI/LLM providers, highlights legally concerning "red flag" clauses, and tracks T&C changes over time per domain.
 
 **Tech stack:** TypeScript, Vite + @crxjs/vite-plugin, Chrome Manifest V3, webextension-polyfill (Firefox), Vitest, Playwright.
 
