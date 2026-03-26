@@ -5,6 +5,12 @@
 
 Goodman is a Manifest V3 browser extension that automatically detects, summarizes, and tracks changes to Terms & Conditions on any webpage. It uses a bring-your-own-provider model for AI-powered legal text analysis while keeping all data local.
 
+## Stack
+
+## Screenshots
+
+## Usage
+
 ## Product Position
 
 Goodman is a privacy-first, bring-your-own-provider tool aimed at technical users and power users who want to understand what they're agreeing to.
@@ -79,13 +85,7 @@ $ pnpm test:e2e
 
 ## Architecture
 
-```
-Content Script          Background Worker          Popup / Side Panel
-(per page/tab)          (persistent)               (reads shared state)
-
-detect → extract  ──→  analyze → cache  ──→     render summary
-                       version → notify          settings, history
-```
+![](./asset/reference/architecture.png)
 
 ## Reference
 
