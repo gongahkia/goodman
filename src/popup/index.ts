@@ -358,7 +358,10 @@ function createAnalyzingCard(label: string): HTMLElement {
   appendChildren(progressWrap, track, pctLabel, stageLine);
   const actions = createElement('div', 'tc-state-actions');
   actions.appendChild(createButton('Cancel Analysis', 'ghost', () => { void handleCancelAnalysis().catch(e => console.warn('[Goodman] cancel analysis failed:', e)); }));
-  appendChildren(card, icon, title, progressWrap, actions);
+  appendChildren(card, icon, title, progressWrap);
+  const logs = getProgressLogs(state.analysis);
+  if (logs.length > 0) card.appendChild(createLogStream(logs));
+  card.appendChild(actions);
   if (state.analysisStartedAt) {
     if (loadingInterval) clearInterval(loadingInterval);
     loadingInterval = setInterval(() => {
