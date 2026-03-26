@@ -133,6 +133,7 @@ function render(container: HTMLElement): void {
   } else {
     renderPopup(container);
   }
+  container.appendChild(createAttribution());
 }
 
 // ========== POPUP MODE ==========
@@ -884,6 +885,17 @@ function resolveNotificationTargetDomain(): string {
   const cd = getCurrentDomain();
   const match = state.pendingNotifications.find(n => n.domain === cd);
   return match?.domain ?? state.pendingNotifications[0]?.domain ?? cd;
+}
+
+function createAttribution(): HTMLElement {
+  const footer = createElement('div', 'tc-attribution');
+  const link = createElement('a') as HTMLAnchorElement;
+  link.href = 'https://gabrielongzm.com';
+  link.target = '_blank';
+  link.rel = 'noopener';
+  link.textContent = 'Gabriel Ong';
+  footer.append('Made with \u2764\uFE0F by ', link, '.');
+  return footer;
 }
 
 function formatConfidence(value: number | null): string {
