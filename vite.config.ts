@@ -13,12 +13,14 @@ function swShimPlugin(): Plugin {
       const outDir = options.dir ?? 'dist';
       // write the shim file
       fs.writeFileSync(path.join(outDir, 'sw-shim.js'), shim, 'utf8');
-      // prepend shim import to service-worker-loader.js
+      // find all index.ts-*.js chunks (excluding loaders) and ensure SW imports them all
+      const assetsDir = path.join(outDir, 'assets');
+      const indexChunks = fs.readdirSync(assetsDir)
+        .filter((f: string) => f.startsWith('index.ts-') && !f.includes('loader'))
+        .map((f: string) => `import './assets/${f}';`);
       const loaderPath = path.join(outDir, 'service-worker-loader.js');
-      if (fs.existsSync(loaderPath)) {
-        const content = fs.readFileSync(loaderPath, 'utf8');
-        fs.writeFileSync(loaderPath, `import './sw-shim.js';\n${content}`, 'utf8');
-      }
+      const loaderContent = `import './sw-shim.js';\n${indexChunks.join('\n')}\n`;
+      fs.writeFileSync(loaderPath, loaderContent, 'utf8');
     },
   };
 }
