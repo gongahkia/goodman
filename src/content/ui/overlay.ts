@@ -53,6 +53,7 @@ export function createOverlay(
   positionCleanup = positionOverlay(host, detection.element);
   currentOverlay = host;
   document.addEventListener('keydown', handleEscape);
+  showSaulToast();
 
   return host;
 }
@@ -264,4 +265,49 @@ function handleDismiss(): void {
       setTimeout(removeOverlay, 150);
     }
   }
+}
+
+function showSaulToast(): void {
+  const existing = document.getElementById('goodman-saul-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'goodman-saul-toast';
+  const imgUrl = chrome.runtime?.getURL?.('icons/saul.png') ?? '';
+  if (!imgUrl) return;
+  toast.style.cssText = [
+    'position:fixed', 'bottom:24px', 'right:24px', 'z-index:2147483646',
+    'display:flex', 'align-items:center', 'gap:12px',
+    'padding:12px 18px', 'border-radius:16px',
+    'background:#fffbf5', 'border:1px solid #e6ddd0',
+    'box-shadow:0 12px 40px rgba(0,0,0,0.15)',
+    'font-family:ui-sans-serif,-apple-system,sans-serif', 'font-size:14px', 'color:#2c2c2c',
+    'animation:goodman-saul-in 400ms cubic-bezier(0.16,1,0.3,1)',
+    'cursor:pointer',
+  ].join(';');
+  const img = document.createElement('img');
+  img.src = imgUrl;
+  img.alt = 'Saul Goodman';
+  img.style.cssText = 'width:48px;height:48px;border-radius:10px;object-fit:cover';
+  const text = document.createElement('span');
+  text.textContent = 'Better call Goodman!';
+  text.style.fontWeight = '600';
+  toast.appendChild(img);
+  toast.appendChild(text);
+  const style = document.createElement('style');
+  style.textContent = `
+    @keyframes goodman-saul-in { from { opacity:0; transform:translateY(20px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
+    @keyframes goodman-saul-out { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(10px); } }
+  `;
+  document.head.appendChild(style);
+  document.body.appendChild(toast);
+  toast.addEventListener('click', () => {
+    toast.style.animation = 'goodman-saul-out 200ms ease forwards';
+    setTimeout(() => toast.remove(), 200);
+  });
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.style.animation = 'goodman-saul-out 300ms ease forwards';
+      setTimeout(() => toast.remove(), 300);
+    }
+  }, 4000);
 }

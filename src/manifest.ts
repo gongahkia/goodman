@@ -33,6 +33,12 @@ const baseManifest = {
   content_security_policy: {
     extension_pages: "script-src 'self'; object-src 'self'",
   },
+  web_accessible_resources: [
+    {
+      matches: ['<all_urls>'],
+      resources: ['icons/saul.png'],
+    },
+  ],
 };
 
 function getChromeManifest() {

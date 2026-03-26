@@ -25,6 +25,7 @@ import {
   iconClock,
   iconZap,
   iconChevronLeft,
+  iconTerminal,
 } from '@popup/icons';
 import type { Settings } from '@shared/messages';
 import type {
@@ -390,7 +391,12 @@ function createActionBar(): HTMLElement {
   historyBtn.setAttribute('aria-label', 'View history');
   historyBtn.appendChild(createIcon(iconClock(16)));
   historyBtn.addEventListener('click', () => showHistory());
-  appendChildren(bar, detailBtn, refreshBtn, settingsBtn, historyBtn);
+  const logsBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
+  logsBtn.type = 'button';
+  logsBtn.setAttribute('aria-label', 'View logs');
+  logsBtn.appendChild(createIcon(iconTerminal(16)));
+  logsBtn.addEventListener('click', showLogs);
+  appendChildren(bar, detailBtn, refreshBtn, settingsBtn, historyBtn, logsBtn);
   return bar;
 }
 
@@ -754,6 +760,50 @@ function showHistory(initialDomain?: string): void {
   panel.appendChild(body);
   app.appendChild(panel);
   void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain()).catch(e => console.warn('[Goodman] history panel render failed:', e));
+}
+
+async function showLogs(): Promise<void> {
+  const app = document.getElementById('app');
+  if (!app) return;
+  app.className = 'tc-page';
+  app.textContent = '';
+  const panel = createElement('section', 'tc-settings-panel');
+  const body = createElement('div', 'tc-settings-body');
+  appendChildren(body, createViewHeader('Logs', 'Pipeline logs from recent analysis runs.'));
+  panel.appendChild(body);
+  app.appendChild(panel);
+  app.appendChild(createAttribution());
+
+  const analysisResult = await getStorage('pageAnalysis');
+  if (!analysisResult.ok) {
+    body.appendChild(createElement('p', 'tc-empty-note', 'Could not load logs.'));
+    return;
+  }
+  const records = Object.values(analysisResult.data) as PageAnalysisRecord[];
+  const withLogs = records
+    .filter((r) => r.progressLogs && r.progressLogs.length > 0)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  if (withLogs.length === 0) {
+    body.appendChild(createElement('p', 'tc-empty-note', 'No analysis logs yet.'));
+    return;
+  }
+  for (const record of withLogs) {
+    const run = createElement('div', 'tc-callout');
+    const urlLabel = createElement('div', 'tc-callout-title', record.domain || record.url);
+    const meta = createElement('p', 'tc-callout-copy',
+      `${record.status} \u00b7 ${formatTimestamp(record.updatedAt)} \u00b7 ${record.progressLogs?.length ?? 0} steps`);
+    appendChildren(run, urlLabel, meta);
+    if (record.error) {
+      const errEl = createElement('p', 'tc-callout-copy');
+      errEl.style.color = 'var(--tc-severity-critical)';
+      errEl.textContent = record.error;
+      run.appendChild(errEl);
+    }
+    if (record.progressLogs && record.progressLogs.length > 0) {
+      run.appendChild(createLogStream(record.progressLogs));
+    }
+    body.appendChild(run);
+  }
 }
 
 function createViewHeader(title: string, subtitle: string): HTMLElement {
