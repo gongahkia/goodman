@@ -14,7 +14,7 @@
 
 ## Rationale
 
-The average spends [141 minutes](https://www.statista.com/statistics/433871/daily-social-media-usage-worldwide/) a day online, yet [68% of people](https://www.law.ac.uk/about/press-releases/more-than-two-thirds-of-people-dont-read-their-contracts/) don't read the [Terms and Conditions *(T&Cs)*](https://www.iubenda.com/en/help/2859-terms-and-conditions-when-are-they-needed/) when they sign up for something. 
+The average person spends [141 minutes](https://www.statista.com/statistics/433871/daily-social-media-usage-worldwide/) a day online, yet [68% of people](https://www.law.ac.uk/about/press-releases/more-than-two-thirds-of-people-dont-read-their-contracts/) don't read the [Terms and Conditions *(T&Cs)*](https://www.iubenda.com/en/help/2859-terms-and-conditions-when-are-they-needed/) when they sign up for something. 
 
 We all should.
 
