@@ -103,7 +103,8 @@
 
       /* layout */
       #app { min-height: 100%; padding: 14px; max-width: 620px; margin: 0 auto; }
-      .tc-page { display: flex; flex-direction: column; gap: 10px; }
+      #app.tc-rendering { opacity: 0.97; }
+      .tc-page { display: flex; flex-direction: column; gap: 10px; animation: tc-fade-in 120ms ease; }
 
       /* compact header */
       .tc-compact-header {
