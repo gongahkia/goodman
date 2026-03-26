@@ -14,7 +14,6 @@ import {
   createIcon,
   createPill,
   createSectionHeading,
-  createSkeletonGroup,
   cx,
 } from '@popup/ui';
 import {
