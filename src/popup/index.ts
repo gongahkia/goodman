@@ -652,8 +652,9 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
       state.error = response.error ?? 'Could not analyze this page.';
     }
   } catch (e) {
-    console.warn('[Goodman] handleAnalyze failed:', e);
-    state.error = 'Could not analyze this page.';
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error('[Goodman] handleAnalyze failed:', msg, e);
+    state.error = `Could not analyze this page: ${msg}`;
     announceStatus('Analysis failed.');
   } finally {
     state.loading = false;

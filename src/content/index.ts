@@ -97,7 +97,9 @@ async function queueDetection(
       return lastRunResult;
     }
 
-    lastRunResult = { ok: false, error: 'Could not analyze this page.' };
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error('[Goodman] detection pipeline failed:', msg, error);
+    lastRunResult = { ok: false, error: `Detection failed: ${msg}` };
     return lastRunResult;
   } finally {
     if (currentAnalysisController === controller) {
