@@ -22,8 +22,8 @@ export async function notifyChange(
   try {
     await chrome.action.setBadgeText({ text: '!' });
     await chrome.action.setBadgeBackgroundColor({ color: '#ef4444' });
-  } catch {
-    // may fail in non-extension context
+  } catch (e) {
+    console.warn('[Goodman] failed to set notification badge:', e);
   }
 
   return withStorageLock('pendingNotifications', async () => {
@@ -62,8 +62,8 @@ export function clearNotification(domain: string): Promise<void> {
     if (remaining.length === 0) {
       try {
         await chrome.action.setBadgeText({ text: '' });
-      } catch {
-        // may fail in non-extension context
+      } catch (e) {
+        console.warn('[Goodman] failed to clear notification badge:', e);
       }
     }
   });

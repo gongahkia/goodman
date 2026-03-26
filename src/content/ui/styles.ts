@@ -5,7 +5,7 @@ export function getOverlayStyles(): string {
     }
 
     .goodman-overlay {
-      --tc-font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+      --tc-font-family: "DM Sans", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
       --tc-radius-md: 12px;
       --tc-radius-lg: 16px;
       --tc-radius-pill: 999px;

@@ -63,7 +63,8 @@ export class OllamaProvider implements LLMProvider {
     try {
       const models = await this.listModels();
       return models !== null && models.length > 0;
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] Ollama validation failed:', e);
       return false;
     }
   }
@@ -79,7 +80,8 @@ export class OllamaProvider implements LLMProvider {
       if (!models) return [];
 
       return models.map((m) => (m['name'] as string) ?? '').filter((n) => n.length > 0);
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] Ollama listModels failed:', e);
       return [];
     }
   }

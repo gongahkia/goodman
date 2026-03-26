@@ -26,7 +26,7 @@ export async function renderDomainSettings(container: HTMLElement): Promise<void
   const addButton = createButton('Add', 'primary', () => {
     const domain = input.value.trim().toLowerCase();
     if (!domain || blacklist.includes(domain)) return;
-    void addDomain(domain, container);
+    void addDomain(domain, container).catch(e => console.warn('[Goodman] add domain failed:', e));
   });
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addButton.click();
@@ -47,7 +47,7 @@ export async function renderDomainSettings(container: HTMLElement): Promise<void
       createElement('div', 'tc-domain-name', domain)
     );
     const removeButton = createButton('Remove', 'secondary', () => {
-      void removeDomain(domain, container);
+      void removeDomain(domain, container).catch(e => console.warn('[Goodman] remove domain failed:', e));
     });
     appendChildren(row, label, removeButton);
     container.appendChild(row);

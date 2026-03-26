@@ -52,7 +52,7 @@ export async function renderCacheSettings(container: HTMLElement): Promise<void>
       const clearButton = createButton('Clear', 'secondary', () => {
         void clearCache(domain).then(async () => {
           await renderCacheSettings(container);
-        });
+        }).catch(e => console.warn('[Goodman] clear domain cache failed:', e));
       });
 
       appendChildren(row, label, clearButton);
@@ -65,7 +65,7 @@ export async function renderCacheSettings(container: HTMLElement): Promise<void>
       if (confirm('Clear all cached summaries?')) {
         void clearCache().then(async () => {
           await renderCacheSettings(container);
-        });
+        }).catch(e => console.warn('[Goodman] clear all cache failed:', e));
       }
     })
   );

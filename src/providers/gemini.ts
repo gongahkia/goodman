@@ -48,7 +48,8 @@ export class GeminiProvider implements LLMProvider {
       const url = `${BASE_URL}/models?key=${key}`;
       const response = await fetch(url);
       return response.ok;
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] Gemini API key validation failed:', e);
       return false;
     }
   }

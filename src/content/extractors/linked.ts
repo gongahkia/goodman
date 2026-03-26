@@ -38,7 +38,7 @@ async function fetchHtml(url: string): Promise<string> {
     try {
       const response = await fetchWithTimeout<{ ok: boolean; data?: string; error?: string }>(msg, timeout);
       if (response.ok && response.data) return response.data;
-    } catch { /* retry or fall through */ }
+    } catch (e) { console.warn('[Goodman] background fetch attempt failed, retrying:', e); }
   }
 
   const directResponse = await fetch(requestUrl);
@@ -116,8 +116,8 @@ function extractRelatedLinks(html: string, baseUrl: string): RelatedLink[] {
         if (absoluteUrl !== baseUrl) {
           links.push({ url: absoluteUrl, label });
         }
-      } catch {
-        // skip invalid URLs
+      } catch (e) {
+        console.warn('[Goodman] skipping invalid related link URL:', href, e);
       }
     }
   }
@@ -128,7 +128,8 @@ function extractRelatedLinks(html: string, baseUrl: string): RelatedLink[] {
 function resolveUrl(url: string): string {
   try {
     return new URL(url, window.location.href).href;
-  } catch {
+  } catch (e) {
+    console.warn('[Goodman] linked resolveUrl failed, using original:', url, e);
     return url;
   }
 }

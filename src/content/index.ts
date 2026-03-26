@@ -57,16 +57,16 @@ startObserver(() => {
   const now = Date.now();
   if (now - lastObserverDetectionTs < MIN_OBSERVER_INTERVAL_MS) return;
   lastObserverDetectionTs = now;
-  void queueDetection(false);
+  void queueDetection(false).catch(e => console.warn('[Goodman] observer detection failed:', e));
 });
-void queueDetection(false);
+void queueDetection(false).catch(e => console.warn('[Goodman] initial detection failed:', e));
 
 let lastUrl = location.href;
 function checkUrlChange(): void {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
     lastRenderedTextHash = null;
-    void queueDetection(true);
+    void queueDetection(true).catch(e => console.warn('[Goodman] URL change detection failed:', e));
   }
 }
 window.addEventListener('popstate', checkUrlChange);
@@ -106,7 +106,7 @@ async function queueDetection(
     analysisInFlight = false;
     if (rerunRequested) {
       rerunRequested = false;
-      void queueDetection(false);
+      void queueDetection(false).catch(e => console.warn('[Goodman] queued rerun failed:', e));
     }
   }
 }

@@ -41,7 +41,8 @@ async function extractWithPdfJs(bytes: Uint8Array): Promise<string> {
     }
 
     return pages.join('\n\n');
-  } catch {
+  } catch (e) {
+    console.warn('[Goodman] pdfjs extraction failed, falling back to raw byte parser:', e);
     return '';
   }
 }
@@ -62,8 +63,8 @@ async function fetchPdfBytes(url: string): Promise<Uint8Array> {
     if (response.ok && response.data) {
       return decodeBase64(response.data);
     }
-  } catch {
-    // Fall through to direct fetch for same-origin URLs.
+  } catch (e) {
+    console.warn('[Goodman] background PDF fetch failed, falling back to direct fetch:', e);
   }
 
   const directResponse = await fetch(requestUrl);
@@ -95,7 +96,8 @@ export function isPdfUrl(url: string): boolean {
   try {
     const urlObj = new URL(url, window.location.href);
     return urlObj.pathname.toLowerCase().endsWith('.pdf');
-  } catch {
+  } catch (e) {
+    console.warn('[Goodman] isPdfUrl failed to parse URL:', url, e);
     return false;
   }
 }
@@ -114,7 +116,8 @@ async function fetchWithTimeout<T>(
 function resolveUrl(url: string): string {
   try {
     return new URL(url, window.location.href).href;
-  } catch {
+  } catch (e) {
+    console.warn('[Goodman] PDF resolveUrl failed, using original:', url, e);
     return url;
   }
 }

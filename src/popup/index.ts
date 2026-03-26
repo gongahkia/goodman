@@ -7,12 +7,14 @@ import { renderDomainSettings } from '@popup/settings/domains';
 import { renderNotificationSettings } from '@popup/settings/notifications';
 import { renderProviderSettings } from '@popup/settings/providers';
 import {
+  announceStatus,
   appendChildren,
   createButton,
   createElement,
   createIcon,
   createPill,
   createSectionHeading,
+  createSkeletonGroup,
   cx,
 } from '@popup/ui';
 import {
@@ -23,6 +25,7 @@ import {
   iconRefresh,
   iconClock,
   iconZap,
+  iconChevronLeft,
 } from '@popup/icons';
 import type { Settings } from '@shared/messages';
 import type {
@@ -94,7 +97,7 @@ async function initMain(app: HTMLElement): Promise<void> {
   await refreshActiveTabContext();
   await refreshPopupState();
   render(app);
-  try { await chrome.action?.setBadgeText?.({ text: '' }); } catch { /* noop */ }
+  try { await chrome.action?.setBadgeText?.({ text: '' }); } catch (e) { console.warn('[Goodman] failed to clear badge text:', e); }
   if (chrome.storage?.onChanged) {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     chrome.storage.onChanged.addListener((changes, area) => {
@@ -102,7 +105,7 @@ async function initMain(app: HTMLElement): Promise<void> {
       if ('pageAnalysis' in changes || 'pendingNotifications' in changes) {
         if (refreshTimer) clearTimeout(refreshTimer);
         refreshTimer = setTimeout(() => {
-          void refreshPopupState().then(() => renderCurrentApp());
+          void refreshPopupState().then(() => renderCurrentApp()).catch(e => console.warn('[Goodman] popup state refresh failed:', e));
         }, 300);
       }
     });
@@ -117,6 +120,9 @@ let loadingInterval: ReturnType<typeof setInterval> | null = null;
 function render(container: HTMLElement): void {
   container.className = 'tc-page';
   container.textContent = '';
+  if (state.analysis?.status === 'ready' && state.analysis.summary) {
+    announceStatus(`Analysis complete: ${state.analysis.summary.severity} risk with ${state.analysis.summary.redFlags.length} red flags.`);
+  }
   if (!state.loading && state.analysis?.status !== 'analyzing' && loadingInterval) {
     clearInterval(loadingInterval);
     loadingInterval = null;
@@ -179,7 +185,7 @@ function renderPopup(container: HTMLElement): void {
         iconShield(28),
         'Enable Goodman Cloud',
         'Send T&C text to an LLM for analysis. Not stored or shared.',
-        'Accept & Analyze', () => { void acceptHostedConsentAndAnalyze(); },
+        'Accept & Analyze', () => { void acceptHostedConsentAndAnalyze().catch(e => console.warn('[Goodman] hosted consent flow failed:', e)); },
         'Settings', showSettings
       ));
       break;
@@ -225,10 +231,16 @@ function createCompactHeader(): HTMLElement {
   logo.src = chrome.runtime.getURL('icons/goodman-48.png');
   logo.alt = 'Goodman';
   const name = createElement('span', 'tc-header-name', 'Goodman');
-  const domain = createPill(getCurrentDomain() || 'No domain', 'muted');
-  domain.classList.add('tc-domain-chip');
   appendChildren(brand, logo, name);
-  appendChildren(header, brand, domain);
+  const domainText = getCurrentDomain();
+  const isRealDomain = domainText && !domainText.startsWith('chrome') && domainText.includes('.');
+  if (isRealDomain) {
+    const domain = createPill(domainText, 'muted');
+    domain.classList.add('tc-domain-chip');
+    appendChildren(header, brand, domain);
+  } else {
+    header.appendChild(brand);
+  }
   return header;
 }
 
@@ -248,12 +260,10 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
   wrapper.appendChild(hero);
   // summary excerpt
   const excerpt = createElement('p', 'tc-summary-excerpt', summary.summary);
-  excerpt.style.marginTop = '10px';
   wrapper.appendChild(excerpt);
   // red flags preview (top 3)
   if (summary.redFlags.length > 0) {
     const flagSection = createElement('div', 'tc-flag-preview');
-    flagSection.style.marginTop = '8px';
     const flagsToShow = summary.redFlags.slice(0, 3);
     for (const flag of flagsToShow) {
       const row = createElement('div', cx('tc-flag-preview-row', `tc-flag-preview-row--${flag.severity}`));
@@ -263,15 +273,12 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
       flagSection.appendChild(row);
     }
     if (summary.redFlags.length > 3) {
-      const more = createElement('span', undefined, `+${summary.redFlags.length - 3} more`);
-      more.style.cssText = 'font-size:11px;color:var(--tc-text-tertiary);margin-top:2px;';
-      flagSection.appendChild(more);
+      flagSection.appendChild(createElement('span', 'tc-flag-preview-more', `+${summary.redFlags.length - 3} more`));
     }
     wrapper.appendChild(flagSection);
   }
   // metadata
   const meta = createElement('div', 'tc-meta-row');
-  meta.style.marginTop = '8px';
   meta.appendChild(createPill(`${formatToken(analysis.sourceType)}`, 'default'));
   meta.appendChild(createPill(`${formatConfidence(analysis.confidence)} conf`, 'default'));
   meta.appendChild(createPill(`Updated ${formatTimestamp(analysis.updatedAt)}`, 'muted'));
@@ -296,7 +303,7 @@ function createCompactWelcome(): HTMLElement {
   const title = createElement('div', 'tc-state-title', 'Welcome to Goodman');
   const copy = createElement('p', 'tc-state-copy', 'Detect, summarize, and track T&C changes with AI.');
   const actions = createElement('div', 'tc-state-actions');
-  actions.appendChild(createButton('Get Started', 'primary', () => { void acceptHostedConsentAndAnalyze(); }));
+  actions.appendChild(createButton('Get Started', 'primary', () => { void acceptHostedConsentAndAnalyze().catch(e => console.warn('[Goodman] hosted consent flow failed:', e)); }));
   actions.appendChild(createButton('Use Own Provider', 'secondary', showSettings));
   appendChildren(card, icon, title, copy, actions);
   return card;
@@ -348,7 +355,7 @@ function createAnalyzingCard(label: string): HTMLElement {
   const stageLine = createElement('div', 'tc-progress-label', stageLabel);
   appendChildren(progressWrap, track, pctLabel, stageLine);
   const actions = createElement('div', 'tc-state-actions');
-  actions.appendChild(createButton('Cancel Analysis', 'ghost', () => { void handleCancelAnalysis(); }));
+  actions.appendChild(createButton('Cancel Analysis', 'ghost', () => { void handleCancelAnalysis().catch(e => console.warn('[Goodman] cancel analysis failed:', e)); }));
   appendChildren(card, icon, title, progressWrap, actions);
   if (state.analysisStartedAt) {
     if (loadingInterval) clearInterval(loadingInterval);
@@ -362,21 +369,21 @@ function createAnalyzingCard(label: string): HTMLElement {
 
 function createActionBar(): HTMLElement {
   const bar = createElement('div', 'tc-action-bar');
-  const detailBtn = createButton('View Details', 'primary', () => { void handleKeepOpen(); });
+  const detailBtn = createButton('View Details', 'primary', () => { void handleKeepOpen().catch(e => console.warn('[Goodman] keep open failed:', e)); });
   const refreshBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   refreshBtn.type = 'button';
-  refreshBtn.innerHTML = iconRefresh(16);
-  refreshBtn.title = 'Re-analyze';
+  refreshBtn.setAttribute('aria-label', 'Re-analyze page');
+  refreshBtn.appendChild(createIcon(iconRefresh(16)));
   refreshBtn.addEventListener('click', () => handleAnalyze());
   const settingsBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   settingsBtn.type = 'button';
-  settingsBtn.innerHTML = iconSettings(16);
-  settingsBtn.title = 'Settings';
+  settingsBtn.setAttribute('aria-label', 'Open settings');
+  settingsBtn.appendChild(createIcon(iconSettings(16)));
   settingsBtn.addEventListener('click', showSettings);
   const historyBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   historyBtn.type = 'button';
-  historyBtn.innerHTML = iconClock(16);
-  historyBtn.title = 'History';
+  historyBtn.setAttribute('aria-label', 'View history');
+  historyBtn.appendChild(createIcon(iconClock(16)));
   historyBtn.addEventListener('click', () => showHistory());
   appendChildren(bar, detailBtn, refreshBtn, settingsBtn, historyBtn);
   return bar;
@@ -440,7 +447,7 @@ function renderPanel(container: HTMLElement): void {
     case 'needs_consent':
       container.appendChild(createCompactActionState(iconShield(28), 'Enable Goodman Cloud',
         'Send T&C text to an LLM for analysis.', 'Accept & Analyze',
-        () => { void acceptHostedConsentAndAnalyze(); }, 'Settings', showSettings));
+        () => { void acceptHostedConsentAndAnalyze().catch(e => console.warn('[Goodman] hosted consent flow failed:', e)); }, 'Settings', showSettings));
       break;
     case 'service_unavailable':
       container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Cloud unavailable',
@@ -488,9 +495,7 @@ function createPanelLoadingState(label: string): HTMLElement {
   const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
   const elapsed = state.analysisStartedAt ? Math.floor((Date.now() - state.analysisStartedAt) / 1000) : 0;
   const timerLabel = elapsed > 0 ? `${label} (${elapsed}s)` : label;
-  const card = createElement('div', 'tc-state-card');
-  card.style.textAlign = 'left';
-  card.style.alignItems = 'stretch';
+  const card = createElement('div', cx('tc-state-card', 'tc-state-card--left'));
   const title = createElement('div', 'tc-state-title', timerLabel);
   card.appendChild(title);
   const progressSection = createProgressSection(getProgressPercent(state.analysis), stageLabel, getProgressLogs(state.analysis));
@@ -509,9 +514,7 @@ function createPanelLoadingState(label: string): HTMLElement {
 }
 
 function createPanelErrorState(error: string): HTMLElement {
-  const card = createElement('div', 'tc-state-card');
-  card.style.textAlign = 'left';
-  card.style.alignItems = 'stretch';
+  const card = createElement('div', cx('tc-state-card', 'tc-state-card--left'));
   const title = createElement('div', 'tc-state-title', 'Something went wrong');
   const copy = createElement('p', 'tc-state-copy', mapErrorToActionable(error));
   const actions = createElement('div', 'tc-state-actions');
@@ -632,6 +635,7 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
   state.loading = true;
   state.error = null;
   state.analysisStartedAt = Date.now();
+  announceStatus('Analyzing page...');
   renderCurrentApp();
   try {
     if (state.tabId === null) throw new Error('No active tab');
@@ -641,8 +645,10 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
     if (response && response.ok === false && !state.analysis) {
       state.error = response.error ?? 'Could not analyze this page.';
     }
-  } catch {
+  } catch (e) {
+    console.warn('[Goodman] handleAnalyze failed:', e);
     state.error = 'Could not analyze this page.';
+    announceStatus('Analysis failed.');
   } finally {
     state.loading = false;
     state.analysisStartedAt = null;
@@ -656,7 +662,7 @@ async function handleCancelAnalysis(): Promise<void> {
   try {
     await chrome.tabs.sendMessage(state.tabId, { type: 'CANCEL_TC', payload: { tabId: state.tabId } });
     await sendToBackground({ type: 'CANCEL_PAGE_ANALYSIS', payload: { tabId: state.tabId } });
-  } catch { /* noop */ }
+  } catch (e) { console.warn('[Goodman] cancel analysis messaging failed:', e); }
   state.loading = false;
   state.analysisStartedAt = null;
   if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
@@ -674,7 +680,8 @@ async function handleKeepOpen(): Promise<void> {
       state.error = 'Could not open a persistent Goodman workspace.';
       renderCurrentApp();
     }
-  } catch {
+  } catch (e) {
+    console.warn('[Goodman] handleKeepOpen failed:', e);
     state.error = 'Could not open a persistent Goodman workspace.';
     renderCurrentApp();
   }
@@ -722,7 +729,7 @@ function showSettings(): void {
   }
   const firstTab = buttons[0];
   if (firstTab) setActiveTab(buttons, firstTab);
-  void renderProviderSettings(contentDiv);
+  void renderProviderSettings(contentDiv).catch(e => console.warn('[Goodman] initial provider settings render failed:', e));
 }
 
 function showHistory(initialDomain?: string): void {
@@ -736,19 +743,24 @@ function showHistory(initialDomain?: string): void {
   appendChildren(body, createViewHeader('History', 'Inspect saved versions and compare T&C changes over time.'), contentDiv);
   panel.appendChild(body);
   app.appendChild(panel);
-  void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain());
+  void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain()).catch(e => console.warn('[Goodman] history panel render failed:', e));
 }
 
 function createViewHeader(title: string, subtitle: string): HTMLElement {
   const wrapper = createElement('div');
   const header = createElement('div', 'tc-view-header');
-  appendChildren(header, createButton('Back', 'ghost', handleBack), createElement('h2', 'tc-view-title', title));
+  const backBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
+  backBtn.type = 'button';
+  backBtn.setAttribute('aria-label', 'Go back');
+  backBtn.appendChild(createIcon(iconChevronLeft(16)));
+  backBtn.addEventListener('click', handleBack);
+  appendChildren(header, backBtn, createElement('h2', 'tc-view-title', title));
   appendChildren(wrapper, header, createElement('p', 'tc-page-copy', subtitle));
   return wrapper;
 }
 
 function handleBack(): void {
-  void refreshPopupState().then(() => renderCurrentApp());
+  void refreshPopupState().then(() => renderCurrentApp()).catch(e => console.warn('[Goodman] back navigation refresh failed:', e));
 }
 
 function setActiveTab(buttons: HTMLButtonElement[], activeButton: HTMLButtonElement): void {
@@ -803,7 +815,7 @@ async function refreshActiveTabContext(): Promise<void> {
   state.windowId = typeof tab?.windowId === 'number' ? tab.windowId : null;
   state.tabUrl = tab?.url ?? '';
   if (tab?.url) {
-    try { state.domain = new URL(tab.url).hostname; } catch { state.domain = 'unknown'; }
+    try { state.domain = new URL(tab.url).hostname; } catch (e) { console.warn('[Goodman] failed to parse tab URL:', tab.url, e); state.domain = 'unknown'; }
   } else {
     state.domain = 'unknown';
   }
@@ -814,14 +826,14 @@ async function refreshActiveTabContext(): Promise<void> {
 }
 
 function registerActiveTabSync(): void {
-  chrome.tabs.onActivated?.addListener(() => { void refreshForCurrentTab(); });
+  chrome.tabs.onActivated?.addListener(() => { void refreshForCurrentTab().catch(e => console.warn('[Goodman] tab activation refresh failed:', e)); });
   chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
     const navigated = typeof changeInfo.url === 'string' || changeInfo.status === 'complete';
     if (!navigated) return;
     if (state.tabId !== null && tabId !== state.tabId) return;
-    void refreshForCurrentTab();
+    void refreshForCurrentTab().catch(e => console.warn('[Goodman] tab update refresh failed:', e));
   });
-  chrome.windows?.onFocusChanged?.addListener(() => { void refreshForCurrentTab(); });
+  chrome.windows?.onFocusChanged?.addListener(() => { void refreshForCurrentTab().catch(e => console.warn('[Goodman] window focus refresh failed:', e)); });
 }
 
 async function refreshForCurrentTab(): Promise<void> {

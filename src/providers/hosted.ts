@@ -142,7 +142,8 @@ export class HostedProvider implements LLMProvider {
         signal: controller.signal,
       });
       return response.ok;
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] hosted health check failed:', e);
       return false;
     } finally {
       clearTimeout(timeoutId);

@@ -6,6 +6,7 @@ import {
   createInput,
   createPill,
   createSectionHeading,
+  createSkeletonGroup,
 } from '@popup/ui';
 import { validateProvider } from '@providers/factory';
 import { HostedProvider } from '@providers/hosted';
@@ -38,6 +39,8 @@ const PROVIDER_DESCRIPTIONS: Record<ProviderName, string> = {
 };
 
 export async function renderProviderSettings(container: HTMLElement): Promise<void> {
+  container.textContent = '';
+  container.appendChild(createSkeletonGroup());
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return;
   renderProviderSettingsView(container, settingsResult.data);
@@ -102,7 +105,7 @@ function createHostedProviderCard(
       void saveActiveProvider('hosted').then((updatedSettings) => {
         if (!updatedSettings) return;
         renderProviderSettingsView(container, updatedSettings);
-      });
+      }).catch(e => console.warn('[Goodman] save hosted provider failed:', e));
     }
   );
   button.disabled = settings.activeProvider === 'hosted';
@@ -122,13 +125,13 @@ function createHostedProviderCard(
 
   const hostedConfig = settings.providers['hosted'];
   const hosted = new HostedProvider(hostedConfig?.baseUrl);
-  void hosted.checkHealth().then((online) => {
+  void hosted.checkHealth().then((online: boolean) => {
     healthPill.textContent = online ? 'Online' : 'Unreachable';
     healthPill.className = online ? 'tc-pill tc-pill--low' : 'tc-pill tc-pill--critical';
     if (!online && settings.activeProvider !== 'hosted') {
       button.disabled = true;
     }
-  });
+  }).catch(e => console.warn('[Goodman] hosted health check UI failed:', e));
 
   return card;
 }
@@ -219,15 +222,17 @@ function createApiKeyField(
   draftConfig: ProviderConfig
 ): HTMLElement {
   const field = createElement('div', 'tc-field');
-  const label = createFieldLabel('API Key');
+  const inputId = `tc-apikey-${providerName}`;
+  const label = createFieldLabel('API Key', inputId);
   const controls = createElement('div', 'tc-inline-controls');
   const input = createInput(
     'password',
     providerName === 'custom' ? 'Optional' : 'Enter API key',
-    draftConfig.apiKey
+    draftConfig.apiKey,
+    inputId
   );
   input.style.flex = '1 1 180px';
-  const debouncedSaveApiKey = debounce(() => void saveProviderConfig(providerName, draftConfig), 400);
+  const debouncedSaveApiKey = debounce(() => void saveProviderConfig(providerName, draftConfig).catch(e => console.warn('[Goodman] save provider config failed:', e)), 400);
   input.addEventListener('input', () => {
     draftConfig.apiKey = input.value;
     debouncedSaveApiKey();
@@ -239,7 +244,7 @@ function createApiKeyField(
   });
 
   const testButton = createButton('Test', 'secondary', () => {
-    void runProviderValidation(providerName, testButton);
+    void runProviderValidation(providerName, testButton).catch(e => console.warn('[Goodman] provider validation failed:', e));
   });
 
   appendChildren(field, label);
@@ -254,9 +259,10 @@ function createBaseUrlField(
   placeholder: string
 ): HTMLElement {
   const field = createElement('div', 'tc-field');
-  const label = createFieldLabel('Base URL');
-  const input = createInput('text', placeholder, draftConfig.baseUrl ?? '');
-  const debouncedSaveBaseUrl = debounce(() => void saveProviderConfig(providerName, draftConfig), 400);
+  const inputId = `tc-baseurl-${providerName}`;
+  const label = createFieldLabel('Base URL', inputId);
+  const input = createInput('text', placeholder, draftConfig.baseUrl ?? '', inputId);
+  const debouncedSaveBaseUrl = debounce(() => void saveProviderConfig(providerName, draftConfig).catch(e => console.warn('[Goodman] save provider config failed:', e)), 400);
   input.addEventListener('input', () => {
     draftConfig.baseUrl = input.value;
     debouncedSaveBaseUrl();
@@ -271,9 +277,10 @@ function createModelField(
   draftConfig: ProviderConfig
 ): HTMLElement {
   const field = createElement('div', 'tc-field');
-  const label = createFieldLabel('Model');
-  const input = createInput('text', 'Model name', draftConfig.model);
-  const debouncedSaveModel = debounce(() => void saveProviderConfig(providerName, draftConfig), 400);
+  const inputId = `tc-model-${providerName}`;
+  const label = createFieldLabel('Model', inputId);
+  const input = createInput('text', 'Model name', draftConfig.model, inputId);
+  const debouncedSaveModel = debounce(() => void saveProviderConfig(providerName, draftConfig).catch(e => console.warn('[Goodman] save provider config failed:', e)), 400);
   input.addEventListener('input', () => {
     draftConfig.model = input.value;
     debouncedSaveModel();

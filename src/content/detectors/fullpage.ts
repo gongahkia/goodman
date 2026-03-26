@@ -67,8 +67,8 @@ function checkUrlPath(): number {
         return 0.4;
       }
     }
-  } catch {
-    // not in browser context
+  } catch (e) {
+    console.warn('[Goodman] URL path check unavailable:', e);
   }
   return 0;
 }
@@ -81,8 +81,8 @@ function checkTitleAndHeadings(root: Element): number {
     if (LEGAL_KEYWORDS.some((kw) => title.includes(kw))) {
       score += 0.15;
     }
-  } catch {
-    // not in browser context
+  } catch (e) {
+    console.warn('[Goodman] title/heading check unavailable:', e);
   }
 
   const h1 = root.querySelector('h1');

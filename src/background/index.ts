@@ -25,9 +25,9 @@ registerTabCleanup();
 registerKeepAlive();
 registerActionLauncher();
 void runMigrations().then(() => {
-  void prunePageAnalysisState();
-  void pruneCache();
-});
+  void prunePageAnalysisState().catch(e => console.warn('[Goodman] prune page analysis failed:', e));
+  void pruneCache().catch(e => console.warn('[Goodman] prune cache failed:', e));
+}).catch(e => console.error('[Goodman] migrations failed:', e));
 
 onMessage(
   (msg: Message, sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
@@ -204,7 +204,7 @@ function registerKeepAlive(): void {
   if (!chrome.alarms) return;
   chrome.alarms.create('keepalive', { periodInMinutes: 0.4 });
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'keepalive') void prunePageAnalysisState();
+    if (alarm.name === 'keepalive') void prunePageAnalysisState().catch(e => console.warn('[Goodman] keepalive prune failed:', e));
   });
 }
 

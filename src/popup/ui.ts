@@ -73,19 +73,24 @@ export function createPill(
   return createElement('span', cx('tc-pill', `tc-pill--${variant}`), label);
 }
 
-export function createFieldLabel(text: string): HTMLLabelElement {
-  return createElement('label', 'tc-field-label', text);
+export function createFieldLabel(text: string, forId?: string): HTMLLabelElement {
+  const label = createElement('label', 'tc-field-label', text);
+  if (forId) label.htmlFor = forId;
+  return label;
 }
 
 export function createInput(
   type: 'text' | 'password',
   placeholder: string,
-  value = ''
+  value = '',
+  id?: string
 ): HTMLInputElement {
   const input = createElement('input', 'tc-input') as HTMLInputElement;
   input.type = type;
   input.placeholder = placeholder;
   input.value = value;
+  if (id) input.id = id;
+  if (!id) input.setAttribute('aria-label', placeholder);
   return input;
 }
 
@@ -108,8 +113,29 @@ export function createEmptyMessage(text: string): HTMLParagraphElement {
 
 export function createIcon(svgString: string, className?: string): HTMLSpanElement {
   const span = createElement('span', className);
-  span.innerHTML = svgString;
-  const svgEl = span.querySelector('svg');
-  if (svgEl) svgEl.style.display = 'block';
+  const template = document.createElement('template');
+  template.innerHTML = svgString;
+  const svg = template.content.firstChild;
+  if (svg instanceof Element) {
+    svg.setAttribute('aria-hidden', 'true');
+    (svg as HTMLElement).style.display = 'block';
+    span.appendChild(svg);
+  }
   return span;
+}
+
+export function announceStatus(message: string): void {
+  const region = document.getElementById('tc-status');
+  if (region) region.textContent = message;
+}
+
+export function createSkeleton(variant: 'wide' | 'medium' | 'short' = 'wide'): HTMLDivElement {
+  return createElement('div', cx('tc-skeleton', `tc-skeleton--${variant}`));
+}
+
+export function createSkeletonGroup(): HTMLElement {
+  const group = createElement('div', 'tc-page');
+  group.style.gap = '8px';
+  appendChildren(group, createSkeleton('wide'), createSkeleton('medium'), createSkeleton('short'));
+  return group;
 }

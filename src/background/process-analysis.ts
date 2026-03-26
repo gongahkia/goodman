@@ -262,8 +262,8 @@ export async function processPageAnalysis(
       withLlmLimit(async () => {
         try {
           chrome.alarms?.create('analysis-heartbeat', { delayInMinutes: 0.45 });
-        } catch {
-          // noop
+        } catch (e) {
+          console.warn('[Goodman] failed to create analysis heartbeat alarm:', e);
         }
 
         const result =
@@ -290,8 +290,8 @@ export async function processPageAnalysis(
 
         try {
           chrome.alarms?.clear('analysis-heartbeat');
-        } catch {
-          // noop
+        } catch (e) {
+          console.warn('[Goodman] failed to clear analysis heartbeat alarm:', e);
         }
         return result;
       }, signal);

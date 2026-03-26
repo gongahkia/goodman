@@ -25,6 +25,9 @@ export const iconExternalLink = (size = 16): string =>
 export const iconChevronRight = (size = 16): string =>
   svg(size, '<polyline points="9 18 15 12 9 6"/>');
 
+export const iconChevronLeft = (size = 16): string =>
+  svg(size, '<polyline points="15 18 9 12 15 6"/>');
+
 export const iconClock = (size = 16): string =>
   svg(size, '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>');
 

@@ -63,7 +63,8 @@ export class CustomEndpointProvider implements LLMProvider {
         }),
       });
       return chatResponse.ok;
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] custom endpoint validation failed:', e);
       return false;
     }
   }
@@ -97,9 +98,12 @@ export class CustomEndpointProvider implements LLMProvider {
         return err(new RateLimitError('Custom endpoint', 60));
       }
 
-      if (response.status >= 500 && attempt < MAX_RETRIES) {
-        await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
-        return this.makeRequestWithRetry(url, body, attempt + 1, signal);
+      if (response.status >= 500) {
+        if (attempt < MAX_RETRIES) {
+          await sleepWithAbort(RETRY_DELAYS[attempt] ?? 3000, signal);
+          return this.makeRequestWithRetry(url, body, attempt + 1, signal);
+        }
+        return err(new ProviderError('Custom endpoint', `Server error: ${response.status}`));
       }
 
       if (!response.ok) {

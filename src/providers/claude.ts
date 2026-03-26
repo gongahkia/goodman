@@ -53,7 +53,8 @@ export class ClaudeProvider implements LLMProvider {
         }),
       });
       return response.ok || response.status === 400;
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] Claude API key validation failed:', e);
       return false;
     }
   }

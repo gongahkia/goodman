@@ -118,8 +118,8 @@ export async function computeTextHash(text: string): Promise<string> {
       const hashBuffer = await subtleCrypto.digest('SHA-256', data);
       const hashArray = Array.from(new Uint8Array(hashBuffer));
       return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-    } catch {
-      // Fall through to the deterministic JS hash below.
+    } catch (e) {
+      console.warn('[Goodman] Web Crypto SHA-256 failed, using fallback hash:', e);
     }
   }
 

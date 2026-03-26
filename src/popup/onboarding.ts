@@ -48,12 +48,12 @@ function renderStep2(container: HTMLElement, onComplete: () => void): void {
   const actions = createElement('div', 'tc-state-actions');
 
   const settingsBtn = createButton('Open Settings to Configure', 'primary', () => {
-    void completeOnboarding(onComplete);
+    void completeOnboarding(onComplete).catch(e => console.warn('[Goodman] onboarding completion failed:', e));
   });
 
   appendChildren(card, kicker, title, copy, hostedStatus, actions);
 
-  void checkHostedAndRender(hostedStatus, actions, settingsBtn, onComplete);
+  void checkHostedAndRender(hostedStatus, actions, settingsBtn, onComplete).catch(e => console.warn('[Goodman] hosted check failed:', e));
 
   container.appendChild(card);
 }
@@ -75,7 +75,7 @@ async function checkHostedAndRender(
     appendChildren(
       actionsEl,
       createButton('Use Goodman Cloud', 'primary', () => {
-        void acceptHostedAndComplete(onComplete);
+        void acceptHostedAndComplete(onComplete).catch(e => console.warn('[Goodman] hosted accept failed:', e));
       }),
       settingsBtn
     );

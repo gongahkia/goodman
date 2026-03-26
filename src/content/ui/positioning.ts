@@ -1,5 +1,6 @@
 const VIEWPORT_MARGIN = 8;
 const OVERLAY_WIDTH = 380;
+const OVERLAY_MAX_WIDTH_RATIO = 0.92;
 const OVERLAY_HEIGHT = 500;
 
 export function positionOverlay(overlay: HTMLElement, anchor: HTMLElement): () => void {
@@ -7,18 +8,20 @@ export function positionOverlay(overlay: HTMLElement, anchor: HTMLElement): () =
     const anchorRect = anchor.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
+    const effectiveWidth = Math.min(OVERLAY_WIDTH, viewportWidth * OVERLAY_MAX_WIDTH_RATIO);
+    const effectiveHeight = Math.min(OVERLAY_HEIGHT, viewportHeight - VIEWPORT_MARGIN * 2);
 
     let left = anchorRect.right + VIEWPORT_MARGIN;
-    let top = anchorRect.top + (anchorRect.height / 2) - (OVERLAY_HEIGHT / 2);
+    let top = anchorRect.top + (anchorRect.height / 2) - (effectiveHeight / 2);
 
-    if (left + OVERLAY_WIDTH > viewportWidth - VIEWPORT_MARGIN) {
-      left = anchorRect.left - OVERLAY_WIDTH - VIEWPORT_MARGIN;
+    if (left + effectiveWidth > viewportWidth - VIEWPORT_MARGIN) {
+      left = anchorRect.left - effectiveWidth - VIEWPORT_MARGIN;
     }
     if (left < VIEWPORT_MARGIN) {
-      left = VIEWPORT_MARGIN;
+      left = Math.max(VIEWPORT_MARGIN, (viewportWidth - effectiveWidth) / 2);
     }
-    if (top + OVERLAY_HEIGHT > viewportHeight - VIEWPORT_MARGIN) {
-      top = viewportHeight - OVERLAY_HEIGHT - VIEWPORT_MARGIN;
+    if (top + effectiveHeight > viewportHeight - VIEWPORT_MARGIN) {
+      top = viewportHeight - effectiveHeight - VIEWPORT_MARGIN;
     }
     if (top < VIEWPORT_MARGIN) {
       top = VIEWPORT_MARGIN;

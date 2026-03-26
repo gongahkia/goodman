@@ -50,7 +50,8 @@ export class OpenAIProvider implements LLMProvider {
         headers: { Authorization: `Bearer ${key}` },
       });
       return response.ok;
-    } catch {
+    } catch (e) {
+      console.warn('[Goodman] OpenAI API key validation failed:', e);
       return false;
     }
   }
