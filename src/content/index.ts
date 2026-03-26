@@ -1,6 +1,6 @@
 import { onMessage, sendToBackground } from '@shared/messaging';
 import type { Message, MessageResponse } from '@shared/messages';
-import type { Runtime } from 'webextension-polyfill';
+// uses chrome.runtime.MessageSender via messaging module
 import { detectCheckboxes } from '@content/detectors/checkbox';
 import { detectModals } from '@content/detectors/modal';
 import { detectFullPageTC } from '@content/detectors/fullpage';
@@ -42,7 +42,7 @@ let currentAnalysisController: AbortController | null = null;
 
 if (typeof document !== 'undefined') {
   onMessage(
-    (msg: Message, _sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
+    (msg: Message, _sender: chrome.runtime.MessageSender): Promise<MessageResponse> | undefined => {
       switch (msg.type) {
         case 'DETECT_TC':
           return queueDetection(true, msg.payload.settingsOverride);

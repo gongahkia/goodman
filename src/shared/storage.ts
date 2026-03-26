@@ -1,4 +1,4 @@
-import browser from 'webextension-polyfill';
+// use chrome.storage directly — webextension-polyfill crashes in MV3 service workers
 import { ok, err } from './result';
 import type { Result } from './result';
 import type { Settings, ProviderConfig } from './messages';
@@ -101,7 +101,7 @@ type MigrationFn = () => Promise<void>;
 const MIGRATIONS: Record<number, MigrationFn> = {
   // 1 → 2: strip fullText from versionHistory entries
   1: async () => {
-    const result = await browser.storage.local.get('versionHistory');
+    const result = await chrome.storage.local.get('versionHistory');
     const history = (result['versionHistory'] ?? {}) as Record<string, Array<Record<string, unknown>>>;
     let changed = false;
     for (const entries of Object.values(history)) {
@@ -113,19 +113,19 @@ const MIGRATIONS: Record<number, MigrationFn> = {
       }
     }
     if (changed) {
-      await browser.storage.local.set({ versionHistory: history });
+      await chrome.storage.local.set({ versionHistory: history });
     }
   },
 };
 
 export async function runMigrations(): Promise<void> {
-  const raw = await browser.storage.local.get('storageVersion');
+  const raw = await chrome.storage.local.get('storageVersion');
   let current = (typeof raw['storageVersion'] === 'number' ? raw['storageVersion'] : 0) as number;
   while (current < STORAGE_VERSION) {
     const migrate = MIGRATIONS[current];
     if (migrate) await migrate();
     current++;
-    await browser.storage.local.set({ storageVersion: current });
+    await chrome.storage.local.set({ storageVersion: current });
   }
 }
 
@@ -137,7 +137,7 @@ export async function getStorage<K extends keyof StorageSchema>(
   key: K
 ): Promise<Result<StorageSchema[K], Error>> {
   try {
-    const result = await browser.storage.local.get(key);
+    const result = await chrome.storage.local.get(key);
     const value = result[key] as StorageSchema[K] | undefined;
     return ok(value ?? STORAGE_DEFAULTS[key]);
   } catch (e) {
@@ -150,7 +150,7 @@ export async function setStorage<K extends keyof StorageSchema>(
   value: StorageSchema[K]
 ): Promise<Result<void, Error>> {
   try {
-    await browser.storage.local.set({ [key]: value });
+    await chrome.storage.local.set({ [key]: value });
     return ok(undefined);
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
@@ -211,7 +211,7 @@ export function setPageAnalysisRecord(
     );
 
     try {
-      await browser.storage.local.set({
+      await chrome.storage.local.set({
         pageAnalysis,
         pageAnalysisTabs,
       });
@@ -248,7 +248,7 @@ export function removePageAnalysis(
     const prunedState = prunePageAnalysisMaps(pageAnalysis, pageAnalysisTabs);
 
     try {
-      await browser.storage.local.set({
+      await chrome.storage.local.set({
         pageAnalysis: prunedState.pageAnalysis,
         pageAnalysisTabs: prunedState.pageAnalysisTabs,
       });
@@ -293,7 +293,7 @@ export function prunePageAnalysisState(): Promise<Result<void, Error>> {
     );
 
     try {
-      await browser.storage.local.set({
+      await chrome.storage.local.set({
         pageAnalysis: prunedState.pageAnalysis,
         pageAnalysisTabs: prunedState.pageAnalysisTabs,
       });

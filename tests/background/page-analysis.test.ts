@@ -30,11 +30,14 @@ async function importBackground(): Promise<void> {
 function getRuntimeListener(): (
   message: Message,
   sender: unknown
-) => Promise<unknown> | undefined {
-  return chrome.runtime.onMessage.addListener.mock.calls[0]?.[0] as (
+) => Promise<unknown> {
+  const raw = chrome.runtime.onMessage.addListener.mock.calls[0]?.[0] as (
     message: Message,
-    sender: unknown
-  ) => Promise<unknown> | undefined;
+    sender: unknown,
+    sendResponse: (response?: unknown) => void
+  ) => boolean;
+  return (message: Message, sender: unknown) =>
+    new Promise((resolve) => { raw(message, sender, resolve); });
 }
 
 function getTabRemovedListener(): (tabId: number) => Promise<void> {

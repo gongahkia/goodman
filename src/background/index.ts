@@ -1,7 +1,3 @@
-// shim: crxjs bundles content script code into the service worker where `window` is undefined.
-// aliasing self as window lets Vite's modulepreload helper and bundled DOM code evaluate safely.
-if (typeof window === 'undefined') (globalThis as Record<string, unknown>).window = self;
-
 import { onMessage } from '@shared/messaging';
 import type {
   Message,
@@ -20,7 +16,7 @@ import {
   setPageAnalysisRecord,
   setStorage,
 } from '@shared/storage';
-import type { Runtime } from 'webextension-polyfill';
+// chrome.runtime.MessageSender replaced with chrome.runtime.MessageSender
 import { cancelPageAnalysis, processPageAnalysis } from './process-analysis';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { pruneCache } from '@summarizer/cache';
@@ -34,7 +30,7 @@ void runMigrations().then(() => {
 }).catch(e => console.error('[Goodman] migrations failed:', e));
 
 onMessage(
-  (msg: Message, sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
+  (msg: Message, sender: chrome.runtime.MessageSender): Promise<MessageResponse> | undefined => {
     console.warn(`[Goodman:bg] received message: ${msg.type} from tab ${sender.tab?.id ?? 'unknown'}`);
     switch (msg.type) {
       case 'FETCH_URL':
@@ -127,7 +123,7 @@ async function handleCancelPageAnalysis(tabId: number): Promise<MessageResponse>
 
 async function handleSavePageAnalysis(
   record: PageAnalysisRecord,
-  sender: Runtime.MessageSender
+  sender: chrome.runtime.MessageSender
 ): Promise<MessageResponse> {
   const tabId = resolveTabId(record.tabId, sender);
   if (tabId === null) {
@@ -147,7 +143,7 @@ async function handleSavePageAnalysis(
 
 async function handleProcessPageAnalysis(
   payload: ProcessPageAnalysisMessage['payload'],
-  sender: Runtime.MessageSender
+  sender: chrome.runtime.MessageSender
 ): Promise<MessageResponse> {
   const tabId = sender.tab?.id;
   if (typeof tabId !== 'number') {
@@ -194,7 +190,7 @@ function registerTabCleanup(): void {
 
 function resolveTabId(
   fallbackTabId: number,
-  sender: Runtime.MessageSender
+  sender: chrome.runtime.MessageSender
 ): number | null {
   if (typeof sender.tab?.id === 'number') {
     return sender.tab.id;
