@@ -165,7 +165,24 @@ function allowRequest(
 
   recentRequests.push(currentTime);
   requestLog.set(key, recentRequests);
+
+  if (requestLog.size > 500) pruneRequestLog(requestLog, currentTime, rateLimit.windowMs);
   return true;
+}
+
+function pruneRequestLog(
+  requestLog: Map<string, number[]>,
+  currentTime: number,
+  windowMs: number
+): void {
+  for (const [key, timestamps] of requestLog) {
+    const live = timestamps.filter((t) => currentTime - t < windowMs);
+    if (live.length === 0) {
+      requestLog.delete(key);
+    } else {
+      requestLog.set(key, live);
+    }
+  }
 }
 
 function getClientKey(c: Context): string {
