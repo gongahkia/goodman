@@ -1,8 +1,3 @@
-// shim: ensure window exists for modules bundled into the service worker by crxjs
-if (typeof window === 'undefined' && typeof self !== 'undefined') {
-  (globalThis as Record<string, unknown>).window = self;
-}
-
 import type { Message, MessageResponse } from './messages';
 
 type MessageSender = chrome.runtime.MessageSender;

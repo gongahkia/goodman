@@ -1,3 +1,4 @@
+import '@shared/sw-shim'; // must be first — shims DOM globals before crxjs-bundled content script code runs
 import { onMessage } from '@shared/messaging';
 import type {
   Message,
