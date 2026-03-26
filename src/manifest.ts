@@ -59,12 +59,16 @@ function getFirefoxManifest() {
   return {
     ...baseManifest,
     background: {
-      service_worker: 'src/background/index.ts',
+      scripts: ['src/background/index.ts'],
     },
     browser_specific_settings: {
       gecko: {
         id: 'goodman@extension',
-        strict_min_version: '109.0',
+        strict_min_version: '128.0',
+        data_collection_permissions: {
+          required: ['websiteContent'],
+          optional: ['technicalAndInteraction'],
+        },
       },
     },
   };
