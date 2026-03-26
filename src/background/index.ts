@@ -1,3 +1,7 @@
+// shim: crxjs bundles content script code into the service worker where `window` is undefined.
+// aliasing self as window lets Vite's modulepreload helper and bundled DOM code evaluate safely.
+if (typeof window === 'undefined') (globalThis as Record<string, unknown>).window = self;
+
 import { onMessage } from '@shared/messaging';
 import type {
   Message,
