@@ -3,15 +3,9 @@
 
 # `Goodman`
 
+...
+
 Goodman is a Manifest V3 browser extension that automatically detects, summarizes, and tracks changes to Terms & Conditions on any webpage. It uses a bring-your-own-provider model for AI-powered legal text analysis while keeping all data local.
-
-## Stack
-
-## Screenshots
-
-## Usage
-
-## Product Position
 
 Goodman is a privacy-first, bring-your-own-provider tool aimed at technical users and power users who want to understand what they're agreeing to.
 
@@ -19,7 +13,37 @@ Goodman is a privacy-first, bring-your-own-provider tool aimed at technical user
 - Provider configuration required before summarization, version history, and change alerts.
 - Killer differentiator: **version tracking** — first-seen terms are stored silently, later changes trigger notifications with diffs.
 
-## What Ships Today
+## Stack
+
+* *Script*: [TypeScript](), [Vite](), [Hono](), [pdfjs-dist](), [diff]()
+* *Test*: [Vitest]() , [Playwright]()
+* *Lint*: [ESLint, Prettier]()
+
+## Screenshots
+
+### `Goodman` browser extension
+
+<div align="center">
+    <img src="./asset/reference/1.png" width="22%">
+    <img src="./asset/reference/2.png" width="22%">
+    <img src="./asset/reference/3.png" width="22%">
+    <img src="./asset/reference/4.png" width="22%">
+</div>
+
+### `Goodman` on LinkedIn
+
+<div align="center">
+    <img src="./asset/reference/5.png" width="48%">
+    <img src="./asset/reference/6.png" width="48%">
+</div>
+
+### `Goodman` on Substack
+
+<div align="center">
+    <img src="./asset/reference/7.png" width="90%">
+</div>
+
+## Features
 
 - Automatic detection on page load and relevant DOM mutations.
 - Consent surface detection for checkboxes, banners/modals, and full-page legal text.
@@ -28,36 +52,18 @@ Goodman is a privacy-first, bring-your-own-provider tool aimed at technical user
 - Persisted `PageAnalysisRecord` state keyed by URL with tab-to-page index.
 - Popup/side-panel states: `idle`, `analyzing`, `no_detection`, `extraction_failed`, `needs_provider`, `needs_consent`, `service_unavailable`, `error`, `cancelled`, and `ready`.
 - Per-domain version history, summary diffs, text diffs, and notification gating.
-- 6 production providers: OpenAI, Claude, Gemini, Ollama, Custom (OpenAI-compatible), and Goodman Cloud (hosted).
 - Dark mode support (auto-detects OS preference).
 - Full accessibility: ARIA labels, keyboard navigation, screen reader announcements, WCAG AA contrast.
 - Explicit error logging on all failure paths — no silent errors.
 
-## Runtime Flow
+## Supported models
 
-1. The content script auto-runs on page load and after relevant DOM mutations.
-2. Detection candidates are scored, then the best candidate is resolved to inline, linked, or PDF text.
-3. Deterministic states (`no_detection`, `extraction_failed`, `needs_provider`) are persisted immediately; provider-backed analysis is handed to the background worker.
-4. The background worker computes a hash, checks cache, calls the configured provider when needed, persists state, updates version history, computes diffs, and decides whether to fire notifications.
-5. The page overlay renders when a usable summary exists. The popup reads persisted state for the active page.
-
-More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Stack
-
-| Layer | Technology |
-|-------|-----------|
-| Language | TypeScript 5.9+ |
-| Build | Vite 8 + @crxjs/vite-plugin |
-| Targets | Chrome 120+, Firefox 120+ (MV3) |
-| Server | Hono (optional hosted backend) |
-| PDF | pdfjs-dist |
-| Diffs | diff |
-| Tests | Vitest, Playwright |
-| Lint | ESLint, Prettier |
-| Package Manager | pnpm |
+- 6 production providers: OpenAI, Claude, Gemini, Ollama, Custom (OpenAI-compatible), and Goodman Cloud (hosted).
 
 ## Usage
+
+> [!IMPORTANT]
+> Read the [legal disclaimer](#legal-disclaimer) before using `Goodman`.
 
 1. Install and build:
 
