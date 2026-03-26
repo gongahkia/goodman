@@ -8,7 +8,7 @@ import { startObserver } from '@content/detectors/observer';
 import { scoreDetections } from '@content/detectors/scoring';
 import { resolveDetectionTextSource } from '@content/extractors/source';
 import { normalizeText } from '@content/extractors/normalizer';
-import { chunkText } from '@content/extractors/chunker';
+import { chunkText } from '@shared/chunker';
 import { computeTextHash } from '@summarizer/cache';
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';

@@ -6,7 +6,8 @@ let pendingMutations: MutationRecord[] = [];
 
 export function startObserver(
   callback: (mutations: MutationRecord[]) => void
-): MutationObserver {
+): MutationObserver | null {
+  if (typeof MutationObserver === 'undefined') return null; // guard: service worker has no DOM
   if (observer) {
     stopObserver();
   }

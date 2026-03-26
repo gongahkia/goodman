@@ -1,4 +1,4 @@
-import { chunkText } from '@content/extractors/chunker';
+import { chunkText } from '@shared/chunker';
 import { getProviderByName } from '@providers/factory';
 import type { Summary, SummarizeOptions } from '@providers/types';
 import {

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chunkText, estimateTokens } from '@content/extractors/chunker';
+import { chunkText, estimateTokens } from '@shared/chunker';
 
 describe('chunkText', () => {
   it('should return single chunk for short text', () => {

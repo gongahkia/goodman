@@ -1,4 +1,4 @@
-import { chunkText } from '../src/content/extractors/chunker';
+import { chunkText } from '../src/shared/chunker';
 import { parseSummaryResponse } from '../src/providers/response-parser';
 import { buildUserPrompt, SYSTEM_PROMPT } from '../src/providers/prompts';
 import type { Summary, RedFlag } from '../src/providers/types';
