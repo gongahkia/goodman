@@ -53,15 +53,17 @@ onMessage(
   }
 );
 
-startObserver(() => {
-  const now = Date.now();
-  if (now - lastObserverDetectionTs < MIN_OBSERVER_INTERVAL_MS) return;
-  lastObserverDetectionTs = now;
-  void queueDetection(false).catch(e => console.warn('[Goodman] observer detection failed:', e));
-});
-void queueDetection(false).catch(e => console.warn('[Goodman] initial detection failed:', e));
+if (typeof document !== 'undefined') {
+  startObserver(() => {
+    const now = Date.now();
+    if (now - lastObserverDetectionTs < MIN_OBSERVER_INTERVAL_MS) return;
+    lastObserverDetectionTs = now;
+    void queueDetection(false).catch(e => console.warn('[Goodman] observer detection failed:', e));
+  });
+  void queueDetection(false).catch(e => console.warn('[Goodman] initial detection failed:', e));
+}
 
-let lastUrl = location.href;
+let lastUrl = typeof location !== 'undefined' ? location.href : '';
 function checkUrlChange(): void {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
@@ -69,11 +71,13 @@ function checkUrlChange(): void {
     void queueDetection(true).catch(e => console.warn('[Goodman] URL change detection failed:', e));
   }
 }
-window.addEventListener('popstate', checkUrlChange);
-const origPushState = history.pushState.bind(history);
-const origReplaceState = history.replaceState.bind(history);
-history.pushState = (...args: Parameters<typeof history.pushState>) => { origPushState(...args); checkUrlChange(); };
-history.replaceState = (...args: Parameters<typeof history.replaceState>) => { origReplaceState(...args); checkUrlChange(); };
+if (typeof history !== 'undefined') {
+  window.addEventListener('popstate', checkUrlChange);
+  const origPushState = history.pushState.bind(history);
+  const origReplaceState = history.replaceState.bind(history);
+  history.pushState = (...args: Parameters<typeof history.pushState>) => { origPushState(...args); checkUrlChange(); };
+  history.replaceState = (...args: Parameters<typeof history.replaceState>) => { origReplaceState(...args); checkUrlChange(); };
+}
 
 async function queueDetection(
   force: boolean,
