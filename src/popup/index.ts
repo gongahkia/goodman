@@ -31,6 +31,8 @@ import type {
   PageAnalysisLogEntry,
   PageAnalysisRecord,
 } from '@shared/page-analysis';
+import { RED_FLAG_DESCRIPTIONS } from '@providers/prompts';
+import type { RedFlagCategory } from '@providers/types';
 import type { PendingNotification } from '@shared/storage';
 import {
   getPageAnalysisByUrl,
@@ -594,11 +596,15 @@ function createRedFlagCard(flag: { category: string; description: string; severi
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-expanded', 'false');
   const header = createElement('div', 'tc-flag-header');
+  const titleWrap = createElement('div');
   const title = createElement('span', 'tc-flag-title', flag.category.replace(/_/g, ' '));
+  const staticDesc = RED_FLAG_DESCRIPTIONS[flag.category as RedFlagCategory];
+  titleWrap.appendChild(title);
+  if (staticDesc) titleWrap.appendChild(createElement('p', 'tc-flag-subtitle', staticDesc));
   const severityPill = createSeverityPill(flag.severity);
   const details = createElement('div', 'tc-flag-details');
   const desc = createElement('p', 'tc-flag-description', flag.description);
-  appendChildren(header, title, severityPill);
+  appendChildren(header, titleWrap, severityPill);
   details.appendChild(desc);
   if (flag.quote) details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
   appendChildren(card, header, details);
