@@ -62,7 +62,7 @@ Goodman is a privacy-first, bring-your-own-provider tool aimed at technical user
 
 ## Usage
 
-> [!IMPORTANT]
+> [!IMPORTANT]  
 > Read the [legal disclaimer](#legal-disclaimer) before using `Goodman`.
 
 1. Install and build:
@@ -98,3 +98,7 @@ $ pnpm test:e2e
 The name `Goodman` is in reference to the American criminal defense lawyer [Saul Goodman](https://en.wikipedia.org/wiki/Saul_Goodman) *(the professional alias of [James Morgan "Jimmy" McGill](https://breakingbad.fandom.com/wiki/Jimmy_McGill))* who also acts as the titular protagonist of the acclaimed television series [*Breaking Bad*](https://breakingbad.fandom.com/wiki/Breaking_Bad_Wiki).
 
 ![](./asset/logo/saul_goodman.png)
+
+## Legal Disclaimer
+
+...
