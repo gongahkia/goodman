@@ -1,51 +1,59 @@
-[![](https://img.shields.io/badge/goodman_1.0.0-passing-green)](https://github.com/gongahkia/goodman/releases/tag/1.0.0) 
+[![](https://img.shields.io/badge/goodman_1.0.0-passing-green)](https://github.com/gongahkia/goodman/releases/tag/1.0.0)
 ![](https://github.com/gongahkia/goodman/actions/workflows/ci.yml/badge.svg)
 
 # `Goodman`
 
-...
-
-Goodman is a Manifest V3 browser extension for understanding Terms and Conditions at the moment a page asks for consent. It detects likely legal surfaces, extracts the relevant text, summarizes it with a user-configured LLM provider, stores the result as shared page state for the overlay and popup, and tracks version changes per domain over time.
+Goodman is a Manifest V3 browser extension that automatically detects, summarizes, and tracks changes to Terms & Conditions on any webpage. It uses a bring-your-own-provider model for AI-powered legal text analysis while keeping all data local.
 
 ## Product Position
 
-Goodman is currently a privacy-first, bring-your-own-provider product aimed at technical users and power users. It is not a zero-config consumer app yet.
+Goodman is a privacy-first, bring-your-own-provider tool aimed at technical users and power users who want to understand what they're agreeing to.
 
-- It does automatic detection and persists explicit page-analysis state out of the box.
-- It requires provider configuration before remote summarization, version history, and change alerts can succeed.
-- Its clearest differentiator once configured is version tracking: first-seen terms are stored silently, and later meaningful changes can trigger notifications.
+- Automatic T&C detection and page-analysis state out of the box.
+- Provider configuration required before summarization, version history, and change alerts.
+- Killer differentiator: **version tracking** — first-seen terms are stored silently, later changes trigger notifications with diffs.
 
 ## What Ships Today
 
-- Automatic detection on page load and relevant DOM changes.
+- Automatic detection on page load and relevant DOM mutations.
 - Consent surface detection for checkboxes, banners/modals, and full-page legal text.
 - Extraction routing for inline text, linked legal pages, and PDFs.
-- Background analysis pipeline with cache lookup, single-shot summarization, and chunked summarization for long text.
-- Persisted `PageAnalysisRecord` state keyed by page URL, plus a tab-to-page index for active-tab lookups.
-- Popup states for `idle`, `analyzing`, `no_detection`, `extraction_failed`, `needs_provider`, `error`, and `ready`.
+- Background analysis pipeline with cache, single-shot and chunked summarization.
+- Persisted `PageAnalysisRecord` state keyed by URL with tab-to-page index.
+- Popup/side-panel states: `idle`, `analyzing`, `no_detection`, `extraction_failed`, `needs_provider`, `needs_consent`, `service_unavailable`, `error`, `cancelled`, and `ready`.
 - Per-domain version history, summary diffs, text diffs, and notification gating.
-- Per-domain notification preferences plus global notification enable/disable.
-- Multiple providers: OpenAI, Claude, Gemini, Ollama, and OpenAI-compatible custom endpoints.
+- 6 production providers: OpenAI, Claude, Gemini, Ollama, Custom (OpenAI-compatible), and Goodman Cloud (hosted).
+- Dark mode support (auto-detects OS preference).
+- Full accessibility: ARIA labels, keyboard navigation, screen reader announcements, WCAG AA contrast.
+- Explicit error logging on all failure paths — no silent errors.
 
 ## Runtime Flow
 
 1. The content script auto-runs on page load and after relevant DOM mutations.
 2. Detection candidates are scored, then the best candidate is resolved to inline, linked, or PDF text.
-3. Deterministic states like `no_detection`, `extraction_failed`, and `needs_provider` are persisted immediately into shared storage; provider-backed analysis is handed to the background worker.
-4. The background worker computes a hash, checks cache, calls the configured provider when needed, persists `PageAnalysisRecord`, updates version history, computes summary/text diffs, and decides whether a notification should fire.
-5. The page overlay renders when a usable summary exists. The popup reads the persisted page-analysis record for the active page instead of relying on popup-local memory.
+3. Deterministic states (`no_detection`, `extraction_failed`, `needs_provider`) are persisted immediately; provider-backed analysis is handed to the background worker.
+4. The background worker computes a hash, checks cache, calls the configured provider when needed, persists state, updates version history, computes diffs, and decides whether to fire notifications.
+5. The page overlay renders when a usable summary exists. The popup reads persisted state for the active page.
 
-More detail lives in [docs/ARCHITECTURE.md](/Users/gongahkia/Desktop/coding/projects/goodman/docs/ARCHITECTURE.md).
+More detail in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Stack
 
-...
+| Layer | Technology |
+|-------|-----------|
+| Language | TypeScript 5.9+ |
+| Build | Vite 8 + @crxjs/vite-plugin |
+| Targets | Chrome 120+, Firefox 120+ (MV3) |
+| Server | Hono (optional hosted backend) |
+| PDF | pdfjs-dist |
+| Diffs | diff |
+| Tests | Vitest, Playwright |
+| Lint | ESLint, Prettier |
+| Package Manager | pnpm |
 
 ## Usage
 
-The below instructions are for locally running `Goodman`.
-
-1. First run the below to install `Goodman` and its dependencies on your local machine.
+1. Install and build:
 
 ```console
 $ git clone https://github.com/gongahkia/goodman && cd goodman
@@ -54,9 +62,11 @@ $ corepack enable && corepack use pnpm@10.32.1
 $ pnpm install && pnpm build
 ```
 
-2. Then load the built `dist/` directory as an unpacked extension in Firefox, Chrome or Chromium.
+2. Load `dist/` as an unpacked extension in Chrome (`chrome://extensions`) or Firefox (`about:debugging`).
 
-3. Optionally run the below to run tests on `Goodman`.
+3. Click the Goodman icon, configure a provider in Settings, and browse to any page with Terms & Conditions.
+
+4. Run tests:
 
 ```console
 $ pnpm typecheck
@@ -69,7 +79,13 @@ $ pnpm test:e2e
 
 ## Architecture
 
-...
+```
+Content Script          Background Worker          Popup / Side Panel
+(per page/tab)          (persistent)               (reads shared state)
+
+detect → extract  ──→  analyze → cache  ──→     render summary
+                       version → notify          settings, history
+```
 
 ## Reference
 
