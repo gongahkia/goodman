@@ -109,7 +109,11 @@ export async function validateProvider(name: string): Promise<boolean> {
   );
   if (!provider) return false;
 
-  return provider.validateApiKey(resolvedConfig.apiKey);
+  return provider.validateApiKey(sanitizeCredential(resolvedConfig.apiKey));
+}
+
+function sanitizeCredential(value: string): string {
+  return value.replace(/[^\x20-\x7E]/g, '').trim(); // strip non-ASCII, trim whitespace
 }
 
 function createProvider(
@@ -118,21 +122,24 @@ function createProvider(
   model: string,
   baseUrl?: string
 ): LLMProvider | null {
+  const cleanKey = sanitizeCredential(apiKey);
+  const cleanModel = sanitizeCredential(model);
+  const cleanUrl = baseUrl ? sanitizeCredential(baseUrl) : undefined;
   switch (name) {
     case 'hosted':
-      return new HostedProvider(baseUrl, model);
+      return new HostedProvider(cleanUrl, cleanModel);
     case 'openai':
-      return new OpenAIProvider(apiKey, model);
+      return new OpenAIProvider(cleanKey, cleanModel);
     case 'claude':
-      return new ClaudeProvider(apiKey, model);
+      return new ClaudeProvider(cleanKey, cleanModel);
     case 'gemini':
-      return new GeminiProvider(apiKey, model);
+      return new GeminiProvider(cleanKey, cleanModel);
     case 'ollama':
-      return new OllamaProvider(baseUrl, model);
+      return new OllamaProvider(cleanUrl, cleanModel);
     case 'custom':
-      return new CustomEndpointProvider(baseUrl ?? '', apiKey, model);
+      return new CustomEndpointProvider(cleanUrl ?? '', cleanKey, cleanModel);
     case 'fixture':
-      return new FixtureProvider(model);
+      return new FixtureProvider(cleanModel);
     default:
       return null;
   }
