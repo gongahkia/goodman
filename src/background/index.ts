@@ -35,6 +35,7 @@ void runMigrations().then(() => {
 
 onMessage(
   (msg: Message, sender: Runtime.MessageSender): Promise<MessageResponse> | undefined => {
+    console.warn(`[Goodman:bg] received message: ${msg.type} from tab ${sender.tab?.id ?? 'unknown'}`);
     switch (msg.type) {
       case 'FETCH_URL':
         return handleFetchUrl(msg.payload.url, msg.payload.responseType);
@@ -153,10 +154,12 @@ async function handleProcessPageAnalysis(
     return { ok: false, error: 'Could not resolve tab id' };
   }
 
+  console.warn(`[Goodman:bg] starting processPageAnalysis for ${payload.url} with provider=${payload.provider}`);
   const result = await processPageAnalysis({
     tabId,
     ...payload,
   });
+  console.warn(`[Goodman:bg] processPageAnalysis done: ok=${result.ok} cancelled=${result.cancelled} error=${result.error ?? 'none'}`);
 
   if (result.cancelled) {
     return { ok: false, error: result.error ?? 'Analysis cancelled.', cancelled: true };

@@ -202,8 +202,10 @@ export async function processPageAnalysis(
       return { ok: true, data: summary };
     }
 
+    console.warn(`[Goodman:bg] resolving provider: ${input.provider}`);
     const providerResult = await getProviderByName(input.provider);
     throwIfAborted(signal);
+    console.warn(`[Goodman:bg] provider resolved: ok=${providerResult.ok}${providerResult.ok ? '' : ` error=${providerResult.error.message}`}`);
     if (!providerResult.ok) {
       const errorMessage =
         providerResult.error.userMessage ?? providerResult.error.message;
@@ -296,7 +298,9 @@ export async function processPageAnalysis(
         return result;
       }, signal);
 
+    console.warn(`[Goodman:bg] calling LLM provider for ${input.url}`);
     let summaryResult = await runSummarize();
+    console.warn(`[Goodman:bg] LLM result: ok=${summaryResult.ok}${summaryResult.ok ? '' : ` code=${summaryResult.error.code} msg=${summaryResult.error.message}`}`);
     if (!summaryResult.ok && summaryResult.error.retryable) {
       const delayMs =
         'retryAfterSeconds' in summaryResult.error
