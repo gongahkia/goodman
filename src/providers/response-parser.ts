@@ -9,6 +9,7 @@ const VALID_CATEGORIES: RedFlagCategory[] = [
   'automatic_renewal', 'biometric_data', 'third_party_sharing',
   'jurisdiction_change', 'liability_limitation', 'content_ownership_transfer',
   'unilateral_changes', 'no_deletion_right', 'location_tracking',
+  'data_retention', 'ai_training', 'government_disclosure',
 ];
 
 const VALID_SEVERITIES: Severity[] = ['low', 'medium', 'high', 'critical'];
@@ -57,7 +58,9 @@ function validateSummary(obj: Record<string, unknown>): Summary {
     ? (obj['severity'] as Severity)
     : 'medium';
 
-  return { summary, keyPoints, redFlags, severity };
+  const tldr = typeof obj['tldr'] === 'string' ? obj['tldr'] : undefined;
+
+  return { summary, keyPoints, redFlags, severity, ...(tldr ? { tldr } : {}) };
 }
 
 function validateRedFlag(raw: unknown): RedFlag | null {
