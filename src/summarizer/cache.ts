@@ -4,12 +4,14 @@ import type { Summary } from '@providers/types';
 import { CACHE_TTL_MS, MAX_CACHE_ENTRIES } from '@shared/constants';
 
 export async function getCachedSummary(
-  textHash: string
+  textHash: string,
+  domain?: string
 ): Promise<CachedSummary | null> {
   const cacheResult = await getStorage('cache');
   if (!cacheResult.ok) return null;
 
-  const entry = cacheResult.data[textHash];
+  const scopedKey = domain ? `${domain}:${textHash}` : null;
+  const entry = (scopedKey ? cacheResult.data[scopedKey] : null) ?? cacheResult.data[textHash]; // fallback to legacy key
   if (!entry) return null;
 
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
@@ -29,7 +31,8 @@ export function cacheSummary(
     if (!cacheResult.ok) return;
 
     const cache = { ...cacheResult.data };
-    cache[textHash] = {
+    const cacheKey = `${domain}:${textHash}`;
+    cache[cacheKey] = {
       summary: {
         summary: summary.summary,
         keyPoints: summary.keyPoints,
@@ -40,6 +43,7 @@ export function cacheSummary(
           quote: f.quote,
         })),
         severity: summary.severity,
+        ...(summary.tldr ? { tldr: summary.tldr } : {}),
       },
       domain,
       textHash,
