@@ -1,4 +1,5 @@
 import type { DetectedElement } from './checkbox';
+import { MIN_MODAL_TEXT_LENGTH } from '@shared/constants';
 
 const CONSENT_CLASS_PATTERN = /cookie|consent|gdpr|privacy|banner|notice/i;
 const TC_KEYWORDS = ['terms', 'conditions', 'privacy', 'policy', 'agree', 'consent', 'cookie'];
@@ -73,6 +74,7 @@ function findByPosition(root: Element): DetectedElement[] {
 
 function analyzeCandidate(el: HTMLElement): DetectedElement | null {
   const text = (el.textContent ?? '').toLowerCase();
+  if (text.trim().length < MIN_MODAL_TEXT_LENGTH) return null;
   const foundKeywords: string[] = [];
   let score = 0;
 
