@@ -61,7 +61,10 @@ export type RedFlagCategory =
   | 'content_ownership_transfer'
   | 'unilateral_changes'
   | 'no_deletion_right'
-  | 'location_tracking';
+  | 'location_tracking'
+  | 'data_retention'
+  | 'ai_training'
+  | 'government_disclosure';
 
 export interface RedFlag {
   category: RedFlagCategory;
@@ -75,6 +78,7 @@ export interface Summary {
   keyPoints: string[];
   redFlags: RedFlag[];
   severity: Severity;
+  tldr?: string;
 }
 
 export interface SummarizeOptions {
