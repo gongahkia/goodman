@@ -251,6 +251,10 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
   const wrapper = createElement('div');
   // score hero
   const hero = createElement('div', 'tc-score-hero');
+  const riskScore = Math.min(100, summary.redFlags.reduce((s, f) => s + ({ high: 30, medium: 15, low: 5 }[f.severity] ?? 0), 0));
+  const riskBucket = riskScore >= 70 ? 'critical' : riskScore >= 40 ? 'high' : riskScore >= 15 ? 'medium' : 'low';
+  const scoreEl = createElement('div', cx('tc-risk-score', `tc-risk-score--${riskBucket}`), `${riskScore}`);
+  hero.appendChild(scoreEl);
   const icon = createElement('div', cx('tc-score-icon', `tc-score-icon--${summary.severity}`));
   icon.innerHTML = iconShieldCheck(26);
   const label = createElement('div', cx('tc-score-label', `tc-score-label--${summary.severity}`), `${summary.severity} risk`);
@@ -264,10 +268,13 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
   // summary excerpt
   const excerpt = createElement('p', 'tc-summary-excerpt', summary.summary);
   wrapper.appendChild(excerpt);
-  // red flags preview (top 3)
+  // red flags preview — show all high-severity flags first, then fill to 5
   if (summary.redFlags.length > 0) {
     const flagSection = createElement('div', 'tc-flag-preview');
-    const flagsToShow = summary.redFlags.slice(0, 3);
+    const highFlags = summary.redFlags.filter((f) => f.severity === 'high');
+    const otherFlags = summary.redFlags.filter((f) => f.severity !== 'high');
+    const maxPreview = 5;
+    const flagsToShow = [...highFlags, ...otherFlags].slice(0, Math.max(maxPreview, highFlags.length));
     for (const flag of flagsToShow) {
       const row = createElement('div', cx('tc-flag-preview-row', `tc-flag-preview-row--${flag.severity}`));
       const fname = createElement('span', 'tc-flag-preview-name', flag.category.replace(/_/g, ' '));
@@ -275,15 +282,18 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
       appendChildren(row, fname, fsev);
       flagSection.appendChild(row);
     }
-    if (summary.redFlags.length > 3) {
-      flagSection.appendChild(createElement('span', 'tc-flag-preview-more', `+${summary.redFlags.length - 3} more`));
+    const hidden = summary.redFlags.length - flagsToShow.length;
+    if (hidden > 0) {
+      flagSection.appendChild(createElement('span', 'tc-flag-preview-more', `+${hidden} more`));
     }
     wrapper.appendChild(flagSection);
   }
   // metadata
   const meta = createElement('div', 'tc-meta-row');
   meta.appendChild(createPill(`${formatToken(analysis.sourceType)}`, 'default'));
-  meta.appendChild(createPill(`${formatConfidence(analysis.confidence)} conf`, 'default'));
+  const confPill = createPill(`${formatConfidence(analysis.confidence)} detection confidence`, 'default');
+  confPill.title = 'How certain Goodman is that this page contains T&C text';
+  meta.appendChild(confPill);
   meta.appendChild(createPill(`Updated ${formatTimestamp(analysis.updatedAt)}`, 'muted'));
   wrapper.appendChild(meta);
   return wrapper;
