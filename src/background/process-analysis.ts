@@ -168,7 +168,7 @@ export async function processPageAnalysis(
       'Computed a text fingerprint and started checking the local summary cache.'
     );
 
-    const cachedSummary = await getCachedSummary(textHash);
+    const cachedSummary = await getCachedSummary(textHash, input.domain);
     throwIfAborted(signal);
     if (cachedSummary) {
       const summary = toSummary(cachedSummary.summary);
@@ -460,6 +460,7 @@ function toSummary(summary: StoredSummary): Summary {
       category: flag.category as Summary['redFlags'][number]['category'],
     })),
     severity: summary.severity,
+    ...(summary.tldr ? { tldr: summary.tldr } : {}),
   };
 }
 
