@@ -10,7 +10,7 @@ describe('detectModals', () => {
     const root = document.createElement('div');
     root.innerHTML = `
       <div class="cookie-consent" style="position: fixed; bottom: 0;">
-        <p>We use cookies to ensure you get the best experience. By continuing, you agree to our cookie policy.</p>
+        <p>We use cookies and similar tracking technologies to ensure you get the best experience on our website. By continuing to browse, you agree to our cookie policy and the use of cookies for analytics, personalization, and advertising purposes. You can manage your preferences at any time.</p>
         <button>Accept All</button>
         <button>Manage</button>
       </div>
@@ -28,7 +28,7 @@ describe('detectModals', () => {
     root.innerHTML = `
       <div role="dialog">
         <h2>Terms of Service</h2>
-        <p>Please read and agree to our terms and conditions.</p>
+        <p>Please read and agree to our terms and conditions before proceeding. By clicking the button below, you acknowledge that you have read, understood, and agree to be bound by these terms and conditions, including our privacy policy and data processing agreement.</p>
         <button>I Agree</button>
       </div>
     `;
