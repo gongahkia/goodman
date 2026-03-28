@@ -3,6 +3,7 @@ import type { RedFlagCategory } from './types';
 export const SYSTEM_PROMPT = `You are a legal text analyzer specializing in Terms & Conditions documents.
 Analyze the following T&C text and return a JSON object with this exact structure:
 {
+  "tldr": "single sentence (max 15 words) capturing the essence of what the user agrees to",
   "summary": "2-3 sentence plain-English summary of what the user is agreeing to",
   "keyPoints": ["array of 3-7 key points in plain English"],
   "redFlags": [
@@ -29,8 +30,13 @@ Red flag categories and their typical severity:
 - unilateral_changes (MEDIUM): Company can change terms without notice
 - no_deletion_right (HIGH): No right to have data deleted
 - location_tracking (MEDIUM): Continuous location tracking
+- data_retention (HIGH): Indefinite data retention after account deletion
+- ai_training (HIGH): User content used for AI/ML model training
+- government_disclosure (MEDIUM): Broad government/law enforcement data sharing clauses
 
-Return ONLY valid JSON. No markdown formatting, no code blocks, no additional text.`;
+Assign severity based on the specific language in the document, not just the category.
+If you cannot find an exact verbatim quote, set quote to an empty string.
+Return ONLY valid JSON. Do not wrap the JSON in markdown code fences or backticks. No additional text.`;
 
 /**
  * Red flag category descriptions for UI display.
@@ -69,6 +75,9 @@ export const RED_FLAG_DESCRIPTIONS: Record<RedFlagCategory, string> = {
   unilateral_changes: 'The company can change the terms at any time without notifying you.',
   no_deletion_right: 'You may not have the right to have your data deleted.',
   location_tracking: 'The company tracks your physical location continuously.',
+  data_retention: 'Your data may be retained indefinitely even after you delete your account.',
+  ai_training: 'Your content may be used to train AI or machine learning models.',
+  government_disclosure: 'Your data may be broadly shared with government or law enforcement agencies.',
 };
 
 export function buildUserPrompt(text: string): string {
