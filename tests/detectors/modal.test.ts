@@ -40,6 +40,20 @@ describe('detectModals', () => {
     expect(results[0]!.type).toBe('modal');
   });
 
+  it('should NOT detect ultra-short cookie banner', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div class="cookie-consent" style="position: fixed; bottom: 0;">
+        <p>We use cookies.</p>
+        <button>Accept</button>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    const results = detectModals(root);
+    expect(results).toHaveLength(0);
+  });
+
   it('should NOT detect regular navigation bar', () => {
     const root = document.createElement('div');
     root.innerHTML = `
