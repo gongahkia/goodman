@@ -40,6 +40,56 @@ describe('parseSummaryResponse', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('should accept new red flag categories', () => {
+    const withNewCategories = JSON.stringify({
+      summary: 'Test',
+      keyPoints: [],
+      redFlags: [
+        { category: 'data_retention', description: 'kept forever', severity: 'high', quote: '' },
+        { category: 'ai_training', description: 'trains models', severity: 'high', quote: '' },
+        { category: 'government_disclosure', description: 'shared with gov', severity: 'medium', quote: '' },
+      ],
+      severity: 'high',
+    });
+    const result = parseSummaryResponse(withNewCategories);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.redFlags).toHaveLength(3);
+      expect(result.data.redFlags.map((f) => f.category)).toEqual([
+        'data_retention', 'ai_training', 'government_disclosure',
+      ]);
+    }
+  });
+
+  it('should parse tldr field when present', () => {
+    const withTldr = JSON.stringify({
+      summary: 'A summary.',
+      keyPoints: ['point'],
+      redFlags: [],
+      severity: 'low',
+      tldr: 'They collect everything.',
+    });
+    const result = parseSummaryResponse(withTldr);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.tldr).toBe('They collect everything.');
+    }
+  });
+
+  it('should leave tldr undefined when not present', () => {
+    const withoutTldr = JSON.stringify({
+      summary: 'A summary.',
+      keyPoints: [],
+      redFlags: [],
+      severity: 'low',
+    });
+    const result = parseSummaryResponse(withoutTldr);
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.tldr).toBeUndefined();
+    }
+  });
+
   it('should filter invalid red flag categories', () => {
     const withBadCategory = JSON.stringify({
       summary: 'Test',
