@@ -86,7 +86,7 @@ function createHeader(severityValue: string): HTMLElement {
 
   const eyebrow = document.createElement('p');
   eyebrow.className = 'goodman-eyebrow';
-  eyebrow.textContent = 'Page snapshot';
+  eyebrow.textContent = 'T&C Analysis';
 
   const titleRow = document.createElement('div');
   titleRow.className = 'goodman-title-row';
@@ -99,7 +99,8 @@ function createHeader(severityValue: string): HTMLElement {
   severityBadge.className = `goodman-severity-pill goodman-severity-${normalizeSeverity(
     severityValue
   )}`;
-  severityBadge.textContent = severityValue.toUpperCase();
+  const severityIndicator: Record<string, string> = { low: '\u25cf ', medium: '\u25c6 ', high: '\u25b2 ', critical: '\u25b2 ' };
+  severityBadge.textContent = (severityIndicator[normalizeSeverity(severityValue)] ?? '') + severityValue.toUpperCase();
 
   titleRow.appendChild(title);
   titleRow.appendChild(severityBadge);
@@ -198,8 +199,12 @@ function createRedFlags(
     )}`;
     pill.textContent = flag.severity.toUpperCase();
 
+    const chevron = document.createElement('span');
+    chevron.className = 'goodman-flag-chevron';
+    chevron.textContent = '\u203a';
     cardHeader.appendChild(name);
     cardHeader.appendChild(pill);
+    cardHeader.appendChild(chevron);
     card.appendChild(cardHeader);
 
     const details = document.createElement('div');
@@ -247,7 +252,28 @@ function createOverlayFooter(): HTMLElement {
   note.className = 'goodman-footer-note';
   note.textContent = 'Open Goodman for settings, history, and a full persisted snapshot.';
   footer.appendChild(note);
+
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'goodman-copy-btn';
+  copyBtn.textContent = 'Copy summary';
+  copyBtn.addEventListener('click', handleCopy);
+  footer.appendChild(copyBtn);
   return footer;
+}
+
+function handleCopy(): void {
+  if (!cachedSummary) return;
+  const lines = [cachedSummary.summary];
+  if (cachedSummary.keyPoints.length > 0) {
+    lines.push('', 'Key Points:', ...cachedSummary.keyPoints.map((p) => `- ${p}`));
+  }
+  if (cachedSummary.redFlags.length > 0) {
+    lines.push('', 'Red Flags:');
+    for (const f of cachedSummary.redFlags) {
+      lines.push(`- [${f.severity.toUpperCase()}] ${f.category.replace(/_/g, ' ')}: ${f.description}`);
+    }
+  }
+  navigator.clipboard.writeText(lines.join('\n')).catch(() => {}); // silent fail if clipboard unavailable
 }
 
 function normalizeSeverity(value: string): 'low' | 'medium' | 'high' | 'critical' {
@@ -288,11 +314,17 @@ function showSaulToast(): void {
   img.src = imgUrl;
   img.alt = 'Saul Goodman';
   img.style.cssText = 'width:48px;height:48px;border-radius:10px;object-fit:cover';
+  const textWrap = document.createElement('div');
   const text = document.createElement('span');
   text.textContent = 'Better call Goodman!';
   text.style.fontWeight = '600';
+  const subtitle = document.createElement('span');
+  subtitle.textContent = 'T&C summary ready';
+  subtitle.style.cssText = 'font-weight:400;font-size:12px;color:#8a8580;display:block';
+  textWrap.appendChild(text);
+  textWrap.appendChild(subtitle);
   toast.appendChild(img);
-  toast.appendChild(text);
+  toast.appendChild(textWrap);
   const style = document.createElement('style');
   style.textContent = `
     @keyframes goodman-saul-in { from { opacity:0; transform:translateY(20px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
