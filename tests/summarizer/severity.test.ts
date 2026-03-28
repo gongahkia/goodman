@@ -39,6 +39,12 @@ describe('computeSeverity', () => {
     expect(['high', 'critical']).toContain(result);
   });
 
+  it('should return at least high for ai_training with high severity', () => {
+    const flags = [makeFlag('high', 'ai_training')];
+    const result = computeSeverity(flags);
+    expect(['high', 'critical']).toContain(result);
+  });
+
   it('should return medium for one low flag (1 point)', () => {
     expect(computeSeverity([makeFlag('low')])).toBe('medium');
   });
