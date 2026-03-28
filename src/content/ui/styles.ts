@@ -273,8 +273,18 @@ export function getOverlayStyles(): string {
     .goodman-flag-header {
       display: flex;
       align-items: center;
-      justify-content: space-between;
       gap: 8px;
+    }
+
+    .goodman-flag-chevron {
+      margin-left: auto;
+      font-size: 16px;
+      transition: transform var(--tc-duration-fast) var(--tc-ease-out);
+      transform: rotate(0deg);
+    }
+
+    [aria-expanded="true"] .goodman-flag-chevron {
+      transform: rotate(90deg);
     }
 
     .goodman-flag-name {
@@ -378,6 +388,39 @@ export function getOverlayStyles(): string {
     .goodman-footer-note {
       font-size: 12px;
       line-height: 1.55;
+    }
+
+    .goodman-copy-btn {
+      display: inline-flex;
+      align-items: center;
+      margin-top: 10px;
+      padding: 6px 12px;
+      border-radius: var(--tc-radius-md);
+      border: 1px solid transparent;
+      background: transparent;
+      font-family: var(--tc-font-family);
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background var(--tc-duration-fast), border-color var(--tc-duration-fast);
+    }
+
+    .tc-theme-light .goodman-copy-btn {
+      color: #6f6b63;
+      border-color: #e6e3de;
+    }
+
+    .tc-theme-light .goodman-copy-btn:hover {
+      background: #f1efeb;
+    }
+
+    .tc-theme-dark .goodman-copy-btn {
+      color: #b8b2a7;
+      border-color: #3a3834;
+    }
+
+    .tc-theme-dark .goodman-copy-btn:hover {
+      background: #2d2b28;
     }
   `;
 }
