@@ -17,6 +17,7 @@ export interface StoredSummary {
   keyPoints: string[];
   redFlags: StoredRedFlag[];
   severity: 'low' | 'medium' | 'high' | 'critical';
+  tldr?: string;
 }
 
 export interface StoredRedFlag {
