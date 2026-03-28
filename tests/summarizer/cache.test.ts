@@ -63,14 +63,39 @@ describe('getCachedSummary', () => {
 });
 
 describe('cacheSummary + getCachedSummary roundtrip', () => {
-  it('stores and retrieves a summary', async () => {
+  it('stores and retrieves a summary with domain-scoped key', async () => {
     const summary = makeSummary();
     await cacheSummary('hash-1', summary, 'example.com');
-    const cached = await getCachedSummary('hash-1');
+    const cached = await getCachedSummary('hash-1', 'example.com');
     expect(cached).not.toBeNull();
     expect(cached!.summary.summary).toBe('test summary');
     expect(cached!.domain).toBe('example.com');
     expect(cached!.textHash).toBe('hash-1');
+  });
+
+  it('isolates cache entries by domain for same hash', async () => {
+    const summary = makeSummary();
+    const summaryB = makeSummary({ summary: 'different summary' });
+    await cacheSummary('hash-same', summary, 'a.com');
+    await cacheSummary('hash-same', summaryB, 'b.com');
+    const cachedA = await getCachedSummary('hash-same', 'a.com');
+    const cachedB = await getCachedSummary('hash-same', 'b.com');
+    expect(cachedA!.summary.summary).toBe('test summary');
+    expect(cachedB!.summary.summary).toBe('different summary');
+  });
+
+  it('falls back to legacy key when domain not provided', async () => {
+    mockStorage['cache'] = {
+      'legacy-hash': {
+        summary: { summary: 'legacy', keyPoints: [], redFlags: [], severity: 'low' as const },
+        domain: 'old.com',
+        textHash: 'legacy-hash',
+        timestamp: Date.now(),
+      },
+    };
+    const cached = await getCachedSummary('legacy-hash');
+    expect(cached).not.toBeNull();
+    expect(cached!.summary.summary).toBe('legacy');
   });
 });
 
