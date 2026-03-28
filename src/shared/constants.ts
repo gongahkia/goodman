@@ -13,6 +13,7 @@ export const MAX_HOSTED_SINGLE_REQUEST_CHARS = 100_000; // max text for hosted s
 export const MAX_TRACKED_DOMAINS = 200;
 export const MIN_OBSERVER_INTERVAL_MS = 10_000; // throttle observer-triggered detections
 export const MAX_CACHE_ENTRIES = 200;
+export const MIN_MODAL_TEXT_LENGTH = 200;
 export const SENSITIVITY_THRESHOLDS = {
   aggressive: 0.4,
   normal: 0.65,
