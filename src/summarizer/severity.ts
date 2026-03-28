@@ -6,7 +6,7 @@ const SEVERITY_POINTS: Record<string, number> = {
   low: 1,
 };
 
-const HIGH_RISK_CATEGORIES = ['data_selling', 'biometric_data'];
+const HIGH_RISK_CATEGORIES = ['data_selling', 'biometric_data', 'ai_training'];
 
 export function computeSeverity(redFlags: RedFlag[]): Severity {
   if (redFlags.length === 0) return 'low';
