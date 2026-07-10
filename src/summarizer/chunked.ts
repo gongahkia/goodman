@@ -96,7 +96,11 @@ async function reducePhase(
   signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
   throwIfAborted(signal);
-  const allRedFlags = deduplicateRedFlags(summaries.flatMap((s) => s.redFlags));
+  const contradictionFlags = detectContradictions(summaries);
+  const allRedFlags = deduplicateRedFlags([
+    ...summaries.flatMap((s) => s.redFlags),
+    ...contradictionFlags,
+  ]);
   const allKeyPoints = deduplicateStrings(summaries.flatMap((s) => s.keyPoints));
   const combinedSummary = summaries.map((s) => s.summary).join(' ');
 
@@ -153,6 +157,33 @@ async function getSummaryLanguage(metadata?: SummarizeOptions['metadata']): Prom
 
 function deduplicateRedFlags(flags: RedFlag[]): RedFlag[] {
   return deduplicateRedFlagsBySeverity(flags);
+}
+
+function detectContradictions(summaries: Summary[]): RedFlag[] {
+  const texts = summaries.map(summary =>
+    [
+      summary.summary,
+      ...summary.keyPoints,
+      ...summary.redFlags.flatMap(flag => [flag.description, flag.quote]),
+    ].join(' ').toLowerCase()
+  );
+
+  const sharesData = texts.some(text =>
+    /\b(may|can|will|reserve the right to)\b[^.]{0,80}\b(share|sell|disclose)\b[^.]{0,80}\bdata\b/.test(text) ||
+    /\bdata\b[^.]{0,80}\b(may be|is|will be)\b[^.]{0,80}\b(shared|sold|disclosed)\b/.test(text)
+  );
+  const deniesDataSharing = texts.some(text =>
+    /\b(never|do not|does not|will not|won't|no)\b[^.]{0,80}\b(share|sell|disclose|data sharing)\b/.test(text)
+  );
+
+  if (!sharesData || !deniesDataSharing) return [];
+
+  return [{
+    category: 'third_party_sharing',
+    description: 'Chunk summaries disagree about whether user data may be shared.',
+    severity: 'medium',
+    quote: '',
+  }];
 }
 
 function deduplicateStrings(items: string[]): string[] {

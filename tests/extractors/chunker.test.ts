@@ -58,4 +58,47 @@ describe('chunkText', () => {
       expect(chunks[1]).toContain(lastPartOfFirst.slice(0, 50));
     }
   });
+
+  it('keeps numbered section headers with their section body', () => {
+    const text = [
+      '1. Introduction',
+      'These terms explain how the service works and what users must do.',
+      '',
+      '2. Limitation of Liability',
+      'The company limits liability for damages and excludes indirect losses.',
+      '',
+      '3. Arbitration',
+      'All disputes must be resolved through binding arbitration.',
+    ].join('\n');
+
+    const chunks = chunkText(text, 22, 0);
+
+    expect(chunks.find(chunk => chunk.includes('limits liability'))).toContain('2. Limitation of Liability');
+    expect(chunks.find(chunk => chunk.includes('binding arbitration'))).toContain('3. Arbitration');
+  });
+
+  it('repeats an oversized section header instead of splitting mid-clause', () => {
+    const body = Array(12)
+      .fill('The liability clause limits damages, excludes indirect losses, and preserves all other contractual rights.')
+      .join(' ');
+    const chunks = chunkText(`14. Limitation of Liability\n\n${body}`, 45, 0);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every(chunk => chunk.includes('14. Limitation of Liability'))).toBe(true);
+  });
+
+  it('adds reference context for cross-referenced clauses', () => {
+    const text = [
+      '7. Payment Terms',
+      'You must pay all fees within thirty days of invoice receipt.',
+      '',
+      '8. Termination',
+      'If you fail to satisfy Clause 7, we may terminate access immediately.',
+    ].join('\n');
+
+    const chunks = chunkText(text, 35, 0);
+    const referencedChunk = chunks.find(chunk => chunk.includes('Clause 7'));
+
+    expect(referencedChunk).toContain('Clause 7 = 7. Payment Terms');
+  });
 });

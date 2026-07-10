@@ -86,6 +86,36 @@ describe('chunkedSummarize', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.summary).toBe('merged result');
   });
+
+  it('adds a contradiction flag when chunk summaries disagree', async () => {
+    const s1 = makeSummary({
+      summary: 'The company may share user data with partners.',
+      keyPoints: ['User data may be shared.'],
+      redFlags: [],
+      severity: 'low',
+    });
+    const s2 = makeSummary({
+      summary: 'The company will not share user data with partners.',
+      keyPoints: ['User data will not be shared.'],
+      redFlags: [],
+      severity: 'low',
+    });
+    mockSingleShot
+      .mockResolvedValueOnce(ok(s1))
+      .mockResolvedValueOnce(ok(s2));
+    mockGetActiveProvider.mockResolvedValue(ok(makeMockProvider(ok(makeSummary({ summary: 'merged result' })))));
+
+    const result = await chunkedSummarize(['c1', 'c2']);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.redFlags).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        category: 'third_party_sharing',
+        description: expect.stringContaining('disagree'),
+      }),
+    ]));
+  });
 });
 
 describe('chunkedSummarizeWithProvider', () => {
