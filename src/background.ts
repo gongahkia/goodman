@@ -1,9 +1,9 @@
 import browser from './browser';
 import type { Menus, Scripting, Tabs } from 'webextension-polyfill';
 import { isRuntimeMessage } from './messages';
-import type { ActiveTabContext, ManualConvertResponse, RuntimeMessage } from './messages';
+import type { ActiveTabContext, ContentModeResponse, ManualConvertResponse, RuntimeMessage } from './messages';
 import { detectBrowserKind, getOriginPattern, isRestrictedUrl, toContentScriptId } from './site-access';
-import { setOnboardingDismissed } from './storage';
+import { getSettings, setOnboardingDismissed } from './storage';
 
 const CONTEXT_MENU_ID = 'onul-convert';
 const LIVE_SCRIPT_PREFIX = 'live-';
@@ -55,7 +55,7 @@ async function handleInstalled(reason: string): Promise<void> {
     await initializeExtension();
 }
 
-async function handleRuntimeMessage(message: RuntimeMessage): Promise<ActiveTabContext | ManualConvertResponse | { liveSelectionEnabled: boolean } | { ok: true }> {
+async function handleRuntimeMessage(message: RuntimeMessage): Promise<ActiveTabContext | ManualConvertResponse | ContentModeResponse | { ok: true }> {
     switch (message.type) {
         case 'ONUL_GET_ACTIVE_TAB_CONTEXT':
             return getActiveTabContext();
@@ -104,15 +104,20 @@ async function getActiveTabContext(): Promise<ActiveTabContext> {
     };
 }
 
-async function getContentMode(url: string): Promise<{ liveSelectionEnabled: boolean }> {
+async function getContentMode(url: string): Promise<ContentModeResponse> {
     const originPattern = getOriginPattern(url);
+    const settings = await getSettings();
 
     if (!originPattern) {
-        return { liveSelectionEnabled: false };
+        return {
+            liveSelectionEnabled: false,
+            interactionMode: settings.interactionMode,
+        };
     }
 
     return {
         liveSelectionEnabled: await browser.permissions.contains({ origins: [originPattern] }),
+        interactionMode: settings.interactionMode,
     };
 }
 

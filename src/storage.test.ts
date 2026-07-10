@@ -13,7 +13,7 @@ vi.mock('./browser', () => ({
     default: browserMock,
 }));
 
-import { getSettings, isOnboardingDismissed, saveSettings, setOnboardingDismissed, shouldShowOnboarding } from './storage';
+import { getSettings, isOnboardingDismissed, modeIncludesHighlight, modeIncludesHover, saveSettings, setOnboardingDismissed, shouldShowOnboarding } from './storage';
 
 describe('Storage Helpers', () => {
     beforeEach(() => {
@@ -38,7 +38,8 @@ describe('Storage Helpers', () => {
             'format24h',
             'ignoredDomains',
             'theme',
-            'pinnedTimezones'
+            'pinnedTimezones',
+            'interactionMode'
         ]);
         expect(settings.targetTimezone).toBe('Asia/Tokyo');
     });
@@ -49,6 +50,14 @@ describe('Storage Helpers', () => {
         const settings = await getSettings();
         expect(settings.targetTimezone).toBe('auto');
         expect(settings.format24h).toBe(false);
+        expect(settings.interactionMode).toBe('highlight');
+    });
+
+    it('should fetch persisted interaction mode', async () => {
+        browserMock.storage.local.get.mockResolvedValue({ interactionMode: 'both' });
+
+        const settings = await getSettings();
+        expect(settings.interactionMode).toBe('both');
     });
 
     it('should save settings', async () => {
@@ -94,5 +103,14 @@ describe('Storage Helpers', () => {
         browserMock.storage.local.get.mockResolvedValue({ targetTimezone: 'Asia/Tokyo' });
 
         await expect(shouldShowOnboarding()).resolves.toBe(false);
+    });
+
+    it('should classify interaction modes', () => {
+        expect(modeIncludesHighlight('highlight')).toBe(true);
+        expect(modeIncludesHighlight('both')).toBe(true);
+        expect(modeIncludesHighlight('hover')).toBe(false);
+        expect(modeIncludesHover('hover')).toBe(true);
+        expect(modeIncludesHover('both')).toBe(true);
+        expect(modeIncludesHover('highlight')).toBe(false);
     });
 });

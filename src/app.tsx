@@ -367,6 +367,21 @@ export function App() {
       </section>
 
       <section class="setting-group">
+        <label>Interaction Mode</label>
+        <select
+          value={settings.interactionMode}
+          onChange={(event) => {
+            handleChange('interactionMode', event.currentTarget.value);
+          }}
+        >
+          <option value="highlight">Highlight</option>
+          <option value="hover">Hover</option>
+          <option value="both">Both</option>
+        </select>
+        <small class="muted">Hover mode is available after page scanning ships.</small>
+      </section>
+
+      <section class="setting-group">
         <label>Theme</label>
         <select
           value={settings.theme}

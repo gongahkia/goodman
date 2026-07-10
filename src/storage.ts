@@ -1,6 +1,7 @@
 import browser from './browser';
 
 export type Theme = 'light' | 'dark' | 'auto';
+export type InteractionMode = 'highlight' | 'hover' | 'both';
 
 export interface UserSettings {
     targetTimezone: string; // IANA zone or 'auto'
@@ -8,6 +9,7 @@ export interface UserSettings {
     ignoredDomains: string[];
     theme: Theme;
     pinnedTimezones: string[]; // additional IANA zones to show (max 4)
+    interactionMode: InteractionMode;
 }
 
 const SETTINGS_KEYS: (keyof UserSettings)[] = [
@@ -15,7 +17,8 @@ const SETTINGS_KEYS: (keyof UserSettings)[] = [
     'format24h',
     'ignoredDomains',
     'theme',
-    'pinnedTimezones'
+    'pinnedTimezones',
+    'interactionMode'
 ];
 const DEFAULT_SETTINGS: UserSettings = {
     targetTimezone: 'auto',
@@ -23,6 +26,7 @@ const DEFAULT_SETTINGS: UserSettings = {
     ignoredDomains: [],
     theme: 'auto',
     pinnedTimezones: [],
+    interactionMode: 'highlight',
 };
 
 const ONBOARDING_DISMISSED_KEY = 'onboardingDismissed';
@@ -37,10 +41,19 @@ export async function getSettings(): Promise<UserSettings> {
             ignoredDomains: result.ignoredDomains ?? DEFAULT_SETTINGS.ignoredDomains,
             theme: result.theme ?? DEFAULT_SETTINGS.theme,
             pinnedTimezones: result.pinnedTimezones ?? DEFAULT_SETTINGS.pinnedTimezones,
+            interactionMode: result.interactionMode ?? DEFAULT_SETTINGS.interactionMode,
         };
     } catch {
         return DEFAULT_SETTINGS;
     }
+}
+
+export function modeIncludesHighlight(mode: InteractionMode): boolean {
+    return mode === 'highlight' || mode === 'both';
+}
+
+export function modeIncludesHover(mode: InteractionMode): boolean {
+    return mode === 'hover' || mode === 'both';
 }
 
 export async function saveSettings(settings: Partial<UserSettings>): Promise<void> {

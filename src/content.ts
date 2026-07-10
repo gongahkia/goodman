@@ -5,7 +5,7 @@ import type { ManualConvertResponse, RuntimeMessage } from './messages';
 import { parseDate } from './parser';
 import { calculatePopupPosition } from './positioning';
 import { isIgnoredHostname } from './site-access';
-import { getSettings } from './storage';
+import { getSettings, modeIncludesHighlight } from './storage';
 import type { UserSettings } from './storage';
 import { convertToTimezone, getDateDiffLabel, getSystemTimezone, getTargetDateLabel } from './timezone';
 
@@ -23,7 +23,7 @@ class OnulContentController {
     private bootPromise: Promise<void> | null = null;
 
     private readonly onSelectionChange = () => {
-        if (!this.liveSelectionEnabled || this.isIgnoredDomain()) {
+        if (!this.liveSelectionEnabled || !this.isHighlightModeEnabled() || this.isIgnoredDomain()) {
             return;
         }
 
@@ -50,7 +50,8 @@ class OnulContentController {
             'format24h' in changes ||
             'ignoredDomains' in changes ||
             'theme' in changes ||
-            'pinnedTimezones' in changes
+            'pinnedTimezones' in changes ||
+            'interactionMode' in changes
         ) {
             void this.refreshSettings();
         }
@@ -287,6 +288,10 @@ class OnulContentController {
         }
 
         return isIgnoredHostname(window.location.hostname, this.currentSettings.ignoredDomains);
+    }
+
+    private isHighlightModeEnabled(): boolean {
+        return this.currentSettings ? modeIncludesHighlight(this.currentSettings.interactionMode) : true;
     }
 }
 

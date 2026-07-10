@@ -1,4 +1,5 @@
 import type { BrowserKind } from './site-access';
+import type { InteractionMode } from './storage';
 
 export type ManualConvertFailureReason = 'NO_SELECTION' | 'SELECTION_TOO_LONG' | 'UNSUPPORTED_SELECTION' | 'NO_RANGE';
 
@@ -9,6 +10,11 @@ export interface ActiveTabContext {
   originPattern: string | null;
   restricted: boolean;
   liveEnabled: boolean;
+}
+
+export interface ContentModeResponse {
+  liveSelectionEnabled: boolean;
+  interactionMode: InteractionMode;
 }
 
 export interface ManualConvertResponse {
