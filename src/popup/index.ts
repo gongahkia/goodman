@@ -67,6 +67,7 @@ function getSurfaceMode(): 'popup' | 'panel' {
 const surfaceMode = getSurfaceMode();
 
 const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Cache'] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 const state: PopupState = {
   tabId: null,
@@ -117,6 +118,7 @@ async function initMain(app: HTMLElement): Promise<void> {
 // ---------- render ----------
 
 let loadingInterval: ReturnType<typeof setInterval> | null = null;
+let redFlagCardId = 0;
 
 function render(container: HTMLElement): void {
   container.className = 'tc-page';
@@ -360,6 +362,7 @@ function createAnalyzingCard(label: string): HTMLElement {
   const track = createElement('div', 'tc-progress-track');
   const fill = createElement('div', 'tc-progress-fill');
   const pct = getProgressPercent(state.analysis);
+  configureProgressTrack(track, pct, 'Analysis progress');
   fill.style.width = `${pct}%`;
   track.appendChild(fill);
   const pctLabel = createElement('span', 'tc-progress-percent', `${pct}%`);
@@ -413,6 +416,8 @@ function createNotificationBanner(): HTMLElement | null {
   const currentDomain = getCurrentDomain();
   const current = state.pendingNotifications.find(n => n.domain === currentDomain);
   const banner = createElement('div', 'tc-banner');
+  banner.setAttribute('role', 'status');
+  banner.setAttribute('aria-live', 'polite');
   const text = createElement('span', 'tc-banner-text',
     current
       ? `Terms changed on ${current.domain}`
@@ -560,6 +565,7 @@ function createProgressSection(progressPercent: number, stageLabel: string, logs
   const percent = createElement('span', 'tc-progress-percent', `${progressPercent}%`);
   const track = createElement('div', 'tc-progress-track');
   const fill = createElement('div', 'tc-progress-fill');
+  configureProgressTrack(track, progressPercent, 'Analysis progress');
   fill.style.width = `${progressPercent}%`;
   track.appendChild(fill);
   const latestLog = logs[logs.length - 1];
@@ -572,6 +578,10 @@ function createProgressSection(progressPercent: number, stageLabel: string, logs
 
 function createLogStream(logs: PageAnalysisLogEntry[]): HTMLElement {
   const stream = createElement('div', 'tc-log-stream');
+  stream.setAttribute('role', 'log');
+  stream.setAttribute('aria-live', 'polite');
+  stream.setAttribute('aria-relevant', 'additions text');
+  stream.setAttribute('aria-label', 'Analysis progress log');
   for (const log of [...logs].reverse()) {
     const row = createElement('div', cx('tc-log-row', `tc-log-row--${log.level}`));
     const dot = createElement('span', 'tc-log-dot');
@@ -609,30 +619,46 @@ function createRedFlagsSection(flags: Array<{ category: string; description: str
 
 function createRedFlagCard(flag: { category: string; description: string; severity: string; quote: string }): HTMLElement {
   const card = createElement('div', cx('tc-flag-card', isExpandableSeverity(flag.severity) && `tc-flag-card--${flag.severity}`));
+  const categoryLabel = flag.category.replace(/_/g, ' ');
+  const detailsId = `tc-flag-details-${redFlagCardId += 1}`;
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-expanded', 'false');
+  card.setAttribute('aria-controls', detailsId);
+  card.setAttribute('aria-label', `Expand details for ${categoryLabel} (${flag.severity} risk)`);
   const header = createElement('div', 'tc-flag-header');
   const titleWrap = createElement('div');
-  const title = createElement('span', 'tc-flag-title', flag.category.replace(/_/g, ' '));
+  const title = createElement('span', 'tc-flag-title', categoryLabel);
   const staticDesc = RED_FLAG_DESCRIPTIONS[flag.category as RedFlagCategory];
   titleWrap.appendChild(title);
   if (staticDesc) titleWrap.appendChild(createElement('p', 'tc-flag-subtitle', staticDesc));
   const severityPill = createSeverityPill(flag.severity);
   const details = createElement('div', 'tc-flag-details');
+  details.id = detailsId;
+  details.setAttribute('aria-hidden', 'true');
   const desc = createElement('p', 'tc-flag-description', flag.description);
   appendChildren(header, titleWrap, severityPill);
   details.appendChild(desc);
   if (flag.quote) details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
   appendChildren(card, header, details);
-  const toggle = (): void => {
-    const expanded = card.getAttribute('aria-expanded') === 'true';
-    card.setAttribute('aria-expanded', String(!expanded));
-    details.style.maxHeight = expanded ? '0' : '320px';
+  const setExpanded = (expanded: boolean): void => {
+    card.setAttribute('aria-expanded', String(expanded));
+    card.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} details for ${categoryLabel} (${flag.severity} risk)`);
+    details.setAttribute('aria-hidden', String(!expanded));
+    details.style.maxHeight = expanded ? '320px' : '0';
   };
+  const toggle = (): void => setExpanded(card.getAttribute('aria-expanded') !== 'true');
   card.addEventListener('click', toggle);
   card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
   return card;
+}
+
+function configureProgressTrack(track: HTMLElement, value: number, label: string): void {
+  track.setAttribute('role', 'progressbar');
+  track.setAttribute('aria-label', label);
+  track.setAttribute('aria-valuemin', '0');
+  track.setAttribute('aria-valuemax', '100');
+  track.setAttribute('aria-valuenow', String(value));
 }
 
 function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
@@ -720,7 +746,12 @@ function showSettings(): void {
   const panel = createElement('section', 'tc-settings-panel');
   const body = createElement('div', 'tc-settings-body');
   const contentDiv = createElement('div');
+  contentDiv.id = 'tc-settings-tabpanel';
+  contentDiv.setAttribute('role', 'tabpanel');
+  contentDiv.tabIndex = -1;
   const tabBar = createElement('div', 'tc-tabs');
+  tabBar.setAttribute('role', 'tablist');
+  tabBar.setAttribute('aria-label', 'Settings sections');
   appendChildren(body, createViewHeader('Settings', 'Providers, detection, notifications, and cache.'), tabBar, contentDiv);
   panel.appendChild(body);
   app.appendChild(panel);
@@ -728,22 +759,28 @@ function showSettings(): void {
   for (const tab of SETTINGS_TABS) {
     const button = createElement('button', 'tc-tab', tab) as HTMLButtonElement;
     button.type = 'button';
+    button.id = `tc-settings-tab-${tab.toLowerCase()}`;
+    button.setAttribute('role', 'tab');
+    button.setAttribute('aria-controls', contentDiv.id);
+    button.setAttribute('aria-selected', 'false');
+    button.tabIndex = -1;
     button.addEventListener('click', async () => {
       setActiveTab(buttons, button);
-      switch (tab) {
-        case 'Providers': await renderProviderSettings(contentDiv); break;
-        case 'Detection': await renderDetectionSettings(contentDiv); break;
-        case 'Notifications': await renderNotificationSettings(contentDiv); break;
-        case 'Domains': await renderDomainSettings(contentDiv); break;
-        case 'Cache': await renderCacheSettings(contentDiv); break;
-      }
+      await renderSettingsTab(tab, contentDiv);
+    });
+    button.addEventListener('keydown', (e) => {
+      const next = getNextSettingsTabButton(buttons, button, e.key);
+      if (!next) return;
+      e.preventDefault();
+      next.focus();
+      next.click();
     });
     buttons.push(button);
     tabBar.appendChild(button);
   }
   const firstTab = buttons[0];
   if (firstTab) setActiveTab(buttons, firstTab);
-  void renderProviderSettings(contentDiv).catch(e => console.warn('[Goodman] initial provider settings render failed:', e));
+  void renderSettingsTab('Providers', contentDiv).catch(e => console.warn('[Goodman] initial settings render failed:', e));
 }
 
 function showHistory(initialDomain?: string): void {
@@ -822,7 +859,41 @@ function handleBack(): void {
 }
 
 function setActiveTab(buttons: HTMLButtonElement[], activeButton: HTMLButtonElement): void {
-  for (const button of buttons) button.classList.toggle('is-active', button === activeButton);
+  for (const button of buttons) {
+    const active = button === activeButton;
+    button.classList.toggle('is-active', active);
+    button.setAttribute('aria-selected', String(active));
+    button.tabIndex = active ? 0 : -1;
+  }
+  const panelId = activeButton.getAttribute('aria-controls');
+  if (panelId) {
+    const panel = document.getElementById(panelId);
+    if (panel) panel.setAttribute('aria-labelledby', activeButton.id);
+  }
+}
+
+async function renderSettingsTab(tab: SettingsTab, contentDiv: HTMLElement): Promise<void> {
+  switch (tab) {
+    case 'Providers': await renderProviderSettings(contentDiv); break;
+    case 'Detection': await renderDetectionSettings(contentDiv); break;
+    case 'Notifications': await renderNotificationSettings(contentDiv); break;
+    case 'Domains': await renderDomainSettings(contentDiv); break;
+    case 'Cache': await renderCacheSettings(contentDiv); break;
+  }
+}
+
+function getNextSettingsTabButton(
+  buttons: HTMLButtonElement[],
+  current: HTMLButtonElement,
+  key: string
+): HTMLButtonElement | null {
+  const index = buttons.indexOf(current);
+  if (index < 0) return null;
+  if (key === 'Home') return buttons[0] ?? null;
+  if (key === 'End') return buttons[buttons.length - 1] ?? null;
+  if (key === 'ArrowRight' || key === 'ArrowDown') return buttons[(index + 1) % buttons.length] ?? null;
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return buttons[(index - 1 + buttons.length) % buttons.length] ?? null;
+  return null;
 }
 
 // ========== STATE ==========

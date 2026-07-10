@@ -56,7 +56,12 @@ function renderProviderSettingsView(
   );
 
   const picker = createElement('div', 'tc-provider-picker');
+  picker.setAttribute('role', 'radiogroup');
+  picker.setAttribute('aria-label', 'Provider');
   const configSection = createElement('div', 'tc-callout');
+  configSection.setAttribute('role', 'region');
+  configSection.setAttribute('aria-live', 'polite');
+  configSection.setAttribute('aria-label', 'Provider configuration');
   const activeAdvancedProvider = isVisibleProvider(settings.activeProvider)
     ? settings.activeProvider
     : 'openai';
@@ -174,11 +179,17 @@ function createApiKeyField(
   const showButton = createButton('Show', 'secondary', () => {
     input.type = input.type === 'password' ? 'text' : 'password';
     showButton.textContent = input.type === 'password' ? 'Show' : 'Hide';
+    showButton.setAttribute('aria-label', `${input.type === 'password' ? 'Show' : 'Hide'} ${providerName} API key`);
+    showButton.setAttribute('aria-pressed', String(input.type !== 'password'));
   });
+  showButton.setAttribute('aria-controls', inputId);
+  showButton.setAttribute('aria-label', `Show ${providerName} API key`);
+  showButton.setAttribute('aria-pressed', 'false');
 
   const testButton = createButton('Test', 'secondary', () => {
     void runProviderValidation(providerName, testButton).catch(e => console.warn('[Goodman] provider validation failed:', e));
   });
+  testButton.setAttribute('aria-label', `Test ${providerName} provider connection`);
 
   appendChildren(field, label);
   appendChildren(controls, input, showButton, testButton);
@@ -228,17 +239,21 @@ async function runProviderValidation(
   button: HTMLButtonElement
 ): Promise<void> {
   button.textContent = 'Testing...';
+  button.setAttribute('aria-label', `Testing ${providerName} provider connection`);
   button.disabled = true;
 
   try {
     const valid = await validateProvider(providerName);
     button.textContent = valid ? 'Valid' : 'Invalid — check key';
+    button.setAttribute('aria-label', `${providerName} provider connection ${valid ? 'valid' : 'invalid'}`);
     button.style.color = valid ? '#3f8f63' : '#b54745';
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
-    button.textContent = msg.includes('fetch') || msg.includes('network')
+    const statusLabel = msg.includes('fetch') || msg.includes('network')
       ? 'Unreachable'
       : 'Error';
+    button.textContent = statusLabel;
+    button.setAttribute('aria-label', `${providerName} provider connection ${statusLabel.toLowerCase()}`);
     button.style.color = '#b54745';
   }
 

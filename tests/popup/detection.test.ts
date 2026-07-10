@@ -23,6 +23,7 @@ describe('detection settings', () => {
 
     const radios = container.querySelectorAll('input[type="radio"][name="sensitivity"]');
     expect(radios.length).toBe(3);
+    expect(container.querySelector('[role="radiogroup"]')?.getAttribute('aria-label')).toBe('Detection sensitivity');
 
     const values = Array.from(radios).map((r) => (r as HTMLInputElement).value);
     expect(values).toContain('aggressive');

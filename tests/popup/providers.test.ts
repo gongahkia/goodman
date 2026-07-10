@@ -49,6 +49,22 @@ describe('provider settings', () => {
     expect(getProviderRadio(container, 'openai').checked).toBe(true);
   });
 
+  it('labels provider controls for assistive tech', async () => {
+    const container = await renderSettings();
+
+    const picker = container.querySelector('[role="radiogroup"]');
+    const apiKeyInput = getApiKeyInput(container);
+    const showButton = Array.from(container.querySelectorAll('button')).find(
+      (button) => button.textContent === 'Show'
+    ) as HTMLButtonElement;
+    const testButton = getTestButton(container);
+
+    expect(picker?.getAttribute('aria-label')).toBe('Provider');
+    expect(showButton.getAttribute('aria-controls')).toBe(apiKeyInput.id);
+    expect(showButton.getAttribute('aria-pressed')).toBe('false');
+    expect(testButton.getAttribute('aria-label')).toBe('Test openai provider connection');
+  });
+
   it('keeps the test button bound to the currently displayed provider', async () => {
     const container = await renderSettings();
 

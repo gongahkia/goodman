@@ -34,6 +34,10 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
     )
   );
 
+  const group = createElement('div');
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-label', 'Detection sensitivity');
+
   for (const option of SENSITIVITY_OPTIONS) {
     const label = createElement('label', 'tc-radio-card');
     const radio = createElement('input') as HTMLInputElement;
@@ -55,6 +59,7 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
     );
 
     appendChildren(label, radio, body);
-    container.appendChild(label);
+    group.appendChild(label);
   }
+  container.appendChild(group);
 }

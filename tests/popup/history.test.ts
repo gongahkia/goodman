@@ -52,4 +52,15 @@ describe('renderHistoryPanel', () => {
 
     expect(clearNotification).toHaveBeenCalledWith('other.com');
   });
+
+  it('labels the domain selector', async () => {
+    const container = document.createElement('div');
+
+    await renderHistoryPanel(container, 'example.com');
+
+    const select = container.querySelector('select') as HTMLSelectElement;
+    const label = container.querySelector('label.tc-select-label') as HTMLLabelElement;
+    expect(label.htmlFor).toBe(select.id);
+    expect(label.textContent).toContain('Domain');
+  });
 });

@@ -24,8 +24,10 @@ export async function renderHistoryPanel(
   }
 
   const selectRow = createElement('div', 'tc-select-row');
-  const label = createElement('span', 'tc-select-label', `Domain (${domains.length} tracked):`);
+  const label = createElement('label', 'tc-select-label', `Domain (${domains.length} tracked):`);
   const select = createElement('select', 'tc-select') as HTMLSelectElement;
+  select.id = 'tc-history-domain';
+  label.htmlFor = select.id;
   for (const domain of domains) {
     const option = createElement('option', '', domain) as HTMLOptionElement;
     option.value = domain;

@@ -6,6 +6,7 @@ import { getVersionHistory } from '../schema';
 
 export async function renderTimeline(domain: string): Promise<HTMLElement> {
   const container = createElement('div', 'tc-timeline');
+  container.setAttribute('aria-label', `Version history for ${domain}`);
   const history = await getVersionHistory(domain);
   const reversed = [...history].reverse();
 
@@ -37,7 +38,13 @@ function createTimelineItem(
   isLatest: boolean
 ): HTMLElement {
   const node = createElement('div', 'tc-timeline-item');
+  const detailsId = `tc-timeline-summary-${entry.domain.replace(/[^a-z0-9_-]/gi, '-')}-${entry.version}`;
   node.style.setProperty('--tc-line-color', getSeverityColor(entry.summary.severity));
+  node.setAttribute('role', 'button');
+  node.setAttribute('tabindex', '0');
+  node.setAttribute('aria-expanded', 'false');
+  node.setAttribute('aria-controls', detailsId);
+  node.setAttribute('aria-label', `Expand version ${entry.version} summary for ${entry.domain}`);
 
   const topline = createElement('div', 'tc-timeline-topline');
   appendChildren(
@@ -57,6 +64,8 @@ function createTimelineItem(
     : createElement('p', 'tc-timeline-annotation', 'First recorded version');
 
   const details = createElement('div', 'tc-timeline-summary');
+  details.id = detailsId;
+  details.setAttribute('aria-hidden', 'true');
   const summaryText = createElement('p', '', entry.summary.summary);
   details.appendChild(summaryText);
 
@@ -90,8 +99,19 @@ function createTimelineItem(
 
   appendChildren(node, topline, annotation, details);
 
-  node.addEventListener('click', () => {
-    details.style.display = details.style.display === 'block' ? 'none' : 'block';
+  const setExpanded = (expanded: boolean): void => {
+    node.setAttribute('aria-expanded', String(expanded));
+    node.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} version ${entry.version} summary for ${entry.domain}`);
+    details.setAttribute('aria-hidden', String(!expanded));
+    details.style.display = expanded ? 'block' : 'none';
+  };
+  const toggle = (): void => setExpanded(node.getAttribute('aria-expanded') !== 'true');
+  node.addEventListener('click', toggle);
+  node.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      toggle();
+    }
   });
 
   return node;

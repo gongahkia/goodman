@@ -69,6 +69,7 @@ describe('cache settings', () => {
 
     const firstClearBtn = domainRows[0]!.querySelector('button') as HTMLButtonElement;
     expect(firstClearBtn).not.toBeNull();
+    expect(firstClearBtn.getAttribute('aria-label')).toBe('Clear cache for example.com');
 
     mockGetCacheStats.mockResolvedValue({ count: 1, sizeBytes: 512, domains: ['test.org'] });
     firstClearBtn.click();

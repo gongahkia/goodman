@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '@shared/storage';
 import { chrome, mockStorage } from '../mocks/chrome';
 
 vi.mock('@popup/history', () => ({
@@ -179,6 +180,42 @@ describe('popup index', () => {
 
     expect(document.body.textContent).toContain('Checking cache');
     expect(document.body.textContent).toContain('72%');
+    const progress = document.querySelector('[role="progressbar"]');
+    expect(progress?.getAttribute('aria-valuenow')).toBe('72');
+    expect(progress?.getAttribute('aria-label')).toBe('Analysis progress');
+    const log = document.querySelector('[role="log"]');
+    expect(log?.getAttribute('aria-live')).toBe('polite');
+  });
+
+  it('renders settings tabs with keyboard navigation semantics', async () => {
+    mockStorage.settings = structuredClone(DEFAULT_SETTINGS);
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    const settingsButton = document.querySelector(
+      'button[aria-label="Open settings"]'
+    ) as HTMLButtonElement;
+    settingsButton.click();
+    await flush();
+
+    const tablist = document.querySelector('[role="tablist"]');
+    const tabs = Array.from(document.querySelectorAll('[role="tab"]')) as HTMLButtonElement[];
+    expect(tablist?.getAttribute('aria-label')).toBe('Settings sections');
+    expect(tabs).toHaveLength(5);
+    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[0]?.tabIndex).toBe(0);
+
+    tabs[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    await flush();
+
+    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
+    expect(tabs[1]?.tabIndex).toBe(0);
+    expect(document.querySelector('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe(tabs[1]?.id);
   });
 
   it('cancels an in-flight analysis from the popup', async () => {

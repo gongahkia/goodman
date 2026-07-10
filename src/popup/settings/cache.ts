@@ -54,6 +54,7 @@ export async function renderCacheSettings(container: HTMLElement): Promise<void>
           await renderCacheSettings(container);
         }).catch(e => console.warn('[Goodman] clear domain cache failed:', e));
       });
+      clearButton.setAttribute('aria-label', `Clear cache for ${domain}`);
 
       appendChildren(row, label, clearButton);
       container.appendChild(row);
@@ -61,13 +62,17 @@ export async function renderCacheSettings(container: HTMLElement): Promise<void>
   }
 
   container.appendChild(
-    createButton('Clear All Cache', 'danger', () => {
-      if (confirm('Clear all cached summaries?')) {
-        void clearCache().then(async () => {
-          await renderCacheSettings(container);
-        }).catch(e => console.warn('[Goodman] clear all cache failed:', e));
-      }
-    })
+    (() => {
+      const button = createButton('Clear All Cache', 'danger', () => {
+        if (confirm('Clear all cached summaries?')) {
+          void clearCache().then(async () => {
+            await renderCacheSettings(container);
+          }).catch(e => console.warn('[Goodman] clear all cache failed:', e));
+        }
+      });
+      button.setAttribute('aria-label', 'Clear all cached summaries');
+      return button;
+    })()
   );
 }
 

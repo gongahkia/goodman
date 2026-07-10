@@ -22,12 +22,14 @@ export async function renderDomainSettings(container: HTMLElement): Promise<void
 
   const addRow = createElement('div', 'tc-domain-add-row');
   const input = createInput('text', 'e.g. mail.google.com', '');
+  input.setAttribute('aria-label', 'Domain to block');
   input.style.flex = '1 1 180px';
   const addButton = createButton('Add', 'primary', () => {
     const domain = input.value.trim().toLowerCase();
     if (!domain || blacklist.includes(domain)) return;
     void addDomain(domain, container).catch(e => console.warn('[Goodman] add domain failed:', e));
   });
+  addButton.setAttribute('aria-label', 'Add domain to blocklist');
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') addButton.click();
   });
@@ -49,6 +51,7 @@ export async function renderDomainSettings(container: HTMLElement): Promise<void
     const removeButton = createButton('Remove', 'secondary', () => {
       void removeDomain(domain, container).catch(e => console.warn('[Goodman] remove domain failed:', e));
     });
+    removeButton.setAttribute('aria-label', `Remove ${domain} from blocklist`);
     appendChildren(row, label, removeButton);
     container.appendChild(row);
   }
