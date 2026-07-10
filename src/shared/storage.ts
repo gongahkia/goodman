@@ -50,6 +50,7 @@ export interface StorageSchema {
   versionHistory: Record<string, VersionEntry[]>;
   domainNotificationPreferences: Record<string, boolean>;
   domainBlacklist: string[];
+  dismissedConsentWarnings: Record<string, number>;
   pendingNotifications: PendingNotification[];
   onboardingCompleted: boolean;
   storageVersion: number;
@@ -83,6 +84,7 @@ const STORAGE_DEFAULTS: StorageSchema = {
   versionHistory: {},
   domainNotificationPreferences: {},
   domainBlacklist: [],
+  dismissedConsentWarnings: {},
   pendingNotifications: [],
   onboardingCompleted: false,
   storageVersion: STORAGE_VERSION,

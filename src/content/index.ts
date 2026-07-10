@@ -14,6 +14,10 @@ import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { createOverlay, removeOverlay } from '@content/ui/overlay';
 import {
+  renderConsentWarningBadge,
+  removeConsentWarningBadge,
+} from '@content/ui/consent-warning';
+import {
   getPageAnalysisByUrl,
   getStorage,
   setPageAnalysisByUrl,
@@ -134,6 +138,7 @@ async function handleDetectTC(
   const blacklistResult = await getStorage('domainBlacklist');
   throwIfAborted(signal);
   if (blacklistResult.ok && blacklistResult.data.includes(window.location.hostname)) {
+    removeConsentWarningBadge();
     return { ok: true, data: [] };
   }
 
@@ -198,6 +203,7 @@ async function handleDetectTC(
 
   if (scored.length === 0) {
     removeOverlay();
+    removeConsentWarningBadge();
     lastRenderedTextHash = null;
     await persistStage(
       {
@@ -217,6 +223,7 @@ async function handleDetectTC(
   }
 
   const best = scored[0]!;
+  await renderConsentWarningBadge(best, null, window.location.hostname, themePreference);
   if (force) {
     await persistStage(
       {
@@ -376,6 +383,7 @@ async function handleDetectTC(
     );
     removeOverlay();
     createOverlay(best, summaryResult.data, themePreference);
+    await renderConsentWarningBadge(best, summaryResult.data, window.location.hostname, themePreference);
     lastRenderedTextHash = textHash;
 
     return {
@@ -431,6 +439,7 @@ async function handleDetectTC(
 
   removeOverlay();
   createOverlay(best, result.data, themePreference);
+  await renderConsentWarningBadge(best, result.data, window.location.hostname, themePreference);
   lastRenderedTextHash = textHash;
 
   return {
@@ -518,6 +527,7 @@ async function cancelCurrentAnalysis(): Promise<MessageResponse> {
   rerunRequested = false;
   currentAnalysisController?.abort();
   removeOverlay();
+  removeConsentWarningBadge();
   lastRenderedTextHash = null;
   await persistCancelledPageAnalysisState();
   return { ok: true, data: null };

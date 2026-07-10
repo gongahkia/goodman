@@ -52,6 +52,15 @@ describe('shared storage', () => {
     }
   });
 
+  it('returns empty consent-warning dismissals by default', async () => {
+    const result = await getStorage('dismissedConsentWarnings');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data).toEqual({});
+    }
+  });
+
   it('persists page analysis records by tab id', async () => {
     const record = makePageAnalysisRecord();
 
