@@ -1,11 +1,12 @@
 import browser from './browser';
 import { showPopup, hidePopup, isPopupEvent } from './content-ui';
+import { findHoverEntities } from './hover-scanner';
 import { isRuntimeMessage } from './messages';
 import type { ManualConvertResponse, RuntimeMessage } from './messages';
 import { parseDate } from './parser';
 import { calculatePopupPosition } from './positioning';
 import { isIgnoredHostname } from './site-access';
-import { getSettings, modeIncludesHighlight } from './storage';
+import { getSettings, modeIncludesHighlight, modeIncludesHover } from './storage';
 import type { UserSettings } from './storage';
 import { convertToTimezone, getDateDiffLabel, getSystemTimezone, getTargetDateLabel } from './timezone';
 
@@ -17,10 +18,16 @@ declare global {
 
 class OnulContentController {
     private selectionTimeout: number | undefined;
+    private hoverScanTimeout: number | undefined;
     private readonly debounceDelayMs = 200;
+    private readonly hoverDebounceDelayMs = 300;
+    private readonly maxHoverTextNodes = 800;
+    private readonly maxHoverAnnotations = 200;
     private currentSettings: UserSettings | null = null;
     private liveSelectionEnabled = false;
     private bootPromise: Promise<void> | null = null;
+    private hoverObserver: MutationObserver | null = null;
+    private readonly hoverAnnotations = new Set<HTMLElement>();
 
     private readonly onSelectionChange = () => {
         if (!this.liveSelectionEnabled || !this.isHighlightModeEnabled() || this.isIgnoredDomain()) {
@@ -41,6 +48,30 @@ class OnulContentController {
             return;
         }
 
+        hidePopup();
+    };
+
+    private readonly onScroll = () => {
+        hidePopup();
+    };
+
+    private readonly onKeyDown = (event: KeyboardEvent) => {
+        if (event.key === 'Escape') {
+            hidePopup();
+        }
+    };
+
+    private readonly onHoverMutation = () => {
+        this.scheduleHoverScan();
+    };
+
+    private readonly onHoverEntityEnter = (event: Event) => {
+        if (event.currentTarget instanceof HTMLElement) {
+            this.showHoverEntity(event.currentTarget);
+        }
+    };
+
+    private readonly onHoverEntityLeave = () => {
         hidePopup();
     };
 
@@ -119,6 +150,8 @@ class OnulContentController {
         if (this.liveSelectionEnabled && this.isIgnoredDomain()) {
             hidePopup();
         }
+
+        this.syncHoverScanning();
     }
 
     private setLiveSelectionEnabled(enabled: boolean): void {
@@ -131,6 +164,9 @@ class OnulContentController {
         if (enabled) {
             document.addEventListener('selectionchange', this.onSelectionChange);
             document.addEventListener('mousedown', this.onMouseDown);
+            document.addEventListener('scroll', this.onScroll, true);
+            document.addEventListener('keydown', this.onKeyDown);
+            this.syncHoverScanning();
             return;
         }
 
@@ -141,6 +177,10 @@ class OnulContentController {
 
         document.removeEventListener('selectionchange', this.onSelectionChange);
         document.removeEventListener('mousedown', this.onMouseDown);
+        document.removeEventListener('scroll', this.onScroll, true);
+        document.removeEventListener('keydown', this.onKeyDown);
+        this.stopHoverScanning();
+        hidePopup();
     }
 
     private handleSelection(options: {
@@ -240,6 +280,216 @@ class OnulContentController {
         return { ok: true };
     }
 
+    private syncHoverScanning(): void {
+        if (!this.shouldRunHoverScanner()) {
+            this.stopHoverScanning();
+            return;
+        }
+
+        if (!this.hoverObserver) {
+            this.hoverObserver = new MutationObserver(this.onHoverMutation);
+            this.hoverObserver.observe(document.body, {
+                childList: true,
+                characterData: true,
+                subtree: true,
+            });
+        }
+
+        this.scheduleHoverScan(0);
+    }
+
+    private scheduleHoverScan(delay = this.hoverDebounceDelayMs): void {
+        if (!this.shouldRunHoverScanner()) {
+            return;
+        }
+
+        if (this.hoverScanTimeout !== undefined) {
+            clearTimeout(this.hoverScanTimeout);
+        }
+
+        this.hoverScanTimeout = window.setTimeout(() => {
+            this.hoverScanTimeout = undefined;
+            this.scanHoverEntities();
+        }, delay);
+    }
+
+    private scanHoverEntities(): void {
+        if (!this.shouldRunHoverScanner()) {
+            this.stopHoverScanning();
+            return;
+        }
+
+        const observer = this.hoverObserver;
+        let visitedTextNodes = 0;
+        observer?.disconnect();
+
+        try {
+            this.clearHoverAnnotations();
+
+            const nodes: Text[] = [];
+            const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+                acceptNode: (node) => {
+                    visitedTextNodes += 1;
+
+                    if (visitedTextNodes > this.maxHoverTextNodes) {
+                        return NodeFilter.FILTER_REJECT;
+                    }
+
+                    return this.acceptHoverTextNode(node);
+                },
+            });
+
+            while (nodes.length < this.maxHoverTextNodes) {
+                const node = walker.nextNode();
+
+                if (!node) {
+                    break;
+                }
+
+                nodes.push(node as Text);
+            }
+
+            let annotatedCount = 0;
+
+            for (const node of nodes) {
+                if (annotatedCount >= this.maxHoverAnnotations) {
+                    break;
+                }
+
+                annotatedCount += this.annotateHoverTextNode(
+                    node,
+                    this.maxHoverAnnotations - annotatedCount
+                );
+            }
+        } finally {
+            observer?.observe(document.body, {
+                childList: true,
+                characterData: true,
+                subtree: true,
+            });
+        }
+    }
+
+    private acceptHoverTextNode(node: Node): number {
+        const text = node.textContent ?? '';
+        const parent = node.parentNode instanceof HTMLElement ? node.parentNode : null;
+
+        if (!text.trim() || !hasHoverCue(text) || !parent) {
+            return NodeFilter.FILTER_REJECT;
+        }
+
+        if (shouldSkipHoverElement(parent) || !isVisibleElement(parent)) {
+            return NodeFilter.FILTER_REJECT;
+        }
+
+        return NodeFilter.FILTER_ACCEPT;
+    }
+
+    private annotateHoverTextNode(node: Text, remainingAnnotations: number): number {
+        const text = node.data;
+        const entities = findHoverEntities(text);
+
+        if (entities.length === 0 || !node.parentNode) {
+            return 0;
+        }
+
+        const fragment = document.createDocumentFragment();
+        let cursor = 0;
+        let annotatedCount = 0;
+
+        for (const entity of entities) {
+            if (annotatedCount >= remainingAnnotations) {
+                break;
+            }
+
+            if (entity.start < cursor || entity.end <= entity.start) {
+                continue;
+            }
+
+            if (entity.start > cursor) {
+                fragment.append(document.createTextNode(text.slice(cursor, entity.start)));
+            }
+
+            fragment.append(this.createHoverAnnotation(entity.text));
+            cursor = entity.end;
+            annotatedCount += 1;
+        }
+
+        if (annotatedCount === 0) {
+            return 0;
+        }
+
+        if (cursor < text.length) {
+            fragment.append(document.createTextNode(text.slice(cursor)));
+        }
+
+        node.parentNode.replaceChild(fragment, node);
+        return annotatedCount;
+    }
+
+    private createHoverAnnotation(text: string): HTMLElement {
+        const span = document.createElement('span');
+        span.className = 'onul-hover-entity';
+        span.dataset.onulText = text;
+        span.tabIndex = 0;
+        span.textContent = text;
+        span.style.cursor = 'help';
+        span.style.textDecorationLine = 'underline';
+        span.style.textDecorationStyle = 'dotted';
+        span.style.textDecorationThickness = '1px';
+        span.style.textUnderlineOffset = '0.16em';
+        span.addEventListener('mouseenter', this.onHoverEntityEnter);
+        span.addEventListener('focus', this.onHoverEntityEnter);
+        span.addEventListener('mouseleave', this.onHoverEntityLeave);
+        span.addEventListener('blur', this.onHoverEntityLeave);
+        this.hoverAnnotations.add(span);
+        return span;
+    }
+
+    private showHoverEntity(element: HTMLElement): void {
+        if (!this.shouldRunHoverScanner()) {
+            return;
+        }
+
+        const text = element.dataset.onulText ?? element.textContent.trim();
+        const popupData = this.buildPopupData(text);
+
+        if (!popupData) {
+            hidePopup();
+            return;
+        }
+
+        const popupHeight = 50 + popupData.rows.length * 40;
+        const coords = calculatePopupPosition(element.getBoundingClientRect(), { width: 220, height: popupHeight });
+        showPopup(coords.x, coords.y, {
+            rows: popupData.rows,
+            theme: this.currentSettings?.theme,
+        });
+    }
+
+    private stopHoverScanning(): void {
+        if (this.hoverScanTimeout !== undefined) {
+            clearTimeout(this.hoverScanTimeout);
+            this.hoverScanTimeout = undefined;
+        }
+
+        this.hoverObserver?.disconnect();
+        this.hoverObserver = null;
+        this.clearHoverAnnotations();
+    }
+
+    private clearHoverAnnotations(): void {
+        for (const element of this.hoverAnnotations) {
+            element.removeEventListener('mouseenter', this.onHoverEntityEnter);
+            element.removeEventListener('focus', this.onHoverEntityEnter);
+            element.removeEventListener('mouseleave', this.onHoverEntityLeave);
+            element.removeEventListener('blur', this.onHoverEntityLeave);
+            unwrapElement(element);
+        }
+
+        this.hoverAnnotations.clear();
+    }
+
     private buildPopupData(text: string): { rows: PopupRow[] } | null {
         if (!this.currentSettings) {
             return null;
@@ -292,6 +542,14 @@ class OnulContentController {
 
     private isHighlightModeEnabled(): boolean {
         return this.currentSettings ? modeIncludesHighlight(this.currentSettings.interactionMode) : true;
+    }
+
+    private isHoverModeEnabled(): boolean {
+        return this.currentSettings ? modeIncludesHover(this.currentSettings.interactionMode) : false;
+    }
+
+    private shouldRunHoverScanner(): boolean {
+        return this.liveSelectionEnabled && this.isHoverModeEnabled() && !this.isIgnoredDomain();
     }
 }
 
@@ -351,6 +609,40 @@ function isEditableNode(node: Node | null): boolean {
     }
 
     return element.tagName === 'INPUT' || element.tagName === 'TEXTAREA' || element.isContentEditable;
+}
+
+function hasHoverCue(text: string): boolean {
+    return /\b(?:tomorrow|today|yesterday)\b|\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}|\b\d{10}\b|\b\d{13}\b|\b(?:[01]?\d|2[0-3]):[0-5]\d|\b(?:1[0-2]|0?[1-9])(?::[0-5]\d)?\s*(?:[ap]\.?m\.?)/i.test(text);
+}
+
+function shouldSkipHoverElement(element: HTMLElement): boolean {
+    return element.isContentEditable || Boolean(element.closest(
+        '#onul-host, .onul-hover-entity, a, button, input, textarea, select, option, script, style, noscript, code, pre, kbd, samp, [contenteditable="true"], [contenteditable="plaintext-only"]'
+    ));
+}
+
+function isVisibleElement(element: HTMLElement): boolean {
+    const style = window.getComputedStyle(element);
+
+    return style.display !== 'none' &&
+        style.visibility !== 'hidden' &&
+        style.opacity !== '0' &&
+        element.getClientRects().length > 0;
+}
+
+function unwrapElement(element: HTMLElement): void {
+    const parent = element.parentNode;
+
+    if (!parent) {
+        return;
+    }
+
+    while (element.firstChild) {
+        parent.insertBefore(element.firstChild, element);
+    }
+
+    parent.removeChild(element);
+    parent.normalize();
 }
 
 export {};
