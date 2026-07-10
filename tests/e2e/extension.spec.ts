@@ -11,6 +11,7 @@ import {
   type Page,
   type ServiceWorker,
 } from '@playwright/test';
+import { getDarkPatternFixture } from '../fixtures/dark-pattern-consent';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const EXTENSION_PATH = resolve(__dirname, '../../dist');
@@ -148,6 +149,32 @@ test('renders a pending tracked-change banner in the popup shell', async () => {
   await expect(popup.locator('body')).toContainText('History');
 
   await popup.close();
+});
+
+test('renders passive dark-pattern badge without intercepting site controls', async () => {
+  const page = await context.newPage();
+  const badgeUrl = `${baseUrl}/dark-pattern-badge`;
+
+  await page.goto(badgeUrl, { waitUntil: 'load' });
+  await expect(page.locator('#goodman-consent-warning-host')).toHaveCount(1);
+  await expect(page.locator('.goodman-consent-warning')).toContainText('consent pattern');
+  await expect(page.locator('.goodman-consent-warning')).toContainText('Evidence:');
+
+  await page.getByRole('button', { name: 'Accept All Cookies' }).click();
+  await expect(page.locator('#site-click-status')).toHaveText('site accept clicked');
+
+  await page.close();
+});
+
+test('does not render passive badge for balanced consent controls', async () => {
+  const page = await context.newPage();
+  const balancedUrl = `${baseUrl}/dark-pattern-balanced`;
+
+  await page.goto(balancedUrl, { waitUntil: 'load' });
+  await waitForUrlAnalysis(balancedUrl, 'needs_provider');
+  await expect(page.locator('#goodman-consent-warning-host')).toHaveCount(0);
+
+  await page.close();
 });
 
 async function getExtensionWorker(): Promise<ServiceWorker> {
@@ -328,6 +355,40 @@ function createFixtureServer(): Server {
         <input type="checkbox" id="agree-pdf" />
         I agree to the <a href="/terms.pdf">PDF Terms and Conditions</a>.
       </label>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (path === '/dark-pattern-badge') {
+      const fixture = getDarkPatternFixture('accept-all-manage-only');
+      response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
+      <h1>Cookie choices</h1>
+      ${fixture.html}
+      <p id="site-click-status">waiting</p>
+      <script>
+        document.querySelector('button').addEventListener('click', () => {
+          document.getElementById('site-click-status').textContent = 'site accept clicked';
+        });
+      </script>
+    </main>
+  </body>
+</html>`);
+      return;
+    }
+
+    if (path === '/dark-pattern-balanced') {
+      const fixture = getDarkPatternFixture('accept-all-equal-reject');
+      response.end(`<!doctype html>
+<html lang="en">
+  <body>
+    <main>
+      <h1>Cookie choices</h1>
+      ${fixture.html}
     </main>
   </body>
 </html>`);
