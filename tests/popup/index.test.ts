@@ -112,14 +112,13 @@ describe('popup index', () => {
     expect(document.body.textContent).toContain('Open Settings');
   });
 
-  it('renders the hosted consent state from persisted analysis', async () => {
+  it('renders legacy consent state as provider setup', async () => {
     mockStorage.pageAnalysis = {
       'https://example.com/checkout': {
         ...readyAnalysis(),
         status: 'needs_consent',
         summary: null,
-        error:
-          'Accept the Goodman Cloud privacy disclosure before hosted analysis can run.',
+        error: 'Configure a provider in Settings.',
       },
     };
 
@@ -127,60 +126,17 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('Enable Goodman Cloud');
-    expect(document.body.textContent).toContain('Accept & Analyze');
+    expect(document.body.textContent).toContain('Provider setup required');
+    expect(document.body.textContent).toContain('Open Settings');
   });
 
-  it('accepts hosted consent and reruns analysis from the popup', async () => {
-    mockStorage.pageAnalysis = {
-      'https://example.com/checkout': {
-        ...readyAnalysis(),
-        status: 'needs_consent',
-        summary: null,
-        error:
-          'Accept the Goodman Cloud privacy disclosure before hosted analysis can run.',
-      },
-    };
-    chrome.tabs.sendMessage.mockImplementation(async () => {
-      mockStorage.pageAnalysis = {
-        'https://example.com/checkout': readyAnalysis(),
-      };
-      return { ok: true };
-    });
-
-    await loadPopupModule();
-    document.dispatchEvent(new Event('DOMContentLoaded'));
-    await flush();
-
-    const acceptButton = Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Accept & Analyze'
-    );
-
-    acceptButton?.click();
-    await flush();
-
-    expect((mockStorage.settings as { hostedConsentAccepted: boolean }).hostedConsentAccepted).toBe(
-      true
-    );
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
-      type: 'DETECT_TC',
-      payload: {
-        tabId: 7,
-        settingsOverride: { hostedConsentAccepted: true },
-      },
-    });
-    expect(document.body.textContent).toContain(
-      'This page asks you to agree to terms.'
-    );
-  });
-
-  it('renders a hosted service unavailable state from persisted analysis', async () => {
+  it('renders a provider unavailable state from persisted analysis', async () => {
     mockStorage.pageAnalysis = {
       'https://example.com/checkout': {
         ...readyAnalysis(),
         status: 'service_unavailable',
         summary: null,
-        error: 'Goodman Cloud is temporarily unavailable. Please try again shortly.',
+        error: 'Provider is temporarily unavailable. Please try again shortly.',
       },
     };
 
@@ -188,7 +144,7 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain('Cloud unavailable');
+    expect(document.body.textContent).toContain('Provider unavailable');
     expect(document.body.textContent).toContain('Retry');
   });
 

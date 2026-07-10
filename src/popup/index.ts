@@ -39,7 +39,6 @@ import {
   getPageAnalysisByUrl,
   getStorage,
   prunePageAnalysisState,
-  setStorage,
 } from '@shared/storage';
 import { sendToBackground } from '@shared/messaging';
 import { getPendingNotifications } from '@versioning/notifications';
@@ -185,17 +184,16 @@ function renderPopup(container: HTMLElement): void {
       break;
     case 'needs_consent':
       container.appendChild(createCompactActionState(
-        iconShield(28),
-        'Enable Goodman Cloud',
-        'Send T&C text to an LLM for analysis. Not stored or shared.',
-        'Accept & Analyze', () => { void acceptHostedConsentAndAnalyze().catch(e => console.warn('[Goodman] hosted consent flow failed:', e)); },
-        'Settings', showSettings
+        iconSettings(28),
+        'Provider setup required',
+        state.analysis.error ?? 'Configure a provider in Settings.',
+        'Open Settings', showSettings
       ));
       break;
     case 'service_unavailable':
       container.appendChild(createCompactActionState(
         iconAlertTriangle(28),
-        'Cloud unavailable',
+        'Provider unavailable',
         state.analysis.error ?? 'Try again shortly or switch providers.',
         'Retry', handleAnalyze, 'Settings', showSettings
       ));
@@ -314,10 +312,10 @@ function createCompactWelcome(): HTMLElement {
   const card = createElement('div', 'tc-state-card');
   const icon = createIcon(iconShield(32), 'tc-state-icon');
   const title = createElement('div', 'tc-state-title', 'Welcome to Goodman');
-  const copy = createElement('p', 'tc-state-copy', 'Detect, summarize, and track T&C changes with AI.');
+  const copy = createElement('p', 'tc-state-copy', 'Configure your provider to detect, summarize, and track T&C changes.');
   const actions = createElement('div', 'tc-state-actions');
-  actions.appendChild(createButton('Get Started', 'primary', () => { void acceptHostedConsentAndAnalyze().catch(e => console.warn('[Goodman] hosted consent flow failed:', e)); }));
-  actions.appendChild(createButton('Use Own Provider', 'secondary', showSettings));
+  actions.appendChild(createButton('Open Settings', 'primary', showSettings));
+  actions.appendChild(createButton('Analyze This Page', 'secondary', handleAnalyze));
   appendChildren(card, icon, title, copy, actions);
   return card;
 }
@@ -466,12 +464,11 @@ function renderPanel(container: HTMLElement): void {
         state.analysis.error ?? 'Configure a provider in Settings.', 'Open Settings', showSettings));
       break;
     case 'needs_consent':
-      container.appendChild(createCompactActionState(iconShield(28), 'Enable Goodman Cloud',
-        'Send T&C text to an LLM for analysis.', 'Accept & Analyze',
-        () => { void acceptHostedConsentAndAnalyze().catch(e => console.warn('[Goodman] hosted consent flow failed:', e)); }, 'Settings', showSettings));
+      container.appendChild(createCompactActionState(iconSettings(28), 'Provider setup required',
+        state.analysis.error ?? 'Configure a provider in Settings.', 'Open Settings', showSettings));
       break;
     case 'service_unavailable':
-      container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Cloud unavailable',
+      container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Provider unavailable',
         state.analysis.error ?? 'Try again shortly.', 'Retry', handleAnalyze, 'Settings', showSettings));
       break;
     case 'extraction_failed':
@@ -713,15 +710,6 @@ async function handleKeepOpen(): Promise<void> {
   }
 }
 
-async function acceptHostedConsentAndAnalyze(): Promise<void> {
-  const settingsResult = await getStorage('settings');
-  if (!settingsResult.ok) { state.error = 'Could not update settings.'; renderCurrentApp(); return; }
-  const saveResult = await setStorage('settings', { ...settingsResult.data, hostedConsentAccepted: true });
-  if (!saveResult.ok) { state.error = 'Could not save consent.'; renderCurrentApp(); return; }
-  state.analysis = state.analysis ? { ...state.analysis, status: 'analyzing', error: null } : state.analysis;
-  await handleAnalyze({ hostedConsentAccepted: true });
-}
-
 // ========== SUB-VIEWS ==========
 
 function showSettings(): void {
@@ -938,7 +926,13 @@ function mapErrorToActionable(error: string): string {
 }
 
 function isFirstRun(): boolean {
-  return state.settings?.activeProvider === 'hosted' && !state.settings?.hostedConsentAccepted;
+  const settings = state.settings;
+  if (!settings) return false;
+  const config = settings.providers[settings.activeProvider];
+  if (!config) return true;
+  if (settings.activeProvider === 'ollama') return !(config.baseUrl ?? '').trim();
+  if (settings.activeProvider === 'custom') return !(config.baseUrl ?? '').trim();
+  return !config.apiKey.trim();
 }
 
 function getCurrentDomain(): string {

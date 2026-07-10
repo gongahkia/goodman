@@ -6,7 +6,7 @@ import type { Summary, RedFlag } from '@providers/types';
 import { singleShotSummarize, singleShotSummarizeWithProvider } from './singleshot';
 import { getActiveProvider, getProviderByName } from '@providers/factory';
 import { SYSTEM_PROMPT } from '@providers/prompts';
-import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE, MAX_HOSTED_SINGLE_REQUEST_CHARS } from '@shared/constants';
+import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import { computeSeverity } from './severity';
 import type { SummarizeOptions } from '@providers/types';
 import { deduplicateRedFlagsBySeverity } from './red-flags';
@@ -38,13 +38,6 @@ async function chunkedSummarizeInternal(
   signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
   throwIfAborted(signal);
-
-  if (providerName === 'hosted') {
-    const joined = chunks.join('\n\n');
-    if (joined.length <= MAX_HOSTED_SINGLE_REQUEST_CHARS) {
-      return singleShotSummarizeWithProvider(joined, providerName, metadata, signal);
-    } // else fall through to map-reduce path
-  }
 
   if (chunks.length === 1) {
     return providerName

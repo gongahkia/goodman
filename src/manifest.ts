@@ -67,7 +67,7 @@ function getFirefoxManifest() {
         strict_min_version: '128.0',
         data_collection_permissions: {
           required: ['websiteContent'],
-          optional: ['technicalAndInteraction'],
+          optional: [],
         },
       },
     },

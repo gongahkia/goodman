@@ -96,7 +96,6 @@ export type MessageType = Message['type'];
 
 export interface Settings {
   activeProvider:
-    | 'hosted'
     | 'openai'
     | 'claude'
     | 'gemini'
@@ -104,7 +103,6 @@ export interface Settings {
     | 'custom'
     | 'fixture';
   providers: Record<string, ProviderConfig>;
-  hostedConsentAccepted: boolean;
   detectionSensitivity: 'aggressive' | 'normal' | 'conservative';
   darkMode: 'auto' | 'light' | 'dark';
   notifyOnChange: boolean;

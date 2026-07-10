@@ -49,8 +49,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  await context.close();
-  await closeServer(fixtureServer);
+  if (context) await context.close();
+  await closeFixtureServer(fixtureServer);
   await rm(userDataDir, { recursive: true, force: true });
 });
 
@@ -71,14 +71,14 @@ test('loads the packaged MV3 worker and popup page', async () => {
   await popup.close();
 });
 
-test('fresh install defaults to hosted consent gating on a consent-like page', async () => {
+test('fresh install requires provider setup on a consent-like page', async () => {
   const consentUrl = `${baseUrl}/consent`;
   const page = await context.newPage();
 
   await page.goto(consentUrl, { waitUntil: 'load' });
-  const gatedRecord = await waitForUrlAnalysis(consentUrl, 'needs_consent');
+  const gatedRecord = await waitForUrlAnalysis(consentUrl, 'needs_provider');
   expect(gatedRecord).toMatchObject({
-    status: 'needs_consent',
+    status: 'needs_provider',
     sourceType: 'inline',
     detectionType: 'checkbox',
   });
@@ -102,13 +102,13 @@ test('suppresses ambiguous newsletter marketing consent pages as no_detection', 
   await page.close();
 });
 
-test('keeps linked and PDF extraction routing working under hosted consent gating', async () => {
+test('keeps linked and PDF extraction routing working before provider setup', async () => {
   const linkedPage = await context.newPage();
   const linkedUrl = `${baseUrl}/consent-linked`;
   await linkedPage.goto(linkedUrl, { waitUntil: 'load' });
-  const linkedRecord = await waitForUrlAnalysis(linkedUrl, 'needs_consent');
+  const linkedRecord = await waitForUrlAnalysis(linkedUrl, 'needs_provider');
   expect(linkedRecord).toMatchObject({
-    status: 'needs_consent',
+    status: 'needs_provider',
     sourceType: 'linked',
     detectionType: 'checkbox',
   });
@@ -117,9 +117,9 @@ test('keeps linked and PDF extraction routing working under hosted consent gatin
   const pdfPage = await context.newPage();
   const pdfUrl = `${baseUrl}/consent-pdf`;
   await pdfPage.goto(pdfUrl, { waitUntil: 'load' });
-  const pdfRecord = await waitForUrlAnalysis(pdfUrl, 'needs_consent');
+  const pdfRecord = await waitForUrlAnalysis(pdfUrl, 'needs_provider');
   expect(pdfRecord).toMatchObject({
-    status: 'needs_consent',
+    status: 'needs_provider',
     sourceType: 'pdf',
     detectionType: 'checkbox',
   });
@@ -130,6 +130,7 @@ test('renders a pending tracked-change banner in the popup shell', async () => {
   await withWorker(async (worker) => {
     await worker.evaluate(async () => {
       await chrome.storage.local.set({
+        onboardingCompleted: true,
         pendingNotifications: [
           {
             domain: '127.0.0.1',
@@ -143,10 +144,8 @@ test('renders a pending tracked-change banner in the popup shell', async () => {
   });
 
   const popup = await openExtensionPage();
-  await expect(popup.locator('body')).toContainText('Tracked T&C changes detected');
-  await expect(popup.locator('body')).toContainText(
-    '1 tracked domain has a new terms change ready for review.'
-  );
+  await expect(popup.locator('body')).toContainText('1 domain with T&C changes');
+  await expect(popup.locator('body')).toContainText('History');
 
   await popup.close();
 });
@@ -197,9 +196,9 @@ async function waitForUrlAnalysis(
   );
 }
 
-async function closeServer(server: Server): Promise<void> {
+async function closeFixtureServer(instance: Server): Promise<void> {
   await new Promise<void>((resolveServer, rejectServer) => {
-    server.close((error) => {
+    instance.close((error) => {
       if (error) {
         rejectServer(error);
         return;

@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   CancelledError,
-  NetworkError,
   ProviderError,
-  RateLimitError,
 } from '@shared/errors';
 import type { Summary } from '@providers/types';
 import { mockStorage } from '../mocks/chrome';
@@ -174,78 +172,6 @@ describe('processPageAnalysis', () => {
       mockStorage.pageAnalysis as Record<string, { status: string }>
     )['https://example.com'];
     expect(storedRecord.status).toBe('needs_provider');
-  });
-
-  it('maps hosted network failures to a service_unavailable state', async () => {
-    vi.mocked(getCachedSummary).mockResolvedValue(null);
-    vi.mocked(getProviderByName).mockResolvedValue({
-      ok: true,
-      data: {
-        name: 'hosted',
-        summarize: vi.fn(),
-        validateApiKey: vi.fn(),
-      },
-    });
-    vi.mocked(singleShotSummarizeWithProvider).mockResolvedValue({
-      ok: false,
-      error: new NetworkError('Goodman Cloud'),
-    });
-
-    const result = await processPageAnalysis({
-      tabId: 11,
-      url: 'https://example.com/checkout',
-      domain: 'example.com',
-      text: 'short legal text',
-      provider: 'hosted',
-      sourceType: 'inline',
-      detectionType: 'checkbox',
-      confidence: 0.92,
-    });
-
-    expect(result.ok).toBe(false);
-    const storedRecord = (
-      mockStorage.pageAnalysis as Record<string, { status: string; error: string }>
-    )['https://example.com/checkout'];
-    expect(storedRecord.status).toBe('service_unavailable');
-    expect(storedRecord.error).toContain('Could not connect to Goodman Cloud');
-  });
-
-  it('maps hosted rate limits to a service_unavailable state', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.mocked(getCachedSummary).mockResolvedValue(null);
-    vi.mocked(getProviderByName).mockResolvedValue({
-      ok: true,
-      data: {
-        name: 'hosted',
-        summarize: vi.fn(),
-        validateApiKey: vi.fn(),
-      },
-    });
-    vi.mocked(singleShotSummarizeWithProvider).mockResolvedValue({
-      ok: false,
-      error: new RateLimitError('Goodman Cloud', 30),
-    });
-
-    const resultPromise = processPageAnalysis({
-      tabId: 12,
-      url: 'https://example.com/rate-limited',
-      domain: 'example.com',
-      text: 'short legal text',
-      provider: 'hosted',
-      sourceType: 'inline',
-      detectionType: 'checkbox',
-      confidence: 0.9,
-    });
-
-    await vi.advanceTimersByTimeAsync(6000);
-    const result = await resultPromise;
-
-    expect(result.ok).toBe(false);
-    const storedRecord = (
-      mockStorage.pageAnalysis as Record<string, { status: string }>
-    )['https://example.com/rate-limited'];
-    expect(storedRecord.status).toBe('service_unavailable');
-    vi.useRealTimers();
   });
 
   it('cancels an active analysis before the provider returns', async () => {

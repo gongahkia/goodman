@@ -17,6 +17,7 @@ import {
   getPageAnalysisByUrl,
   getStorage,
   setPageAnalysisByUrl,
+  DEFAULT_SETTINGS,
 } from '@shared/storage';
 import type {
   PageAnalysisLogEntry,
@@ -144,7 +145,7 @@ async function handleDetectTC(
   );
   const sensitivity = settings?.detectionSensitivity ?? ('conservative' as const);
   const themePreference = settings?.darkMode ?? 'auto';
-  const providerName = settings?.activeProvider ?? 'hosted';
+  const providerName = settings?.activeProvider ?? DEFAULT_SETTINGS.activeProvider;
   const analysisState: Omit<PageAnalysisRecord, 'tabId' | 'url' | 'domain' | 'updatedAt'> = {
     status: 'analyzing',
     sourceType: null,
@@ -299,56 +300,7 @@ async function handleDetectTC(
     };
   }
 
-  if (providerName === 'hosted' && !settings?.hostedConsentAccepted) {
-    removeOverlay();
-    lastRenderedTextHash = null;
-    await persistStage(
-      {
-        status: 'needs_consent',
-        sourceType: resolvedText.sourceType,
-        detectionType: best.type,
-        confidence: best.weightedConfidence,
-        textHash,
-        summary: null,
-        error:
-          'Accept the Goodman Cloud privacy disclosure before hosted analysis can run.',
-      },
-      100,
-      'Waiting for consent',
-      'Hosted analysis is blocked until you accept the Goodman Cloud privacy disclosure.',
-      'warning'
-    );
-    return {
-      ok: true,
-      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
-    };
-  }
-
-  if (providerName === 'hosted' && !isHostedProviderAvailable(settings)) {
-    removeOverlay();
-    lastRenderedTextHash = null;
-    await persistStage(
-      {
-        status: 'service_unavailable',
-        sourceType: resolvedText.sourceType,
-        detectionType: best.type,
-        confidence: best.weightedConfidence,
-        textHash,
-        summary: null,
-        error: getMissingProviderMessage(providerName),
-      },
-      100,
-      'Hosted analysis unavailable',
-      'The hosted analysis service is not configured or reachable right now.',
-      'warning'
-    );
-    return {
-      ok: true,
-      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
-    };
-  }
-
-  if (providerName !== 'hosted' && !hasConfiguredProvider(settings)) {
+  if (!hasConfiguredProvider(settings)) {
     removeOverlay();
     lastRenderedTextHash = null;
     await persistStage(
@@ -508,14 +460,6 @@ function hasConfiguredProvider(settings: Settings | null): boolean {
     settings.activeProvider,
     settings.providers[settings.activeProvider]
   );
-}
-
-function isHostedProviderAvailable(settings: Settings | null): boolean {
-  if (!settings) {
-    return false;
-  }
-
-  return isProviderConfigured('hosted', settings.providers['hosted']);
 }
 
 function resolveSettings(

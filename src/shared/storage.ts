@@ -60,17 +60,9 @@ export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
   model: '',
 };
 
-const DEFAULT_HOSTED_API_BASE_URL =
-  import.meta.env?.VITE_HOSTED_API_BASE_URL?.trim() || 'http://127.0.0.1:8787';
-
 export const DEFAULT_SETTINGS: Settings = {
-  activeProvider: 'hosted',
+  activeProvider: 'openai',
   providers: {
-    hosted: {
-      apiKey: '',
-      model: 'goodman-cloud',
-      baseUrl: DEFAULT_HOSTED_API_BASE_URL,
-    },
     openai: { apiKey: '', model: 'gpt-4o' },
     claude: { apiKey: '', model: 'claude-sonnet-4-20250514' },
     gemini: { apiKey: '', model: 'gemini-1.5-pro' },
@@ -78,7 +70,6 @@ export const DEFAULT_SETTINGS: Settings = {
     custom: { apiKey: '', model: '', baseUrl: '' },
     fixture: { apiKey: '', model: 'fixture-v1' },
   },
-  hostedConsentAccepted: false,
   detectionSensitivity: 'conservative',
   darkMode: 'auto',
   notifyOnChange: true,
@@ -117,6 +108,31 @@ const MIGRATIONS: Record<number, MigrationFn> = {
       await chrome.storage.local.set({ versionHistory: history });
     }
   },
+  // 2 -> 3: remove legacy hosted-provider settings
+  2: async () => {
+    const result = await chrome.storage.local.get('settings');
+    const settings = result['settings'] as Record<string, unknown> | undefined;
+    if (!settings) return;
+
+    const providers = {
+      ...((settings['providers'] as Record<string, ProviderConfig> | undefined) ?? {}),
+    };
+    delete providers['hosted'];
+    const activeProvider = parseActiveProvider(settings['activeProvider']);
+
+    await chrome.storage.local.set({
+      settings: {
+        activeProvider,
+        providers: {
+          ...DEFAULT_SETTINGS.providers,
+          ...providers,
+        },
+        detectionSensitivity: settings['detectionSensitivity'] ?? DEFAULT_SETTINGS.detectionSensitivity,
+        darkMode: settings['darkMode'] ?? DEFAULT_SETTINGS.darkMode,
+        notifyOnChange: settings['notifyOnChange'] ?? DEFAULT_SETTINGS.notifyOnChange,
+      },
+    });
+  },
 };
 
 export async function runMigrations(): Promise<void> {
@@ -140,9 +156,45 @@ export async function getStorage<K extends keyof StorageSchema>(
   try {
     const result = await chrome.storage.local.get(key);
     const value = result[key] as StorageSchema[K] | undefined;
+    if (key === 'settings') {
+      return ok(normalizeSettings(value as Settings | undefined) as StorageSchema[K]);
+    }
     return ok(value ?? STORAGE_DEFAULTS[key]);
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
+  }
+}
+
+function normalizeSettings(settings: Settings | undefined): Settings {
+  if (!settings) return DEFAULT_SETTINGS;
+
+  const activeProvider = parseActiveProvider(settings.activeProvider);
+  const providers = {
+    ...DEFAULT_SETTINGS.providers,
+    ...(settings.providers ?? {}),
+  };
+  delete providers['hosted'];
+
+  return {
+    activeProvider,
+    providers,
+    detectionSensitivity: settings.detectionSensitivity ?? DEFAULT_SETTINGS.detectionSensitivity,
+    darkMode: settings.darkMode ?? DEFAULT_SETTINGS.darkMode,
+    notifyOnChange: settings.notifyOnChange ?? DEFAULT_SETTINGS.notifyOnChange,
+  };
+}
+
+function parseActiveProvider(value: unknown): Settings['activeProvider'] {
+  switch (value) {
+    case 'openai':
+    case 'claude':
+    case 'gemini':
+    case 'ollama':
+    case 'custom':
+    case 'fixture':
+      return value;
+    default:
+      return DEFAULT_SETTINGS.activeProvider;
   }
 }
 

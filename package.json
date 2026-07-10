@@ -11,8 +11,6 @@
     "dev": "vite",
     "build": "vite build",
     "build:firefox": "BUILD_TARGET=firefox vite build",
-    "server:dev": "tsx watch server/index.ts",
-    "server:start": "tsx server/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
@@ -43,9 +41,7 @@
     "vitest": "^4.1.0"
   },
   "dependencies": {
-    "@hono/node-server": "^1.19.6",
     "diff": "^8.0.3",
-    "hono": "^4.10.2",
     "pdfjs-dist": "^5.5.207",
     "webextension-polyfill": "^0.12.0"
   }

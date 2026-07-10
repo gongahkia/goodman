@@ -4,14 +4,6 @@ vi.mock('@providers/factory', () => ({
   validateProvider: vi.fn().mockResolvedValue(true),
 }));
 
-vi.mock('@providers/hosted', () => {
-  return {
-    HostedProvider: class {
-      checkHealth() { return Promise.resolve(false); }
-    },
-  };
-});
-
 import type { Settings } from '@shared/messages';
 import { DEFAULT_SETTINGS } from '@shared/storage';
 import { renderProviderSettings } from '@popup/settings/providers';
@@ -45,12 +37,16 @@ describe('provider settings', () => {
     expect(container.textContent).not.toContain('API Key');
   });
 
-  it('renders Goodman Cloud as the default recommended option', async () => {
+  it('renders BYOK providers without a hosted option', async () => {
     const container = await renderSettings();
 
-    expect(container.textContent).toContain('Goodman Cloud');
-    expect(container.textContent).toContain('No API key required');
-    expect(container.textContent).toContain('Selected');
+    expect(container.textContent).toContain('OpenAI');
+    expect(container.textContent).toContain('Claude');
+    expect(container.textContent).toContain('Gemini');
+    expect(container.textContent).toContain('Ollama (Local)');
+    expect(container.textContent).toContain('Custom Endpoint');
+    expect(container.textContent).not.toContain('Cloud');
+    expect(getProviderRadio(container, 'openai').checked).toBe(true);
   });
 
   it('keeps the test button bound to the currently displayed provider', async () => {

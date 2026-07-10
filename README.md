@@ -26,7 +26,7 @@ And yes, feel free to use `Goodman` on the [*Legal Disclaimer* section of this R
 
 ## Stack
 
-* *Script*: [TypeScript](https://www.typescriptlang.org/), [Vite](https://vite.dev/), [Hono](https://hono.dev/), [pdfjs-dist](https://github.com/nicolo-ribaudo/pdfjs-dist), [diff](https://github.com/kpdecker/jsdiff)
+* *Script*: [TypeScript](https://www.typescriptlang.org/), [Vite](https://vite.dev/), [pdfjs-dist](https://github.com/nicolo-ribaudo/pdfjs-dist), [diff](https://github.com/kpdecker/jsdiff)
 * *Test*: [Vitest](https://vitest.dev/), [Playwright](https://playwright.dev/)
 * *Lint*: [ESLint](https://eslint.org/), [Prettier](https://prettier.io/)
 
@@ -115,7 +115,19 @@ $ pnpm test:e2e
 | [Gemini](https://ai.google.dev/) | Cloud API | `gemini-1.5-pro` | API key |
 | [Ollama](https://ollama.com/) | Local | User-configured | None (local) |
 | [Custom](https://platform.openai.com/docs/api-reference/) | OpenAI-compatible | User-configured | API key + base URL |
-| Goodman Cloud | Hosted | `goodman-cloud` | None (hosted) |
+
+## What `Goodman` does not do
+
+* `Goodman` does not provide legal advice or replace reading the original T&Cs.
+* `Goodman` does not auto-click, auto-accept, auto-decline, or block consent controls.
+* `Goodman` does not run hosted inference or offer a hosted analysis backend.
+* `Goodman` does not exfiltrate browsing history, account data, or page content to a Goodman-controlled service.
+
+## Privacy and telemetry
+
+`Goodman` has no telemetry, analytics, accounts, sync service, or Goodman-hosted inference. Page detection state, cache entries, version history, notification preferences, and provider settings are stored locally in browser extension storage.
+
+When you configure OpenAI, Claude, Gemini, Ollama, or a custom OpenAI-compatible endpoint, `Goodman` sends only the extracted legal text and request metadata needed for summarization to that provider. Review your chosen provider's privacy policy and terms before enabling it.
 
 ## Supported browsers
 
@@ -141,6 +153,6 @@ The name `Goodman` is in reference to the American criminal defense lawyer [Saul
 
 Goodman is provided "as is" without warranty of any kind, express or implied. Goodman is **not a substitute for professional legal advice**. AI-generated summaries of Terms & Conditions may be incomplete, inaccurate, or misleading. Always read the original legal text before agreeing to any terms.
 
-Goodman does not store, transmit, or share your browsing data with any third party. All extracted legal text and analysis results are kept locally in your browser's extension storage. However, when you configure an AI provider, the extracted text is sent to that provider's API for summarization — review your chosen provider's privacy policy and terms of use accordingly.
+Goodman keeps extracted legal text and analysis results locally in your browser's extension storage except for summaries you explicitly run through a configured provider. In that case, the extracted text is sent to your selected provider for summarization; review that provider's privacy policy and terms of use accordingly.
 
 The developers of Goodman accept no liability for decisions made based on summaries or diffs produced by this extension. Use at your own risk.

@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ok, err } from '@shared/result';
 import { InvalidResponseError } from '@shared/errors';
 import type { Summary, LLMProvider, SummarizeOptions } from '@providers/types';
-import { MAX_HOSTED_SINGLE_REQUEST_CHARS } from '@shared/constants';
 
 const mockSingleShot = vi.fn();
 const mockSingleShotWithProvider = vi.fn();
@@ -89,29 +88,28 @@ describe('chunkedSummarize', () => {
   });
 });
 
-describe('chunkedSummarizeWithProvider (hosted)', () => {
-  it('hosted provider with small text uses single request', async () => {
+describe('chunkedSummarizeWithProvider', () => {
+  it('single chunk with a named provider uses single request', async () => {
     const small = 'x'.repeat(100);
     const summary = makeSummary();
     mockSingleShotWithProvider.mockResolvedValue(ok(summary));
-    const result = await chunkedSummarizeWithProvider([small], 'hosted');
+    const result = await chunkedSummarizeWithProvider([small], 'openai');
     expect(mockSingleShotWithProvider).toHaveBeenCalledWith(
       small,
-      'hosted',
+      'openai',
       undefined,
       undefined
     );
     expect(result.ok).toBe(true);
   });
 
-  it('hosted provider with large text falls through to map-reduce', async () => {
-    const large = 'x'.repeat(MAX_HOSTED_SINGLE_REQUEST_CHARS + 1);
+  it('multi-chunk named provider uses map-reduce', async () => {
     const s = makeSummary();
     mockSingleShotWithProvider.mockResolvedValue(ok(s));
     mockGetProviderByName.mockResolvedValue(ok(makeMockProvider(ok(makeSummary({ summary: 'reduced' })))));
-    const result = await chunkedSummarizeWithProvider([large.slice(0, large.length / 2), large.slice(large.length / 2)], 'hosted');
+    const result = await chunkedSummarizeWithProvider(['chunk one', 'chunk two'], 'openai');
     expect(result.ok).toBe(true);
-    // should have called singleShotWithProvider for each chunk in map phase
-    expect(mockSingleShotWithProvider.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(mockSingleShotWithProvider).toHaveBeenCalledTimes(2);
+    expect(mockGetProviderByName).toHaveBeenCalledWith('openai');
   });
 });

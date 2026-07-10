@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Summary } from '@providers/types';
-import { setDomainNotificationPreference } from '@shared/storage';
+import { DEFAULT_SETTINGS, setDomainNotificationPreference } from '@shared/storage';
 import { getVersionHistory } from '@versioning/schema';
 import { syncVersionHistory } from '@background/version-tracking';
 import { mockStorage } from '../mocks/chrome';
@@ -73,23 +73,7 @@ describe('syncVersionHistory', () => {
   beforeEach(() => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     mockStorage.settings = {
-      activeProvider: 'hosted',
-      providers: {
-        hosted: {
-          apiKey: '',
-          model: 'goodman-cloud',
-          baseUrl: 'http://127.0.0.1:8787',
-        },
-        openai: { apiKey: '', model: 'gpt-4o' },
-        claude: { apiKey: '', model: 'claude-sonnet-4-20250514' },
-        gemini: { apiKey: '', model: 'gemini-1.5-pro' },
-        ollama: { apiKey: '', model: '', baseUrl: 'http://localhost:11434' },
-        custom: { apiKey: '', model: '', baseUrl: '' },
-        fixture: { apiKey: '', model: 'fixture-v1' },
-      },
-      hostedConsentAccepted: true,
-      detectionSensitivity: 'conservative',
-      darkMode: 'auto',
+      ...DEFAULT_SETTINGS,
       notifyOnChange: true,
     };
   });

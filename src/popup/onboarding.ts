@@ -3,8 +3,7 @@ import {
   createButton,
   createElement,
 } from '@popup/ui';
-import { HostedProvider } from '@providers/hosted';
-import { getStorage, setStorage } from '@shared/storage';
+import { setStorage } from '@shared/storage';
 
 export function renderOnboarding(
   container: HTMLElement,
@@ -41,61 +40,16 @@ function renderStep2(container: HTMLElement, onComplete: () => void): void {
   const copy = createElement(
     'p',
     'tc-state-copy',
-    'Goodman needs an AI provider to analyze legal text. You can use Goodman Cloud (if available) or bring your own API key from OpenAI, Claude, Gemini, or a local Ollama instance.'
+    'Goodman needs your own provider credentials or a local Ollama endpoint before it can analyze legal text.'
   );
 
-  const hostedStatus = createElement('p', 'tc-state-copy', 'Checking Goodman Cloud...');
   const actions = createElement('div', 'tc-state-actions');
-
-  const settingsBtn = createButton('Open Settings to Configure', 'primary', () => {
+  actions.appendChild(createButton('Open Settings to Configure', 'primary', () => {
     void completeOnboarding(onComplete).catch(e => console.warn('[Goodman] onboarding completion failed:', e));
-  });
+  }));
 
-  appendChildren(card, kicker, title, copy, hostedStatus, actions);
-
-  void checkHostedAndRender(hostedStatus, actions, settingsBtn, onComplete).catch(e => console.warn('[Goodman] hosted check failed:', e));
-
+  appendChildren(card, kicker, title, copy, actions);
   container.appendChild(card);
-}
-
-async function checkHostedAndRender(
-  statusEl: HTMLElement,
-  actionsEl: HTMLElement,
-  settingsBtn: HTMLButtonElement,
-  onComplete: () => void
-): Promise<void> {
-  const settingsResult = await getStorage('settings');
-  const baseUrl = settingsResult.ok ? settingsResult.data.providers['hosted']?.baseUrl : undefined;
-  const hosted = new HostedProvider(baseUrl);
-  const online = await hosted.checkHealth();
-
-  if (online) {
-    statusEl.textContent = 'Goodman Cloud is online and ready to use.';
-    actionsEl.textContent = '';
-    appendChildren(
-      actionsEl,
-      createButton('Use Goodman Cloud', 'primary', () => {
-        void acceptHostedAndComplete(onComplete).catch(e => console.warn('[Goodman] hosted accept failed:', e));
-      }),
-      settingsBtn
-    );
-  } else {
-    statusEl.textContent = 'Goodman Cloud is unreachable. Configure an API provider in Settings.';
-    actionsEl.textContent = '';
-    actionsEl.appendChild(settingsBtn);
-  }
-}
-
-async function acceptHostedAndComplete(onComplete: () => void): Promise<void> {
-  const settingsResult = await getStorage('settings');
-  if (settingsResult.ok) {
-    await setStorage('settings', {
-      ...settingsResult.data,
-      activeProvider: 'hosted',
-      hostedConsentAccepted: true,
-    });
-  }
-  await completeOnboarding(onComplete);
 }
 
 async function completeOnboarding(onComplete: () => void): Promise<void> {

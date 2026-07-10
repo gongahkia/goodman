@@ -7,7 +7,7 @@ import {
   throwIfAborted,
 } from '@shared/cancellation';
 import { MAX_INPUT_TEXT_LENGTH } from '@shared/constants';
-import { CancelledError, type TCGuardError } from '@shared/errors';
+import { CancelledError } from '@shared/errors';
 import { appendProgressLog } from '@shared/analysis-progress';
 import type {
   AnalysisSourceType,
@@ -209,22 +209,18 @@ export async function processPageAnalysis(
     if (!providerResult.ok) {
       const errorMessage =
         providerResult.error.userMessage ?? providerResult.error.message;
-      const status =
-        input.provider === 'hosted' ? 'service_unavailable' : 'needs_provider';
 
       await persistAnalysisUpdate(
         {
-          status,
+          status: 'needs_provider',
           textHash,
           summary: null,
           error: errorMessage,
         },
         100,
-        status === 'needs_provider'
-          ? 'Provider setup required'
-          : 'Hosted analysis unavailable',
+        'Provider setup required',
         errorMessage,
-        status === 'needs_provider' ? 'warning' : 'error'
+        'warning'
       );
 
       return { ok: false, error: errorMessage };
@@ -269,26 +265,19 @@ export async function processPageAnalysis(
         }
 
         const result =
-          input.provider === 'hosted'
-            ? await singleShotSummarizeWithProvider(
-                input.text,
+          chunks.length > 1
+            ? await chunkedSummarizeWithProvider(
+                chunks,
                 input.provider,
                 summarizeMetadata,
                 signal
               )
-            : chunks.length > 1
-              ? await chunkedSummarizeWithProvider(
-                  chunks,
-                  input.provider,
-                  summarizeMetadata,
-                  signal
-                )
-              : await singleShotSummarizeWithProvider(
-                  input.text,
-                  input.provider,
-                  summarizeMetadata,
-                  signal
-                );
+            : await singleShotSummarizeWithProvider(
+                input.text,
+                input.provider,
+                summarizeMetadata,
+                signal
+              );
 
         try {
           chrome.alarms?.clear('analysis-heartbeat');
@@ -333,14 +322,9 @@ export async function processPageAnalysis(
 
       const errorMessage =
         summaryResult.error.userMessage ?? summaryResult.error.message;
-      const status =
-        input.provider === 'hosted' && isHostedServiceError(summaryResult.error)
-          ? 'service_unavailable'
-          : 'error';
-
       await persistAnalysisUpdate(
         {
-          status,
+          status: 'error',
           textHash,
           summary: null,
           error: errorMessage,
@@ -411,14 +395,6 @@ function buildSummarizeMetadata(
     detectionType: input.detectionType,
     clientVersion: chrome.runtime?.getManifest?.().version ?? 'unknown',
   };
-}
-
-function isHostedServiceError(error: TCGuardError): boolean {
-  return (
-    error.code === 'NETWORK_ERROR' ||
-    error.code === 'RATE_LIMIT' ||
-    error.code === 'SERVICE_UNAVAILABLE'
-  );
 }
 
 function buildPageAnalysisRecord(

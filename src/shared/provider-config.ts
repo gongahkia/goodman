@@ -9,8 +9,6 @@ export function isProviderConfigured(
   }
 
   switch (providerName) {
-    case 'hosted':
-      return (config.baseUrl ?? '').trim().length > 0;
     case 'openai':
     case 'claude':
     case 'gemini':
@@ -29,9 +27,5 @@ export function isProviderConfigured(
 export function getMissingProviderMessage(
   providerName: Settings['activeProvider']
 ): string {
-  if (providerName === 'hosted') {
-    return 'Goodman Cloud is unavailable right now. Please try again shortly.';
-  }
-
   return `${providerName} is not configured. Open Goodman settings to add the required connection details.`;
 }

@@ -4,12 +4,10 @@ import {
   createElement,
   createFieldLabel,
   createInput,
-  createPill,
   createSectionHeading,
   createSkeletonGroup,
 } from '@popup/ui';
 import { validateProvider } from '@providers/factory';
-import { HostedProvider } from '@providers/hosted';
 import type { Settings, ProviderConfig } from '@shared/messages';
 import { getStorage, setStorage } from '@shared/storage';
 
@@ -21,8 +19,7 @@ function debounce(fn: () => void, ms: number): () => void {
 const ADVANCED_PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as const;
 type ProviderName = (typeof ADVANCED_PROVIDERS)[number];
 
-const PROVIDER_LABELS: Record<string, string> = {
-  hosted: 'Goodman Cloud',
+const PROVIDER_LABELS: Record<ProviderName, string> = {
   openai: 'OpenAI',
   claude: 'Claude',
   gemini: 'Gemini',
@@ -33,7 +30,7 @@ const PROVIDER_LABELS: Record<string, string> = {
 const PROVIDER_DESCRIPTIONS: Record<ProviderName, string> = {
   openai: 'Use your own OpenAI account and model selection.',
   claude: 'Point Goodman at Anthropic for stronger legal summarization.',
-  gemini: 'Use a Google-hosted model if that is already in your workflow.',
+  gemini: 'Use a Gemini model if that is already in your workflow.',
   ollama: 'Run analysis against a local Ollama model on your machine.',
   custom: 'Connect any OpenAI-compatible endpoint or internal proxy.',
 };
@@ -54,16 +51,7 @@ function renderProviderSettingsView(
   container.appendChild(
     createSectionHeading(
       'Provider configuration',
-      'Choose the analysis backend you want Goodman to call when it summarizes detected agreements.'
-    )
-  );
-
-  container.appendChild(createHostedProviderCard(container, settings));
-
-  container.appendChild(
-    createSectionHeading(
-      'Advanced providers',
-      'Use these when you want to bring your own credentials or route requests to a local model.'
+      'Choose the provider Goodman should call with your own credentials or local endpoint.'
     )
   );
 
@@ -79,61 +67,6 @@ function renderProviderSettingsView(
 
   renderProviderConfigSection(configSection, activeAdvancedProvider, settings);
   appendChildren(container, picker, configSection);
-}
-
-function createHostedProviderCard(
-  container: HTMLElement,
-  settings: Settings
-): HTMLElement {
-  const card = createElement('section', 'tc-callout');
-  const topRow = createElement('div', 'tc-split-row');
-  const copy = createElement('div');
-  appendChildren(
-    copy,
-    createElement('div', 'tc-callout-title', 'Goodman Cloud'),
-    createElement(
-      'p',
-      'tc-callout-copy',
-      'No API key required. Analysis runs through the Goodman hosted service.'
-    )
-  );
-
-  const button = createButton(
-    settings.activeProvider === 'hosted' ? 'Selected' : 'Use Goodman Cloud',
-    settings.activeProvider === 'hosted' ? 'secondary' : 'primary',
-    () => {
-      void saveActiveProvider('hosted').then((updatedSettings) => {
-        if (!updatedSettings) return;
-        renderProviderSettingsView(container, updatedSettings);
-      }).catch(e => console.warn('[Goodman] save hosted provider failed:', e));
-    }
-  );
-  button.disabled = settings.activeProvider === 'hosted';
-
-  appendChildren(topRow, copy, button);
-  card.appendChild(topRow);
-
-  const pillRow = createElement('div', 'tc-pill-row');
-  pillRow.appendChild(
-    settings.hostedConsentAccepted
-      ? createPill('Privacy disclosure accepted', 'blue')
-      : createPill('Privacy disclosure pending', 'muted')
-  );
-  const healthPill = createPill('Checking...', 'muted');
-  pillRow.appendChild(healthPill);
-  card.appendChild(pillRow);
-
-  const hostedConfig = settings.providers['hosted'];
-  const hosted = new HostedProvider(hostedConfig?.baseUrl);
-  void hosted.checkHealth().then((online: boolean) => {
-    healthPill.textContent = online ? 'Online' : 'Unreachable';
-    healthPill.className = online ? 'tc-pill tc-pill--low' : 'tc-pill tc-pill--critical';
-    if (!online && settings.activeProvider !== 'hosted') {
-      button.disabled = true;
-    }
-  }).catch(e => console.warn('[Goodman] hosted health check UI failed:', e));
-
-  return card;
 }
 
 function createProviderOption(
@@ -313,7 +246,7 @@ async function runProviderValidation(
 }
 
 async function saveActiveProvider(
-  name: Settings['activeProvider']
+  name: ProviderName
 ): Promise<Settings | null> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return null;
