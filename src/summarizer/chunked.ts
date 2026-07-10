@@ -5,12 +5,13 @@ import { CancelledError, InvalidResponseError } from '@shared/errors';
 import type { Summary, RedFlag } from '@providers/types';
 import { singleShotSummarize, singleShotSummarizeWithProvider } from './singleshot';
 import { getActiveProvider, getProviderByName } from '@providers/factory';
-import { SYSTEM_PROMPT } from '@providers/prompts';
+import { buildSystemPrompt } from '@providers/prompts';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import { computeSeverity } from './severity';
 import type { SummarizeOptions } from '@providers/types';
 import { deduplicateRedFlagsBySeverity } from './red-flags';
 import { throwIfAborted } from '@shared/cancellation';
+import { getDomainPreferences } from '@shared/storage';
 
 const MAX_CONCURRENT = 3;
 
@@ -61,7 +62,7 @@ async function chunkedSummarizeInternal(
     .filter((r): r is { ok: true; data: Summary } => r.ok)
     .map((r) => r.data);
 
-  return reducePhase(summaries, providerName, signal);
+  return reducePhase(summaries, providerName, metadata, signal);
 }
 
 async function mapPhase(
@@ -91,6 +92,7 @@ async function mapPhase(
 async function reducePhase(
   summaries: Summary[],
   providerName?: string,
+  metadata?: SummarizeOptions['metadata'],
   signal?: AbortSignal
 ): Promise<Result<Summary, TCGuardError>> {
   throwIfAborted(signal);
@@ -98,7 +100,8 @@ async function reducePhase(
   const allKeyPoints = deduplicateStrings(summaries.flatMap((s) => s.keyPoints));
   const combinedSummary = summaries.map((s) => s.summary).join(' ');
 
-  const mergePrompt = `Merge these partial T&C summaries into a single cohesive 2-3 sentence summary:\n\n${combinedSummary}`;
+  const language = await getSummaryLanguage(metadata);
+  const mergePrompt = `Merge these partial T&C summaries into a single cohesive 2-3 sentence summary${language ? ` in ${language}` : ''}:\n\n${combinedSummary}`;
 
   const providerResult = providerName
     ? await getProviderByName(providerName)
@@ -114,7 +117,7 @@ async function reducePhase(
 
   const mergeResult = await providerResult.data.summarize(mergePrompt, {
     model: '',
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: buildSystemPrompt(language),
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
     signal,
@@ -140,6 +143,12 @@ async function reducePhase(
     redFlags: allRedFlags,
     severity: computeSeverity(allRedFlags),
   });
+}
+
+async function getSummaryLanguage(metadata?: SummarizeOptions['metadata']): Promise<string> {
+  if (!metadata?.domain) return '';
+  const preferences = await getDomainPreferences(metadata.domain);
+  return preferences.summaryLanguage;
 }
 
 function deduplicateRedFlags(flags: RedFlag[]): RedFlag[] {

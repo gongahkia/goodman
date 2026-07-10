@@ -3,9 +3,10 @@ import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
 import type { Summary } from '@providers/types';
 import { getActiveProvider, getProviderByName } from '@providers/factory';
-import { SYSTEM_PROMPT, buildUserPrompt } from '@providers/prompts';
+import { buildSystemPrompt, buildUserPrompt } from '@providers/prompts';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import type { SummarizeOptions } from '@providers/types';
+import { getDomainPreferences } from '@shared/storage';
 
 export async function singleShotSummarize(
   text: string,
@@ -16,11 +17,12 @@ export async function singleShotSummarize(
   if (!providerResult.ok) return providerResult;
 
   const provider = providerResult.data;
-  const userPrompt = buildUserPrompt(text);
+  const language = await getSummaryLanguage(metadata);
+  const userPrompt = buildUserPrompt(text, language);
 
   const result = await provider.summarize(userPrompt, {
     model: '',
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: buildSystemPrompt(language),
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
     signal,
@@ -43,11 +45,12 @@ export async function singleShotSummarizeWithProvider(
   if (!providerResult.ok) return providerResult;
 
   const provider = providerResult.data;
-  const userPrompt = buildUserPrompt(text);
+  const language = await getSummaryLanguage(metadata);
+  const userPrompt = buildUserPrompt(text, language);
 
   const result = await provider.summarize(userPrompt, {
     model: '',
-    systemPrompt: SYSTEM_PROMPT,
+    systemPrompt: buildSystemPrompt(language),
     maxTokens: DEFAULT_MAX_TOKENS,
     temperature: DEFAULT_TEMPERATURE,
     signal,
@@ -58,4 +61,10 @@ export async function singleShotSummarizeWithProvider(
   if (!result.ok) return result;
 
   return ok(result.data);
+}
+
+async function getSummaryLanguage(metadata?: SummarizeOptions['metadata']): Promise<string> {
+  if (!metadata?.domain) return '';
+  const preferences = await getDomainPreferences(metadata.domain);
+  return preferences.summaryLanguage;
 }

@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ok, err } from '@shared/result';
 import { ProviderError } from '@shared/errors';
 import type { Summary, LLMProvider, SummarizeOptions } from '@providers/types';
+import { DEFAULT_DOMAIN_PREFERENCES } from '@shared/domain-preferences';
+import { mockStorage } from '../mocks/chrome';
 
 const mockGetActiveProvider = vi.fn();
 const mockGetProviderByName = vi.fn();
@@ -38,6 +40,7 @@ function makeMockProvider(summarizeResult = ok(makeSummary())): LLMProvider {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  delete mockStorage.domainPreferences;
 });
 
 describe('singleShotSummarize', () => {
@@ -72,6 +75,23 @@ describe('singleShotSummarize', () => {
     await singleShotSummarize('text', meta);
     const callArgs = (provider.summarize as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(callArgs[1].metadata).toEqual(meta);
+  });
+
+  it('uses per-domain summary language in prompts', async () => {
+    mockStorage.domainPreferences = {
+      'example.com': {
+        ...DEFAULT_DOMAIN_PREFERENCES,
+        summaryLanguage: 'Spanish',
+      },
+    };
+    const provider = makeMockProvider(ok(makeSummary()));
+    mockGetActiveProvider.mockResolvedValue(ok(provider));
+
+    await singleShotSummarize('text', { domain: 'example.com' });
+
+    const callArgs = (provider.summarize as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(callArgs[0]).toContain('Preferred summary language: Spanish');
+    expect(callArgs[1].systemPrompt).toContain('in Spanish');
   });
 });
 

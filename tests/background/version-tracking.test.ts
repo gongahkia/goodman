@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { Summary } from '@providers/types';
-import { DEFAULT_SETTINGS, setDomainNotificationPreference } from '@shared/storage';
+import {
+  DEFAULT_SETTINGS,
+  setDomainPreferences,
+  setDomainNotificationPreference,
+} from '@shared/storage';
+import { DEFAULT_DOMAIN_PREFERENCES } from '@shared/domain-preferences';
 import { getVersionHistory } from '@versioning/schema';
 import { syncVersionHistory } from '@background/version-tracking';
 import { mockStorage } from '../mocks/chrome';
@@ -39,6 +44,27 @@ const changedSummary: Summary = {
     },
   ],
   severity: 'high',
+};
+
+const dataSharingSummary: Summary = {
+  summary: 'Data sharing summary',
+  keyPoints: ['Point one'],
+  redFlags: [
+    {
+      category: 'third_party_sharing',
+      description: 'Shares data with partners',
+      severity: 'medium',
+      quote: 'We share data with selected partners.',
+    },
+  ],
+  severity: 'medium',
+};
+
+const keyPointOnlySummary: Summary = {
+  summary: 'Base summary',
+  keyPoints: ['Point one', 'Point two'],
+  redFlags: [],
+  severity: 'low',
 };
 
 const quoteChangedSummary: Summary = {
@@ -134,6 +160,49 @@ describe('syncVersionHistory', () => {
 
     expect(result.changed).toBe(true);
     expect(result.notified).toBe(true);
+    expect(mockStorage.pendingNotifications).toHaveLength(1);
+  });
+
+  it('keeps any meaningful change as the default domain threshold', async () => {
+    await syncVersionHistory('example.com', 'text v1', baseSummary);
+
+    const result = await syncVersionHistory(
+      'example.com',
+      'text v2',
+      keyPointOnlySummary
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.notified).toBe(true);
+    expect(mockStorage.pendingNotifications).toHaveLength(1);
+  });
+
+  it('notifies only watched clause changes for domain preferences', async () => {
+    await setDomainPreferences('example.com', {
+      ...DEFAULT_DOMAIN_PREFERENCES,
+      watchClauses: ['arbitration'],
+      notificationThreshold: 'red_flag_only',
+    });
+    await syncVersionHistory('example.com', 'text v1', baseSummary);
+
+    const unrelated = await syncVersionHistory(
+      'example.com',
+      'text v2',
+      dataSharingSummary
+    );
+
+    expect(unrelated.changed).toBe(true);
+    expect(unrelated.notified).toBe(false);
+    expect(mockStorage.pendingNotifications).toBeUndefined();
+
+    const watched = await syncVersionHistory(
+      'example.com',
+      'text v3',
+      changedSummary
+    );
+
+    expect(watched.changed).toBe(true);
+    expect(watched.notified).toBe(true);
     expect(mockStorage.pendingNotifications).toHaveLength(1);
   });
 

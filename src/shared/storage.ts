@@ -4,6 +4,11 @@ import type { Result } from './result';
 import type { Settings, ProviderConfig } from './messages';
 import { STORAGE_VERSION } from './constants';
 import type { PageAnalysisRecord } from './page-analysis';
+import {
+  DEFAULT_DOMAIN_PREFERENCES,
+  normalizeDomainPreferences,
+  type DomainPreferences,
+} from './domain-preferences';
 
 export interface CachedSummary {
   summary: StoredSummary;
@@ -49,6 +54,7 @@ export interface StorageSchema {
   pageAnalysisTabs: Record<string, string>;
   versionHistory: Record<string, VersionEntry[]>;
   domainNotificationPreferences: Record<string, boolean>;
+  domainPreferences: Record<string, DomainPreferences>;
   domainBlacklist: string[];
   dismissedConsentWarnings: Record<string, number>;
   pendingNotifications: PendingNotification[];
@@ -86,6 +92,7 @@ const STORAGE_DEFAULTS: StorageSchema = {
   pageAnalysisTabs: {},
   versionHistory: {},
   domainNotificationPreferences: {},
+  domainPreferences: {},
   domainBlacklist: [],
   dismissedConsentWarnings: {},
   pendingNotifications: [],
@@ -394,6 +401,58 @@ export function setDomainNotificationPreference(
 
     return setStorage('domainNotificationPreferences', preferences);
   });
+}
+
+export async function getAllDomainPreferences(): Promise<Record<string, DomainPreferences>> {
+  try {
+    const area = getDomainPreferenceStorageArea();
+    const result = await area.get('domainPreferences');
+    return normalizeDomainPreferencesMap(result['domainPreferences']);
+  } catch {
+    return {};
+  }
+}
+
+export async function getDomainPreferences(domain: string): Promise<DomainPreferences> {
+  const preferences = await getAllDomainPreferences();
+  return preferences[domain] ?? { ...DEFAULT_DOMAIN_PREFERENCES };
+}
+
+export function setDomainPreferences(
+  domain: string,
+  preferences: DomainPreferences
+): Promise<Result<void, Error>> {
+  return withStorageLock('domainPreferences', async () => {
+    try {
+      const area = getDomainPreferenceStorageArea();
+      const current = await getAllDomainPreferences();
+      await area.set({
+        domainPreferences: {
+          ...current,
+          [domain]: normalizeDomainPreferences(preferences),
+        },
+      });
+      return ok(undefined);
+    } catch (e) {
+      return err(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
+}
+
+function normalizeDomainPreferencesMap(value: unknown): Record<string, DomainPreferences> {
+  if (!value || typeof value !== 'object') return {};
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([domain, preferences]) => [
+      domain,
+      normalizeDomainPreferences(preferences),
+    ])
+  );
+}
+
+type DomainPreferenceStorageArea = Pick<typeof chrome.storage.local, 'get' | 'set'>;
+
+function getDomainPreferenceStorageArea(): DomainPreferenceStorageArea {
+  return chrome.storage.sync ?? chrome.storage.local;
 }
 
 function getPageAnalysisKey(url: string): string {

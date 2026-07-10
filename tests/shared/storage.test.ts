@@ -2,16 +2,19 @@ import { describe, expect, it } from 'vitest';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
 import {
   DEFAULT_SETTINGS,
+  getDomainPreferences,
   getDomainNotificationPreference,
   getPageAnalysis,
   getPageAnalysisByUrl,
   getStorage,
   prunePageAnalysisState,
   runMigrations,
+  setDomainPreferences,
   setDomainNotificationPreference,
   setPageAnalysisRecord,
   setStorage,
 } from '@shared/storage';
+import { DEFAULT_DOMAIN_PREFERENCES } from '@shared/domain-preferences';
 import { mockStorage } from '../mocks/chrome';
 
 function makePageAnalysisRecord(
@@ -130,6 +133,31 @@ describe('shared storage', () => {
     const enabled = await getDomainNotificationPreference('example.com');
 
     expect(enabled).toBe(true);
+  });
+
+  it('defaults domain procedural preferences', async () => {
+    const preferences = await getDomainPreferences('example.com');
+
+    expect(preferences).toEqual(DEFAULT_DOMAIN_PREFERENCES);
+  });
+
+  it('persists domain procedural preferences', async () => {
+    await setDomainPreferences('spotify.com', {
+      ...DEFAULT_DOMAIN_PREFERENCES,
+      watchClauses: ['arbitration'],
+      notificationThreshold: 'red_flag_only',
+      summaryLanguage: 'Spanish',
+      ignorePatterns: ['^formatting'],
+    });
+
+    const preferences = await getDomainPreferences('spotify.com');
+
+    expect(preferences).toMatchObject({
+      watchClauses: ['arbitration'],
+      notificationThreshold: 'red_flag_only',
+      summaryLanguage: 'Spanish',
+      ignorePatterns: ['^formatting'],
+    });
   });
 
   it('normalizes legacy hosted settings to the default BYOK provider', async () => {

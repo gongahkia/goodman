@@ -80,8 +80,18 @@ export const RED_FLAG_DESCRIPTIONS: Record<RedFlagCategory, string> = {
   government_disclosure: 'Your data may be broadly shared with government or law enforcement agencies.',
 };
 
-export function buildUserPrompt(text: string): string {
-  return `Analyze the following Terms & Conditions document:
+export function buildSystemPrompt(language?: string): string {
+  if (!language) return SYSTEM_PROMPT;
+  return `${SYSTEM_PROMPT}
+
+Write user-facing TLDR, summary, keyPoints, and redFlag descriptions in ${language}. Keep exact T&C quotes in their original language.`;
+}
+
+export function buildUserPrompt(text: string, language?: string): string {
+  const languageInstruction = language
+    ? `\nPreferred summary language: ${language}.`
+    : '';
+  return `Analyze the following Terms & Conditions document:${languageInstruction}
 ---BEGIN T&C---
 ${text}
 ---END T&C---`;

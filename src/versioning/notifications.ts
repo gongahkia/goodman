@@ -1,9 +1,14 @@
 import {
+  getDomainPreferences,
   getDomainNotificationPreference,
   getStorage,
   setStorage,
   withStorageLock,
 } from '@shared/storage';
+import {
+  matchesWatchedClause,
+  type DomainPreferences,
+} from '@shared/domain-preferences';
 import type { PendingNotification } from '@shared/storage';
 import type { SummaryDiff } from './summary-diff';
 
@@ -18,6 +23,9 @@ export async function notifyChange(
 
   const domainPreference = await getDomainNotificationPreference(domain);
   if (!domainPreference) return false;
+
+  const preferences = await getDomainPreferences(domain);
+  if (!shouldNotifyForDomainPreferences(diff, preferences)) return false;
 
   try {
     await chrome.action.setBadgeText({ text: '!' });
@@ -40,6 +48,82 @@ export async function notifyChange(
     await setStorage('pendingNotifications', notifications);
     return true;
   });
+}
+
+function shouldNotifyForDomainPreferences(
+  diff: SummaryDiff,
+  preferences: DomainPreferences
+): boolean {
+  if (isIgnoredByPatterns(diff, preferences.ignorePatterns)) return false;
+  if (!matchesWatchedClauses(diff, preferences)) return false;
+
+  switch (preferences.notificationThreshold) {
+    case 'any':
+      return true;
+    case 'material':
+      return hasRedFlagChange(diff) || diff.severityChange !== null;
+    case 'red_flag_only':
+      return hasRedFlagChange(diff);
+  }
+}
+
+function matchesWatchedClauses(
+  diff: SummaryDiff,
+  preferences: DomainPreferences
+): boolean {
+  if (preferences.watchClauses.length === 0) return true;
+  const flags = [
+    ...diff.addedRedFlags,
+    ...diff.removedRedFlags,
+    ...diff.changedRedFlags.flatMap(change => [change.old, change.new]),
+  ];
+  return flags.some(flag =>
+    matchesWatchedClause(
+      flag.category,
+      preferences.watchClauses,
+      `${flag.description} ${flag.quote}`
+    )
+  );
+}
+
+function hasRedFlagChange(diff: SummaryDiff): boolean {
+  return (
+    diff.addedRedFlags.length > 0 ||
+    diff.removedRedFlags.length > 0 ||
+    diff.changedRedFlags.length > 0
+  );
+}
+
+function isIgnoredByPatterns(diff: SummaryDiff, patterns: string[]): boolean {
+  const regexes = patterns.flatMap(pattern => {
+    try {
+      return [new RegExp(pattern, 'i')];
+    } catch {
+      return [];
+    }
+  });
+  if (regexes.length === 0) return false;
+
+  const diffText = collectDiffText(diff);
+  return diffText.length > 0 && diffText.every(text => regexes.some(regex => regex.test(text)));
+}
+
+function collectDiffText(diff: SummaryDiff): string[] {
+  return [
+    ...diff.addedRedFlags.flatMap(flag => [flag.category, flag.description, flag.quote]),
+    ...diff.removedRedFlags.flatMap(flag => [flag.category, flag.description, flag.quote]),
+    ...diff.changedRedFlags.flatMap(change => [
+      change.old.category,
+      change.old.description,
+      change.old.quote,
+      change.new.category,
+      change.new.description,
+      change.new.quote,
+    ]),
+    ...(diff.severityChange ? [diff.severityChange.old, diff.severityChange.new] : []),
+    ...diff.newKeyPoints,
+    ...diff.removedKeyPoints,
+  ].filter(Boolean);
 }
 
 export async function getPendingNotifications(): Promise<PendingNotification[]> {
