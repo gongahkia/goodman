@@ -3,14 +3,15 @@ import type { Menus, Scripting, Tabs } from 'webextension-polyfill';
 import { isRuntimeMessage } from './messages';
 import type { ActiveTabContext, ManualConvertResponse, RuntimeMessage } from './messages';
 import { detectBrowserKind, getOriginPattern, isRestrictedUrl, toContentScriptId } from './site-access';
+import { setOnboardingDismissed } from './storage';
 
 const CONTEXT_MENU_ID = 'onul-convert';
 const LIVE_SCRIPT_PREFIX = 'live-';
 
 void initializeExtension();
 
-browser.runtime.onInstalled.addListener(() => {
-    void initializeExtension();
+browser.runtime.onInstalled.addListener((details) => {
+    void handleInstalled(details.reason);
 });
 
 browser.runtime.onStartup.addListener(() => {
@@ -44,6 +45,14 @@ browser.runtime.onMessage.addListener((message: unknown) => {
 async function initializeExtension(): Promise<void> {
     await ensureContextMenu();
     await syncLiveContentScripts();
+}
+
+async function handleInstalled(reason: string): Promise<void> {
+    if (reason === 'install') {
+        await setOnboardingDismissed(false);
+    }
+
+    await initializeExtension();
 }
 
 async function handleRuntimeMessage(message: RuntimeMessage): Promise<ActiveTabContext | ManualConvertResponse | { liveSelectionEnabled: boolean } | { ok: true }> {

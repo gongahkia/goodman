@@ -13,7 +13,7 @@ vi.mock('./browser', () => ({
     default: browserMock,
 }));
 
-import { getSettings, saveSettings } from './storage';
+import { getSettings, isOnboardingDismissed, saveSettings, setOnboardingDismissed, shouldShowOnboarding } from './storage';
 
 describe('Storage Helpers', () => {
     beforeEach(() => {
@@ -56,5 +56,43 @@ describe('Storage Helpers', () => {
 
         await saveSettings({ targetTimezone: 'Europe/Paris' });
         expect(browserMock.storage.local.set).toHaveBeenCalledWith({ targetTimezone: 'Europe/Paris' });
+    });
+
+    it('should show onboarding by default', async () => {
+        browserMock.storage.local.get.mockResolvedValue({});
+
+        await expect(isOnboardingDismissed()).resolves.toBe(false);
+        expect(browserMock.storage.local.get).toHaveBeenCalledWith(['onboardingDismissed']);
+    });
+
+    it('should read dismissed onboarding state', async () => {
+        browserMock.storage.local.get.mockResolvedValue({ onboardingDismissed: true });
+
+        await expect(isOnboardingDismissed()).resolves.toBe(true);
+    });
+
+    it('should persist dismissed onboarding state', async () => {
+        browserMock.storage.local.set.mockResolvedValue(undefined);
+
+        await setOnboardingDismissed(true);
+        expect(browserMock.storage.local.set).toHaveBeenCalledWith({ onboardingDismissed: true });
+    });
+
+    it('should show onboarding for empty fresh storage', async () => {
+        browserMock.storage.local.get.mockResolvedValue({});
+
+        await expect(shouldShowOnboarding()).resolves.toBe(true);
+    });
+
+    it('should hide onboarding after dismissal', async () => {
+        browserMock.storage.local.get.mockResolvedValue({ onboardingDismissed: true });
+
+        await expect(shouldShowOnboarding()).resolves.toBe(false);
+    });
+
+    it('should hide onboarding for existing installs with saved settings', async () => {
+        browserMock.storage.local.get.mockResolvedValue({ targetTimezone: 'Asia/Tokyo' });
+
+        await expect(shouldShowOnboarding()).resolves.toBe(false);
     });
 });

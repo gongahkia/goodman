@@ -188,3 +188,47 @@ button:disabled {
   color: var(--muted-text);
   line-height: 1.4;
 }
+
+.onboarding {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detected-zone,
+.example-panel {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--panel-bg);
+  padding: 12px;
+}
+
+.detected-zone {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.detected-zone span,
+.example-source {
+  color: var(--muted-text);
+  font-size: 0.8rem;
+}
+
+.example-panel {
+  display: grid;
+  gap: 8px;
+}
+
+.example-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+
+.example-row span {
+  color: var(--muted-text);
+  font-size: 0.8rem;
+}

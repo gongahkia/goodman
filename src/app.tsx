@@ -2,21 +2,29 @@ import { useEffect, useState } from 'preact/hooks';
 import browser from './browser';
 import type { ActiveTabContext, ManualConvertFailureReason, ManualConvertResponse, RuntimeMessage } from './messages';
 import { isIgnoredHostname } from './site-access';
-import { getSettings, saveSettings } from './storage';
+import { getSettings, saveSettings, setOnboardingDismissed, shouldShowOnboarding } from './storage';
 import type { UserSettings } from './storage';
+import { parseDate } from './parser';
+import { convertToTimezone, getSystemTimezone } from './timezone';
 import './app.css';
 
 type StatusTone = 'success' | 'error' | 'info';
-type BusyAction = 'manual' | 'enable' | 'disable' | 'save' | null;
+type BusyAction = 'manual' | 'enable' | 'disable' | 'save' | 'onboarding' | null;
 
 interface StatusMessage {
   tone: StatusTone;
   text: string;
 }
 
+interface ExampleRow {
+  zone: string;
+  time: string;
+}
+
 export function App() {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [tabContext, setTabContext] = useState<ActiveTabContext | null>(null);
+  const [showOnboarding, setShowOnboarding] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyAction, setBusyAction] = useState<BusyAction>(null);
   const [status, setStatus] = useState<StatusMessage | null>(null);
@@ -43,12 +51,14 @@ export function App() {
 
   async function bootstrap() {
     try {
-      const [storedSettings, activeTabContext] = await Promise.all([
+      const [storedSettings, activeTabContext, onboardingVisible] = await Promise.all([
         getSettings(),
         getActiveTabContext(),
+        shouldShowOnboarding(),
       ]);
       setSettings(storedSettings);
       setTabContext(activeTabContext);
+      setShowOnboarding(onboardingVisible);
     } finally {
       setLoading(false);
     }
@@ -222,6 +232,23 @@ export function App() {
     }
   }
 
+  async function handleDismissOnboarding() {
+    setBusyAction('onboarding');
+
+    try {
+      await setOnboardingDismissed(true);
+      setShowOnboarding(false);
+      setStatus(null);
+    } catch (error) {
+      setStatus({
+        tone: 'error',
+        text: getErrorMessage(error),
+      });
+    } finally {
+      setBusyAction(null);
+    }
+  }
+
   if (loading || !settings) {
     return <div class="container">Loading...</div>;
   }
@@ -234,6 +261,57 @@ export function App() {
   const liveToggleDisabled = !tabContext?.originPattern || tabContext.restricted || ignoredBySettings;
   const manualDisabled = !tabContext?.tabId || tabContext.restricted;
   const siteStatusMessage = getSiteStatusMessage(tabContext, ignoredBySettings);
+  const detectedTimezone = getSystemTimezone();
+  const exampleRows = buildExampleRows(settings);
+
+  if (showOnboarding) {
+    return (
+      <div class="container">
+        <header>
+          <h1>ONUL</h1>
+          <p>Timezone conversion on the page, local by default.</p>
+        </header>
+
+        <section class="onboarding">
+          <div class="detected-zone">
+            <span>Detected timezone</span>
+            <strong>{detectedTimezone}</strong>
+          </div>
+          <div class="example-panel">
+            <span class="example-source">2pm PST</span>
+            {exampleRows.map((row) => (
+              <div class="example-row" key={row.zone}>
+                <strong>{row.time}</strong>
+                <span>{row.zone}</span>
+              </div>
+            ))}
+          </div>
+          <div class="action-grid">
+            <button
+              class="primary"
+              disabled={busyAction !== null}
+              onClick={() => {
+                void handleDismissOnboarding();
+              }}
+            >
+              {busyAction === 'onboarding' ? 'Saving...' : 'Continue to settings'}
+            </button>
+            <button
+              class="secondary"
+              disabled={liveToggleDisabled || busyAction !== null}
+              onClick={() => {
+                void handleEnableLive();
+              }}
+            >
+              {busyAction === 'enable' ? 'Enabling...' : 'Enable on this site'}
+            </button>
+          </div>
+          <small class="muted">Manual conversion works without site access. Live conversion asks only for this site.</small>
+          {status ? <span class={`status ${status.tone}`}>{status.text}</span> : null}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div class="container">
@@ -447,4 +525,26 @@ function getErrorMessage(error: unknown): string {
   }
 
   return 'The requested action could not be completed on this page.';
+}
+
+function buildExampleRows(settings: UserSettings): ExampleRow[] {
+  const parsed = parseDate('2pm PST', new Date('2023-01-15T12:00:00Z'));
+
+  if (!parsed) {
+    return [];
+  }
+
+  const targetZone = settings.targetTimezone === 'auto'
+    ? getSystemTimezone()
+    : settings.targetTimezone;
+  const zones = [targetZone, ...settings.pinnedTimezones.filter((zone) => zone !== targetZone)];
+
+  return zones.map((zone) => {
+    const converted = convertToTimezone(parsed.date, zone);
+
+    return {
+      zone,
+      time: converted.toFormat(settings.format24h ? 'HH:mm' : 'h:mm a'),
+    };
+  });
 }
