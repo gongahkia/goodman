@@ -1,5 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { addVersion, getVersionHistory } from '@versioning/schema';
+import {
+  addVersion,
+  getDomainHistorySummaries,
+  getVersionHistory,
+  getVersionHistorySnapshot,
+} from '@versioning/schema';
 import { mockStorage } from '../mocks/chrome';
 import type { Summary } from '@providers/types';
 
@@ -64,4 +69,56 @@ describe('version tracking', () => {
     expect(history).toHaveLength(2);
     expect(history[0]!.timestamp).toBeLessThanOrEqual(history[1]!.timestamp);
   });
+
+  it('returns local history snapshots sorted by latest activity', async () => {
+    mockStorage.versionHistory = {
+      'old.test': [makeVersion('old.test', 1, 'low', 1000)],
+      'new.test': [makeVersion('new.test', 1, 'medium', 2000)],
+    };
+
+    const snapshot = await getVersionHistorySnapshot();
+
+    expect(Object.keys(snapshot)).toEqual(['new.test', 'old.test']);
+    expect(snapshot['new.test']?.[0]?.summary.summary).toBe('new.test summary 1');
+  });
+
+  it('summarizes latest domain history and severity trend', async () => {
+    mockStorage.versionHistory = {
+      'example.com': [
+        makeVersion('example.com', 1, 'low', 1000),
+        makeVersion('example.com', 2, 'high', 2000),
+      ],
+    };
+
+    const summaries = await getDomainHistorySummaries();
+
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      domain: 'example.com',
+      versionCount: 2,
+      lastDiffAt: 2000,
+      severityTrend: 'up',
+    });
+    expect(summaries[0]?.latest.version).toBe(2);
+  });
 });
+
+function makeVersion(
+  domain: string,
+  version: number,
+  severity: Summary['severity'],
+  timestamp: number
+) {
+  return {
+    domain,
+    textHash: `${domain}-${version}`,
+    timestamp,
+    version,
+    summary: {
+      summary: `${domain} summary ${version}`,
+      keyPoints: [],
+      redFlags: [],
+      severity,
+    },
+  };
+}
