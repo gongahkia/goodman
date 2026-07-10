@@ -136,7 +136,7 @@ Find `Goodman` on the [Firefox browser Add-ons](https://addons.mozilla.org/en-US
 | Browser | Status | Link |
 | :--- | :--- | :--- |
 | Firefox | ![](https://img.shields.io/badge/Status-Up-brightgreen) | [addons.mozilla.org/en-US/firefox/addon/goodman/](https://addons.mozilla.org/en-US/firefox/addon/goodman) |
-| Google Chrome | ![](https://img.shields.io/badge/Status-Awaiting%20Approval-orange) | NIL |
+| Google Chrome | ![](https://img.shields.io/badge/Status-Not%20Publicly%20Listed-orange) | [status](./docs/chrome-web-store-status.md) |
 | Safari | ![](https://img.shields.io/badge/Status-Unsupported-red) | NIL |
 
 ## Architecture
