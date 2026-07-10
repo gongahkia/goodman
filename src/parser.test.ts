@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { parseDate } from './parser';
 
 describe('Parser', () => {
+    const winterRefDate = new Date('2023-01-15T12:00:00Z');
+
     it('should parse "tomorrow at 5pm" via chrono', () => {
         const text = 'tomorrow at 5pm';
         const result = parseDate(text);
@@ -95,7 +97,7 @@ describe('Parser', () => {
     it('should handle timezone abbreviations (EST)', () => {
         // 5pm EST should be 22:00 UTC
         const text = '5pm EST';
-        const result = parseDate(text);
+        const result = parseDate(text, winterRefDate);
         expect(result).not.toBeNull();
         // Check if the date corresponds to 22:00 UTC (assuming 5pm = 17:00)
         // Note: Date object is just a timestamp. 
@@ -105,7 +107,7 @@ describe('Parser', () => {
     it('should handle timezone abbreviations (CET)', () => {
         // 5pm CET (UTC+1) should be 16:00 UTC
         const text = '5pm CET';
-        const result = parseDate(text);
+        const result = parseDate(text, winterRefDate);
         expect(result).not.toBeNull();
         expect(result?.date.getUTCHours()).toBe(16);
     });
@@ -113,7 +115,7 @@ describe('Parser', () => {
     it('should handle timezone abbreviations (JST)', () => {
         // 5pm JST (UTC+9) should be 08:00 UTC
         const text = '5pm JST';
-        const result = parseDate(text);
+        const result = parseDate(text, winterRefDate);
         expect(result).not.toBeNull();
         expect(result?.date.getUTCHours()).toBe(8);
     });
