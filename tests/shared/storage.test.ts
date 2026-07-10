@@ -15,6 +15,7 @@ import {
   setStorage,
 } from '@shared/storage';
 import { DEFAULT_DOMAIN_PREFERENCES } from '@shared/domain-preferences';
+import { DEFAULT_CLAUSE_TAXONOMY_WEIGHTS } from '@shared/clause-taxonomy';
 import { mockStorage } from '../mocks/chrome';
 
 function makePageAnalysisRecord(
@@ -70,6 +71,15 @@ describe('shared storage', () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.corpusContribution).toEqual({ enabled: false });
+    }
+  });
+
+  it('defaults clause taxonomy severity weights', async () => {
+    const result = await getStorage('settings');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.clauseTaxonomyWeights).toEqual(DEFAULT_CLAUSE_TAXONOMY_WEIGHTS);
     }
   });
 
@@ -171,6 +181,7 @@ describe('shared storage', () => {
     expect(result.data.providers.hosted).toBeUndefined();
     expect(result.data.providers.openai).toEqual(DEFAULT_SETTINGS.providers.openai);
     expect(result.data.corpusContribution.enabled).toBe(false);
+    expect(result.data.clauseTaxonomyWeights).toEqual(DEFAULT_CLAUSE_TAXONOMY_WEIGHTS);
   });
 
   it('migrates stored hosted settings out of local storage', async () => {
@@ -188,6 +199,7 @@ describe('shared storage', () => {
       corpusContribution: {
         enabled: false,
       },
+      clauseTaxonomyWeights: DEFAULT_CLAUSE_TAXONOMY_WEIGHTS,
     });
     expect((mockStorage.settings as { providers: Record<string, unknown> }).providers.hosted).toBeUndefined();
   });

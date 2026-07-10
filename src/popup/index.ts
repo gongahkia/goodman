@@ -43,6 +43,11 @@ import {
 } from '@shared/storage';
 import { sendToBackground } from '@shared/messaging';
 import { getPendingNotifications } from '@versioning/notifications';
+import {
+  DEFAULT_CLAUSE_TAXONOMY_WEIGHTS,
+  groupRedFlagsByClauseTaxonomy,
+  type ClauseFlag,
+} from '@shared/clause-taxonomy';
 
 interface PopupState {
   tabId: number | null;
@@ -277,8 +282,10 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
     const maxPreview = 5;
     const flagsToShow = [...highFlags, ...otherFlags].slice(0, Math.max(maxPreview, highFlags.length));
     for (const flag of flagsToShow) {
+      const taxonomy = groupRedFlagsByClauseTaxonomy([flag], state.settings?.clauseTaxonomyWeights)[0];
       const row = createElement('div', cx('tc-flag-preview-row', `tc-flag-preview-row--${flag.severity}`));
-      const fname = createElement('span', 'tc-flag-preview-name', flag.category.replace(/_/g, ' '));
+      if (taxonomy) row.title = taxonomy.category.description;
+      const fname = createElement('span', 'tc-flag-preview-name', taxonomy?.category.label ?? flag.category.replace(/_/g, ' '));
       const fsev = createElement('span', cx('tc-flag-preview-severity', `tc-flag-preview-severity--${flag.severity}`), flag.severity);
       appendChildren(row, fname, fsev);
       flagSection.appendChild(row);
@@ -287,6 +294,7 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
     if (hidden > 0) {
       flagSection.appendChild(createElement('span', 'tc-flag-preview-more', `+${hidden} more`));
     }
+    flagSection.appendChild(createElement('p', 'tc-flag-disclaimer', 'Risk labels are flags, not legal advice.'));
     wrapper.appendChild(flagSection);
   }
   // metadata
@@ -510,7 +518,7 @@ function createPanelSummaryView(summary: Summary, analysis: PageAnalysisRecord):
   }
   if (summary.redFlags.length > 0) {
     card.appendChild(createDivider());
-    card.appendChild(createRedFlagsSection(summary.redFlags));
+    card.appendChild(createRedFlagsSection(summary.redFlags, state.settings?.clauseTaxonomyWeights));
   }
   return card;
 }
@@ -609,11 +617,36 @@ function createKeyPointsSection(points: string[], title: string): HTMLElement {
   return section;
 }
 
-function createRedFlagsSection(flags: Array<{ category: string; description: string; severity: string; quote: string }>): HTMLElement {
+function createRedFlagsSection(
+  flags: ClauseFlag[],
+  weights = DEFAULT_CLAUSE_TAXONOMY_WEIGHTS
+): HTMLElement {
   const section = createElement('section');
-  section.appendChild(createSectionHeading(`Red Flags (${flags.length})`, 'Clauses that look riskier than the rest of the agreement.'));
+  section.appendChild(createSectionHeading(`Red Flags (${flags.length})`, 'Risk labels are flags, not legal advice.'));
   const stack = createElement('div', 'tc-flag-stack');
-  for (const flag of flags) stack.appendChild(createRedFlagCard(flag));
+  const groups = groupRedFlagsByClauseTaxonomy(flags, weights);
+  const groupedFlags = new Set<ClauseFlag>();
+  for (const group of groups) {
+    const groupEl = createElement('div', 'tc-taxonomy-group');
+    groupEl.style.setProperty('--tc-taxonomy-color', group.category.color);
+    groupEl.title = group.category.description;
+    const header = createElement('div', 'tc-taxonomy-header');
+    appendChildren(
+      header,
+      createElement('span', 'tc-taxonomy-swatch'),
+      createElement('span', 'tc-taxonomy-title', group.category.label),
+      createPill(`weight ${weights[group.category.id]}`, 'muted')
+    );
+    groupEl.appendChild(header);
+    for (const flag of group.flags) {
+      groupedFlags.add(flag);
+      groupEl.appendChild(createRedFlagCard(flag));
+    }
+    stack.appendChild(groupEl);
+  }
+  for (const flag of flags) {
+    if (!groupedFlags.has(flag)) stack.appendChild(createRedFlagCard(flag));
+  }
   section.appendChild(stack);
   return section;
 }

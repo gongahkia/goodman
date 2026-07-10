@@ -29,6 +29,7 @@ describe('detection settings', () => {
     expect(values).toContain('aggressive');
     expect(values).toContain('normal');
     expect(values).toContain('conservative');
+    expect(container.textContent).toContain('Red-flag severity weights');
   });
 
   it('pre-selects the current sensitivity', async () => {
@@ -61,5 +62,21 @@ describe('detection settings', () => {
 
     const stored = mockStorage.settings as typeof DEFAULT_SETTINGS;
     expect(stored.detectionSensitivity).toBe('aggressive');
+  });
+
+  it('saves clause taxonomy severity weight overrides', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    await renderDetectionSettings(container);
+
+    const input = container.querySelector('input[aria-label="Arbitration severity weight"]') as HTMLInputElement;
+    input.value = '9';
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(0);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const stored = mockStorage.settings as typeof DEFAULT_SETTINGS;
+    expect(stored.clauseTaxonomyWeights.arbitration).toBe(9);
   });
 });

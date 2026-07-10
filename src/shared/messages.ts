@@ -1,4 +1,5 @@
 import type { Result } from './result';
+import type { ClauseTaxonomyWeights } from './clause-taxonomy';
 import type {
   AnalysisSourceType,
   DetectionType,
@@ -107,6 +108,7 @@ export interface Settings {
   darkMode: 'auto' | 'light' | 'dark';
   notifyOnChange: boolean;
   corpusContribution: CorpusContributionSettings;
+  clauseTaxonomyWeights: ClauseTaxonomyWeights;
 }
 
 export interface ProviderConfig {

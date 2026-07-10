@@ -1,5 +1,10 @@
 import { appendChildren, createElement, createSectionHeading } from '@popup/ui';
 import { getStorage, setStorage } from '@shared/storage';
+import {
+  CLAUSE_TAXONOMY,
+  normalizeClauseTaxonomyWeights,
+  type ClauseTaxonomyId,
+} from '@shared/clause-taxonomy';
 
 const SENSITIVITY_OPTIONS = [
   {
@@ -62,4 +67,51 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
     group.appendChild(label);
   }
   container.appendChild(group);
+
+  container.appendChild(
+    createSectionHeading(
+      'Red-flag severity weights',
+      'Tune how strongly each clause label contributes to grouped risk sorting.'
+    )
+  );
+  const weightList = createElement('div', 'tc-field-group');
+  for (const category of CLAUSE_TAXONOMY) {
+    weightList.appendChild(createTaxonomyWeightField(category.id, category.label, settings.clauseTaxonomyWeights[category.id]));
+  }
+  container.appendChild(weightList);
+}
+
+function createTaxonomyWeightField(
+  id: ClauseTaxonomyId,
+  labelText: string,
+  weight: number
+): HTMLElement {
+  const row = createElement('label', 'tc-domain-row');
+  const label = createElement('div', 'tc-domain-label');
+  appendChildren(
+    label,
+    createElement('div', 'tc-option-title', labelText),
+    createElement('div', 'tc-option-copy', 'Weight 1-10')
+  );
+  const input = createElement('input', 'tc-input') as HTMLInputElement;
+  input.type = 'number';
+  input.min = '1';
+  input.max = '10';
+  input.step = '1';
+  input.value = String(weight);
+  input.setAttribute('aria-label', `${labelText} severity weight`);
+  input.style.maxWidth = '72px';
+  input.addEventListener('change', async () => {
+    const s = await getStorage('settings');
+    if (!s.ok) return;
+    await setStorage('settings', {
+      ...s.data,
+      clauseTaxonomyWeights: normalizeClauseTaxonomyWeights({
+        ...s.data.clauseTaxonomyWeights,
+        [id]: Number(input.value),
+      }),
+    });
+  });
+  appendChildren(row, label, input);
+  return row;
 }

@@ -9,6 +9,10 @@ import {
   normalizeDomainPreferences,
   type DomainPreferences,
 } from './domain-preferences';
+import {
+  DEFAULT_CLAUSE_TAXONOMY_WEIGHTS,
+  normalizeClauseTaxonomyWeights,
+} from './clause-taxonomy';
 
 export interface CachedSummary {
   summary: StoredSummary;
@@ -83,6 +87,7 @@ export const DEFAULT_SETTINGS: Settings = {
   corpusContribution: {
     enabled: false,
   },
+  clauseTaxonomyWeights: DEFAULT_CLAUSE_TAXONOMY_WEIGHTS,
 };
 
 const STORAGE_DEFAULTS: StorageSchema = {
@@ -143,6 +148,7 @@ const MIGRATIONS: Record<number, MigrationFn> = {
         darkMode: settings['darkMode'] ?? DEFAULT_SETTINGS.darkMode,
         notifyOnChange: settings['notifyOnChange'] ?? DEFAULT_SETTINGS.notifyOnChange,
         corpusContribution: parseCorpusContributionSettings(settings['corpusContribution']),
+        clauseTaxonomyWeights: normalizeClauseTaxonomyWeights(settings['clauseTaxonomyWeights']),
       },
     });
   },
@@ -195,6 +201,7 @@ function normalizeSettings(settings: Settings | undefined): Settings {
     darkMode: settings.darkMode ?? DEFAULT_SETTINGS.darkMode,
     notifyOnChange: settings.notifyOnChange ?? DEFAULT_SETTINGS.notifyOnChange,
     corpusContribution: parseCorpusContributionSettings(settings.corpusContribution),
+    clauseTaxonomyWeights: normalizeClauseTaxonomyWeights(settings.clauseTaxonomyWeights),
   };
 }
 

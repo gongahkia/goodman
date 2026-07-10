@@ -31,6 +31,25 @@ function readyAnalysis() {
   };
 }
 
+function readyAnalysisWithRedFlags() {
+  return {
+    ...readyAnalysis(),
+    summary: {
+      summary: 'This page asks you to agree to terms.',
+      keyPoints: ['Point one'],
+      redFlags: [
+        {
+          category: 'arbitration_clause',
+          description: 'Mandatory arbitration applies.',
+          severity: 'high',
+          quote: 'All disputes are resolved by arbitration.',
+        },
+      ],
+      severity: 'high',
+    },
+  };
+}
+
 async function loadPopupModule(): Promise<void> {
   vi.resetModules();
   await import('@popup/index');
@@ -67,6 +86,20 @@ describe('popup index', () => {
     );
     expect(document.body.textContent).toContain('inline');
     expect(document.body.textContent).toContain('View Details');
+  });
+
+  it('groups red flags by clause taxonomy label', async () => {
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': readyAnalysisWithRedFlags(),
+    };
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    expect(document.body.textContent).toContain('Risk labels are flags, not legal advice.');
+    expect(document.body.textContent).toContain('Arbitration');
+    expect(document.querySelector('.tc-flag-preview-row')?.getAttribute('title')).toContain('arbitration');
   });
 
   it('opens a persistent workspace from the action bar', async () => {
