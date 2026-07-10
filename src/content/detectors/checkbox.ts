@@ -1,9 +1,13 @@
+import { detectConsentDarkPatterns } from './dark-patterns';
+import type { DarkPatternFinding } from '@shared/dark-patterns';
+
 export interface DetectedElement {
   element: HTMLElement;
   type: 'checkbox' | 'modal' | 'banner' | 'fullpage';
   confidence: number;
   keywords: string[];
   nearestLink: string | null;
+  darkPatterns?: DarkPatternFinding[];
 }
 
 const LEGAL_KEYWORDS = [
@@ -96,9 +100,11 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
   }
 
   const contextText = contextSegments.join(' ').toLowerCase();
-  if (!hasStrongAgreementLanguage(contextText)) return null;
-  if (!hasLegalContext(contextText, nearestLink)) return null;
-  if (looksLikeMarketingOptIn(contextText, nearestLink)) return null;
+  const darkPatterns = detectConsentDarkPatterns(getCheckboxEvaluationRoot(checkbox, label));
+  const hasPrecheckedDataOptIn = darkPatterns.some((finding) => finding.id === 'prechecked_data_opt_in');
+  if (!hasStrongAgreementLanguage(contextText) && !hasPrecheckedDataOptIn) return null;
+  if (!hasLegalContext(contextText, nearestLink) && !hasPrecheckedDataOptIn) return null;
+  if (looksLikeMarketingOptIn(contextText, nearestLink) && !hasPrecheckedDataOptIn) return null;
 
   const legalMatches = countMatches(contextText, LEGAL_KEYWORDS);
   const agreementMatches = countMatches(contextText, AGREEMENT_KEYWORDS);
@@ -114,20 +120,26 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
   if (contextText.includes('privacy policy')) {
     score += 0.1;
   }
-  score -= Math.min(marketingMatches * 0.2, 0.4);
+  if (!hasPrecheckedDataOptIn) score -= Math.min(marketingMatches * 0.2, 0.4);
+  if (hasPrecheckedDataOptIn) score += 0.65;
 
-  const uniqueKeywords = [...new Set(foundKeywords)];
+  const uniqueKeywords = [...new Set([
+    ...foundKeywords,
+    ...darkPatterns.map((finding) => finding.id),
+  ])];
   const confidence = Math.max(0, Math.min(score, 1.0));
 
   if (uniqueKeywords.length === 0 || confidence < 0.45) return null;
 
-  return {
+  const result: DetectedElement = {
     element: checkbox,
     type: 'checkbox',
     confidence,
     keywords: uniqueKeywords,
     nearestLink,
   };
+  if (darkPatterns.length > 0) result.darkPatterns = darkPatterns;
+  return result;
 }
 
 function findAssociatedLabel(checkbox: HTMLInputElement): HTMLLabelElement | null {
@@ -137,6 +149,17 @@ function findAssociatedLabel(checkbox: HTMLInputElement): HTMLLabelElement | nul
   }
   const parent = checkbox.closest('label');
   return parent as HTMLLabelElement | null;
+}
+
+function getCheckboxEvaluationRoot(
+  checkbox: HTMLInputElement,
+  label: HTMLLabelElement | null
+): HTMLElement {
+  const labeledParent = checkbox.closest('label');
+  if (labeledParent instanceof HTMLElement) return labeledParent;
+  if (checkbox.parentElement) return checkbox.parentElement;
+  if (label?.parentElement) return label.parentElement;
+  return checkbox;
 }
 
 function scanElementForKeywords(el: Element): { keywords: string[]; text: string } {

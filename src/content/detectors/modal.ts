@@ -1,4 +1,5 @@
 import type { DetectedElement } from './checkbox';
+import { detectConsentDarkPatterns } from './dark-patterns';
 import { MIN_MODAL_TEXT_LENGTH } from '@shared/constants';
 
 const CONSENT_CLASS_PATTERN = /cookie|consent|gdpr|privacy|banner|notice/i;
@@ -101,16 +102,20 @@ function analyzeCandidate(el: HTMLElement): DetectedElement | null {
   if (isDialog) score += 0.2;
 
   const type = classifyType(el);
+  const darkPatterns = detectConsentDarkPatterns(el);
+  score += getDarkPatternConfidenceBoost(darkPatterns);
   const confidence = Math.min(score, 1.0);
   const nearestLink = el.querySelector('a[href]')?.getAttribute('href') ?? null;
 
-  return {
+  const result: DetectedElement = {
     element: el,
     type,
     confidence,
     keywords: foundKeywords,
     nearestLink,
   };
+  if (darkPatterns.length > 0) result.darkPatterns = darkPatterns;
+  return result;
 }
 
 function hasAction(el: HTMLElement): boolean {
@@ -138,6 +143,15 @@ function classifyType(el: HTMLElement): 'modal' | 'banner' {
   }
 
   return 'modal';
+}
+
+function getDarkPatternConfidenceBoost(
+  findings: NonNullable<DetectedElement['darkPatterns']>
+): number {
+  if (findings.some((finding) => finding.severity === 'high')) return 0.15;
+  if (findings.some((finding) => finding.severity === 'medium')) return 0.1;
+  if (findings.length > 0) return 0.05;
+  return 0;
 }
 
 function deduplicateByElement(results: DetectedElement[]): DetectedElement[] {

@@ -21,6 +21,29 @@ describe('detectModals', () => {
 
     expect(results.length).toBeGreaterThanOrEqual(1);
     expect(results[0]!.confidence).toBeGreaterThanOrEqual(0.5);
+    expect(results[0]!.darkPatterns).toContainEqual(expect.objectContaining({
+      id: 'accept_all_without_equal_reject',
+    }));
+  });
+
+  it('attaches dark-pattern findings to consent modals', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <div role="dialog">
+        <h2>Cookie Preferences</h2>
+        <p>We use cookies and similar technologies for analytics, advertising, personalization, and partner measurement. You must agree to continue using this service and allow processing for these purposes.</p>
+        <button>Accept All Cookies</button>
+      </div>
+    `;
+    document.body.appendChild(root);
+
+    const results = detectModals(root);
+
+    expect(results.length).toBeGreaterThanOrEqual(1);
+    expect(results[0]!.darkPatterns).toContainEqual(expect.objectContaining({
+      id: 'coercive_continue_copy',
+      severity: 'high',
+    }));
   });
 
   it('should detect dialog with role and terms heading', () => {

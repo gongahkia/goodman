@@ -65,6 +65,23 @@ describe('detectCheckboxes', () => {
     expect(results).toHaveLength(0);
   });
 
+  it('detects a pre-checked marketing or analytics opt-in as a risky consent surface', () => {
+    const root = document.createElement('div');
+    root.innerHTML = `
+      <input type="checkbox" id="analytics" checked>
+      <label for="analytics">Share analytics and advertising data with third-party partners</label>
+    `;
+    document.body.appendChild(root);
+
+    const results = detectCheckboxes(root);
+
+    expect(results).toHaveLength(1);
+    expect(results[0]!.darkPatterns).toContainEqual(expect.objectContaining({
+      id: 'prechecked_data_opt_in',
+      severity: 'high',
+    }));
+  });
+
   it('should return nearest T&C link URL in nearestLink', () => {
     const root = document.createElement('div');
     root.innerHTML = `
