@@ -206,7 +206,14 @@ describe('popup index', () => {
     const tablist = document.querySelector('[role="tablist"]');
     const tabs = Array.from(document.querySelectorAll('[role="tab"]')) as HTMLButtonElement[];
     expect(tablist?.getAttribute('aria-label')).toBe('Settings sections');
-    expect(tabs).toHaveLength(5);
+    expect(tabs.map(tab => tab.textContent)).toEqual([
+      'Providers',
+      'Detection',
+      'Notifications',
+      'Domains',
+      'Cache',
+      'Corpus',
+    ]);
     expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
     expect(tabs[0]?.tabIndex).toBe(0);
 

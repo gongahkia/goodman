@@ -6,6 +6,7 @@ import { renderDetectionSettings } from '@popup/settings/detection';
 import { renderDomainSettings } from '@popup/settings/domains';
 import { renderNotificationSettings } from '@popup/settings/notifications';
 import { renderProviderSettings } from '@popup/settings/providers';
+import { renderCorpusSettings } from '@popup/settings/corpus';
 import {
   announceStatus,
   appendChildren,
@@ -66,7 +67,7 @@ function getSurfaceMode(): 'popup' | 'panel' {
 }
 const surfaceMode = getSurfaceMode();
 
-const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Cache'] as const;
+const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Cache', 'Corpus'] as const;
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 
 const state: PopupState = {
@@ -752,7 +753,7 @@ function showSettings(): void {
   const tabBar = createElement('div', 'tc-tabs');
   tabBar.setAttribute('role', 'tablist');
   tabBar.setAttribute('aria-label', 'Settings sections');
-  appendChildren(body, createViewHeader('Settings', 'Providers, detection, notifications, and cache.'), tabBar, contentDiv);
+  appendChildren(body, createViewHeader('Settings', 'Providers, detection, notifications, cache, and corpus.'), tabBar, contentDiv);
   panel.appendChild(body);
   app.appendChild(panel);
   const buttons: HTMLButtonElement[] = [];
@@ -879,6 +880,7 @@ async function renderSettingsTab(tab: SettingsTab, contentDiv: HTMLElement): Pro
     case 'Notifications': await renderNotificationSettings(contentDiv); break;
     case 'Domains': await renderDomainSettings(contentDiv); break;
     case 'Cache': await renderCacheSettings(contentDiv); break;
+    case 'Corpus': await renderCorpusSettings(contentDiv); break;
   }
 }
 

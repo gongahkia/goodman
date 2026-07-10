@@ -106,12 +106,17 @@ export interface Settings {
   detectionSensitivity: 'aggressive' | 'normal' | 'conservative';
   darkMode: 'auto' | 'light' | 'dark';
   notifyOnChange: boolean;
+  corpusContribution: CorpusContributionSettings;
 }
 
 export interface ProviderConfig {
   apiKey: string;
   model: string;
   baseUrl?: string;
+}
+
+export interface CorpusContributionSettings {
+  enabled: boolean;
 }
 
 export type MessageResponse = Result<unknown, string> | unknown;

@@ -61,6 +61,15 @@ describe('shared storage', () => {
     }
   });
 
+  it('defaults anonymous corpus contribution to disabled', async () => {
+    const result = await getStorage('settings');
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.data.corpusContribution).toEqual({ enabled: false });
+    }
+  });
+
   it('persists page analysis records by tab id', async () => {
     const record = makePageAnalysisRecord();
 
@@ -133,6 +142,7 @@ describe('shared storage', () => {
     expect(result.data.activeProvider).toBe(DEFAULT_SETTINGS.activeProvider);
     expect(result.data.providers.hosted).toBeUndefined();
     expect(result.data.providers.openai).toEqual(DEFAULT_SETTINGS.providers.openai);
+    expect(result.data.corpusContribution.enabled).toBe(false);
   });
 
   it('migrates stored hosted settings out of local storage', async () => {
@@ -146,6 +156,9 @@ describe('shared storage', () => {
       activeProvider: DEFAULT_SETTINGS.activeProvider,
       providers: {
         openai: DEFAULT_SETTINGS.providers.openai,
+      },
+      corpusContribution: {
+        enabled: false,
       },
     });
     expect((mockStorage.settings as { providers: Record<string, unknown> }).providers.hosted).toBeUndefined();

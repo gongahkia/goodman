@@ -74,6 +74,9 @@ export const DEFAULT_SETTINGS: Settings = {
   detectionSensitivity: 'conservative',
   darkMode: 'auto',
   notifyOnChange: true,
+  corpusContribution: {
+    enabled: false,
+  },
 };
 
 const STORAGE_DEFAULTS: StorageSchema = {
@@ -132,6 +135,7 @@ const MIGRATIONS: Record<number, MigrationFn> = {
         detectionSensitivity: settings['detectionSensitivity'] ?? DEFAULT_SETTINGS.detectionSensitivity,
         darkMode: settings['darkMode'] ?? DEFAULT_SETTINGS.darkMode,
         notifyOnChange: settings['notifyOnChange'] ?? DEFAULT_SETTINGS.notifyOnChange,
+        corpusContribution: parseCorpusContributionSettings(settings['corpusContribution']),
       },
     });
   },
@@ -183,7 +187,14 @@ function normalizeSettings(settings: Settings | undefined): Settings {
     detectionSensitivity: settings.detectionSensitivity ?? DEFAULT_SETTINGS.detectionSensitivity,
     darkMode: settings.darkMode ?? DEFAULT_SETTINGS.darkMode,
     notifyOnChange: settings.notifyOnChange ?? DEFAULT_SETTINGS.notifyOnChange,
+    corpusContribution: parseCorpusContributionSettings(settings.corpusContribution),
   };
+}
+
+function parseCorpusContributionSettings(value: unknown): Settings['corpusContribution'] {
+  if (!value || typeof value !== 'object') return DEFAULT_SETTINGS.corpusContribution;
+  const enabled = (value as { enabled?: unknown }).enabled === true;
+  return { enabled };
 }
 
 function parseActiveProvider(value: unknown): Settings['activeProvider'] {
