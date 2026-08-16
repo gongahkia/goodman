@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Codex Chat Loop</title>
+    <link rel="stylesheet" href="dashboard.css">
+  </head>
+  <body>
+    <main>
+      <h1>Codex Chat Loop</h1>
+      <p id="connection" class="muted">Connect the local supervisor to begin.</p>
+      <form id="settings-form">
+        <label>Supervisor URL <input id="endpoint" type="url" value="http://127.0.0.1:41671" readonly></label>
+        <label>Supervisor token <input id="token" type="password" required></label>
+        <button>Save connection</button>
+      </form>
+
+      <section id="new-project" hidden>
+        <h2>Map a workstream</h2>
+        <form id="project-form">
+          <label>Name <input id="name" maxlength="120" required placeholder="Project name"></label>
+          <label>Project directory <input id="cwd" required placeholder="/home/me/code/project"></label>
+          <label>Codex session <select id="session-id" required></select></label>
+          <label>Existing ChatGPT chat <select id="chat-tab" required></select></label>
+          <label class="option"><input id="autonomous" type="checkbox"> Automatically run each next prompt after ChatGPT replies</label>
+          <label class="option"><input id="retain-transcripts" type="checkbox"> Retain full handoff transcripts locally after each round</label>
+          <button>Add mapped workstream</button>
+        </form>
+        <p class="muted">Codex completion text is sent to ChatGPT. Keep this conversation dedicated to one workstream and do not use it while a handoff is active. New workstreams wait for a prompt review by default.</p>
+      </section>
+
+      <section id="projects-section" hidden>
+        <h2>Workstreams</h2>
+        <div id="projects"></div>
+      </section>
+      <section id="prompt-review" hidden>
+        <h2>Review next Codex prompt</h2>
+        <p id="review-project" class="muted"></p>
+        <textarea id="review-prompt" rows="10" readonly></textarea>
+        <div class="actions">
+          <button id="approve-prompt" type="button">Run reviewed prompt</button>
+          <button id="close-review" type="button">Close</button>
+        </div>
+      </section>
+      <section id="handoff-review" hidden>
+        <h2>Review outbound Codex completion</h2>
+        <p id="handoff-project" class="muted"></p>
+        <textarea id="handoff-completion" rows="10" readonly></textarea>
+        <div class="actions">
+          <button id="send-handoff" type="button">Send reviewed completion to ChatGPT</button>
+          <button id="close-handoff" type="button">Close</button>
+        </div>
+      </section>
+      <section id="events-section" hidden>
+        <h2>Recent events</h2>
+        <pre id="events"></pre>
+      </section>
+      <p id="error" role="alert"></p>
+    </main>
+    <script type="module" src="dashboard.js"></script>
+  </body>
+</html>

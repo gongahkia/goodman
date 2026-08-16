@@ -1,0 +1,19 @@
+:root { color-scheme: light dark; font: 14px system-ui, sans-serif; }
+body { margin: 0; min-width: 380px; }
+main { padding: 16px; }
+h1, h2 { margin: 0 0 10px; }
+h1 { font-size: 18px; }
+h2 { font-size: 15px; margin-top: 22px; }
+form, .project { display: grid; gap: 8px; }
+label { display: grid; gap: 3px; }
+input, select, button, textarea { font: inherit; padding: 6px; }
+button { cursor: pointer; }
+.project { border: 1px solid #7776; border-radius: 6px; margin: 8px 0; padding: 10px; }
+.project header, .actions { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+.project header { justify-content: space-between; }
+.muted { color: #777; margin: 6px 0; }
+.status { font-size: 12px; border-radius: 12px; padding: 2px 7px; background: #7773; }
+#error { color: #bd2020; white-space: pre-wrap; }
+.option { display: flex; gap: 7px; align-items: center; }
+textarea, #events { box-sizing: border-box; width: 100%; }
+#events { max-height: 220px; overflow: auto; white-space: pre-wrap; font-size: 11px; }

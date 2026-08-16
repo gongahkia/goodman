@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Codex Chat Loop",
+  "version": "0.1.0",
+  "description": "Locally connects persisted Codex sessions to existing ChatGPT conversations.",
+  "permissions": ["alarms", "notifications", "scripting", "storage", "tabs"],
+  "host_permissions": [
+    "http://127.0.0.1:41671/*",
+    "https://chatgpt.com/*",
+    "https://chat.openai.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Codex Chat Loop",
+    "default_popup": "dashboard.html"
+  }
+}
