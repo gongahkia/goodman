@@ -1,38 +1,48 @@
 {
-  "name": "onul",
-  "private": true,
+  "name": "goodman",
   "version": "1.0.0",
-  "license": "MIT",
+  "description": "Automatically detect, summarize, and track Terms & Conditions changes",
   "type": "module",
+  "engines": {
+    "node": "20.x",
+    "pnpm": "10.32.1"
+  },
   "scripts": {
     "dev": "vite",
-    "build": "node scripts/build.mjs",
-    "build:safari-app": "node scripts/build-safari-app.mjs",
-    "lint": "eslint .",
-    "test": "vitest",
-    "release": "./release.sh",
-    "release:firefox": "node scripts/release-firefox.mjs",
-    "preview": "vite preview"
+    "build": "vite build",
+    "build:firefox": "BUILD_TARGET=firefox vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "lint": "eslint src/ server/",
+    "typecheck": "tsc --noEmit",
+    "package:chrome": "pnpm build && cd dist && zip -r ../goodman-chrome-v$npm_package_version.zip .",
+    "package:firefox": "pnpm build:firefox && cd dist && zip -r ../goodman-firefox-v$npm_package_version.xpi ."
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.32.1+sha512.a706938f0e89ac1456b6563eab4edf1d1faf3368d1191fc5c59790e96dc918e4456ab2e67d613de1043d2e8c81f87303e6b40d4ffeca9df15ef1ad567348f2be",
+  "devDependencies": {
+    "@crxjs/vite-plugin": "2.0.0-beta.33",
+    "@playwright/test": "^1.58.2",
+    "@types/chrome": "^0.1.38",
+    "@types/diff": "^8.0.0",
+    "@types/node": "^20.19.37",
+    "@types/webextension-polyfill": "^0.12.5",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^10.1.0",
+    "jsdom": "^29.0.1",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "tsx": "^4.20.6",
+    "vite": "^8.0.1",
+    "vitest": "^4.1.0"
   },
   "dependencies": {
-    "chrono-node": "^2.9.0",
-    "luxon": "^3.7.2",
-    "preact": "^10.27.2",
+    "diff": "^8.0.3",
+    "pdfjs-dist": "^5.5.207",
     "webextension-polyfill": "^0.12.0"
-  },
-  "devDependencies": {
-    "@preact/preset-vite": "^2.10.2",
-    "@types/chrome": "^0.1.36",
-    "@types/luxon": "^3.7.1",
-    "@types/node": "^24.10.1",
-    "@types/webextension-polyfill": "^0.12.5",
-    "eslint": "^9.39.2",
-    "eslint-config-prettier": "^10.1.8",
-    "globals": "^17.3.0",
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.54.0",
-    "vite": "^7.2.4",
-    "vitest": "^4.0.18"
   }
 }
