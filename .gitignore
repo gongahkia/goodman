@@ -4,3 +4,4 @@ dist/
 *.xpi
 .DS_Store
 .tooling/
+AGENTS.md
