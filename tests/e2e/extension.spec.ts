@@ -72,6 +72,16 @@ test('loads the packaged MV3 worker and popup page', async () => {
   await popup.close();
 });
 
+test('renders the packaged persistent workspace at its requested route', async () => {
+  const workspace = await openExtensionPage('src/popup/index.html?workspace=1&route=history');
+
+  await expect(workspace.locator('.tc-workspace-sidebar')).toBeVisible();
+  await expect(workspace.getByRole('heading', { name: 'History' })).toBeVisible();
+  await expect(workspace.getByRole('button', { name: 'History', exact: true })).toHaveAttribute('aria-current', 'page');
+
+  await workspace.close();
+});
+
 test('fresh install requires provider setup on a consent-like page', async () => {
   const consentUrl = `${baseUrl}/consent`;
   const page = await context.newPage();
@@ -187,9 +197,9 @@ async function withWorker<T>(
   return callback(await getExtensionWorker());
 }
 
-async function openExtensionPage(): Promise<Page> {
+async function openExtensionPage(path = 'src/popup/index.html'): Promise<Page> {
   const page = await context.newPage();
-  await page.goto(`chrome-extension://${extensionId}/src/popup/index.html`);
+  await page.goto(`chrome-extension://${extensionId}/${path}`);
   return page;
 }
 
