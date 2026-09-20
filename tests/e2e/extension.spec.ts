@@ -76,7 +76,7 @@ test('renders the packaged persistent workspace at its requested route', async (
   const workspace = await openExtensionPage('src/popup/index.html?workspace=1&route=history');
 
   await expect(workspace.locator('.tc-workspace-sidebar')).toBeVisible();
-  await expect(workspace.getByRole('heading', { name: 'History' })).toBeVisible();
+  await expect(workspace.getByRole('heading', { name: 'History', exact: true })).toBeVisible();
   await expect(workspace.getByRole('button', { name: 'History', exact: true })).toHaveAttribute('aria-current', 'page');
 
   await workspace.close();

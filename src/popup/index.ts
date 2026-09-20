@@ -114,7 +114,7 @@ async function init(): Promise<void> {
   const app = document.getElementById('app');
   if (!app) return;
   const onboardingResult = await getStorage('onboardingCompleted');
-  if (onboardingResult.ok && !onboardingResult.data) {
+  if (surfaceMode === 'popup' && onboardingResult.ok && !onboardingResult.data) {
     renderOnboarding(app, () => void initMain(app));
     return;
   }
