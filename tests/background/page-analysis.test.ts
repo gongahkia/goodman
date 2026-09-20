@@ -85,7 +85,7 @@ describe('background page analysis contracts', () => {
 
     expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
       enabled: true,
-      path: 'src/popup/index.html#panel',
+      path: 'src/popup/index.html#panel&workspace=1',
     });
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
   });
@@ -95,14 +95,14 @@ describe('background page analysis contracts', () => {
     const listener = getRuntimeListener();
 
     const response = await listener(
-      { type: 'OPEN_WORKSPACE_SURFACE', payload: { windowId: 22 } },
+      { type: 'OPEN_WORKSPACE_SURFACE', payload: { windowId: 22, route: 'history', domain: 'example.com' } },
       {}
     );
 
     expect(response).toEqual({ ok: true, data: null });
     expect(chrome.sidePanel.setOptions).toHaveBeenCalledWith({
       enabled: true,
-      path: 'src/popup/index.html#panel',
+      path: 'src/popup/index.html#panel&workspace=1&route=history&domain=example.com',
     });
     expect(chrome.sidePanel.open).toHaveBeenCalledWith({ windowId: 22 });
   });
@@ -143,7 +143,7 @@ describe('background page analysis contracts', () => {
     await onClicked({ windowId: 22 });
 
     expect(chrome.windows.create).toHaveBeenCalledWith({
-      url: 'chrome-extension://mock-id/src/popup/index.html',
+      url: 'chrome-extension://mock-id/src/popup/index.html?workspace=1',
       type: 'popup',
       width: 500,
       height: 900,

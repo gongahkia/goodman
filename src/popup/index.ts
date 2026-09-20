@@ -25,10 +25,10 @@ import {
   iconRefresh,
   iconClock,
   iconZap,
-  iconChevronLeft,
   iconTerminal,
 } from '@popup/icons';
 import type { Settings } from '@shared/messages';
+import type { WorkspaceRoute } from '@shared/messages';
 import type {
   PageAnalysisLogEntry,
   PageAnalysisRecord,
@@ -48,6 +48,7 @@ import {
   groupRedFlagsByClauseTaxonomy,
   type ClauseFlag,
 } from '@shared/clause-taxonomy';
+import { getAllTrackedDomains } from '@versioning/schema';
 
 interface PopupState {
   tabId: number | null;
@@ -62,18 +63,37 @@ interface PopupState {
   analysisStartedAt: number | null;
 }
 
-function getSurfaceMode(): 'popup' | 'panel' {
+const WORKSPACE_ROUTES = ['current', 'history', 'providers', 'detection', 'monitoring', 'data', 'diagnostics'] as const satisfies readonly WorkspaceRoute[];
+
+function getSurfaceMode(): 'popup' | 'workspace' {
   const params = new URLSearchParams(window.location.search);
-  if (params.get('surface') === 'panel') {
-    return 'panel';
+  if (params.get('workspace') === '1') {
+    return 'workspace';
   }
 
-  return window.location.hash === '#panel' ? 'panel' : 'popup';
+  return window.location.hash.startsWith('#panel') ? 'workspace' : 'popup';
 }
 const surfaceMode = getSurfaceMode();
 
-const SETTINGS_TABS = ['Providers', 'Detection', 'Notifications', 'Domains', 'Cache', 'Corpus'] as const;
-type SettingsTab = (typeof SETTINGS_TABS)[number];
+function getInitialWorkspaceRoute(): WorkspaceRoute {
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  const route = query.get('route') ?? hash.get('route');
+  return isWorkspaceRoute(route) ? route : 'current';
+}
+
+function getInitialWorkspaceDomain(): string | undefined {
+  const query = new URLSearchParams(window.location.search);
+  const hash = new URLSearchParams(window.location.hash.slice(1));
+  return query.get('domain') ?? hash.get('domain') ?? undefined;
+}
+
+function isWorkspaceRoute(value: string | null): value is WorkspaceRoute {
+  return typeof value === 'string' && WORKSPACE_ROUTES.some(route => route === value);
+}
+
+let workspaceRoute: WorkspaceRoute = getInitialWorkspaceRoute();
+let workspaceDomain = getInitialWorkspaceDomain();
 
 const state: PopupState = {
   tabId: null,
@@ -136,8 +156,8 @@ function render(container: HTMLElement): void {
     clearInterval(loadingInterval);
     loadingInterval = null;
   }
-  if (surfaceMode === 'panel') {
-    renderPanel(container);
+  if (surfaceMode === 'workspace') {
+    renderWorkspace(container);
   } else {
     renderPopup(container);
   }
@@ -325,7 +345,7 @@ function createCompactWelcome(): HTMLElement {
   const title = createElement('div', 'tc-state-title', 'Welcome to Goodman');
   const copy = createElement('p', 'tc-state-copy', 'Configure your provider to detect, summarize, and track T&C changes.');
   const actions = createElement('div', 'tc-state-actions');
-  actions.appendChild(createButton('Open Settings', 'primary', showSettings));
+  actions.appendChild(createButton('Open Providers', 'primary', showSettings));
   actions.appendChild(createButton('Analyze This Page', 'secondary', handleAnalyze));
   appendChildren(card, icon, title, copy, actions);
   return card;
@@ -338,7 +358,7 @@ function createCompactErrorState(error: string): HTMLElement {
   const copy = createElement('p', 'tc-state-copy', mapErrorToActionable(error));
   const actions = createElement('div', 'tc-state-actions');
   actions.appendChild(createButton('Retry', 'primary', handleAnalyze));
-  actions.appendChild(createButton('Settings', 'secondary', showSettings));
+  actions.appendChild(createButton('Providers', 'secondary', showSettings));
   appendChildren(card, icon, title, copy, actions);
   return card;
 }
@@ -395,7 +415,7 @@ function createAnalyzingCard(label: string): HTMLElement {
 
 function createActionBar(): HTMLElement {
   const bar = createElement('div', 'tc-action-bar');
-  const detailBtn = createButton('View Details', 'primary', () => { void handleKeepOpen().catch(e => console.warn('[Goodman] keep open failed:', e)); });
+  const detailBtn = createButton('Open Workspace', 'primary', () => { void handleKeepOpen('current').catch(e => console.warn('[Goodman] keep open failed:', e)); });
   const refreshBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   refreshBtn.type = 'button';
   refreshBtn.setAttribute('aria-label', 'Re-analyze page');
@@ -403,17 +423,17 @@ function createActionBar(): HTMLElement {
   refreshBtn.addEventListener('click', () => handleAnalyze());
   const settingsBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   settingsBtn.type = 'button';
-  settingsBtn.setAttribute('aria-label', 'Open settings');
+  settingsBtn.setAttribute('aria-label', 'Open provider settings');
   settingsBtn.appendChild(createIcon(iconSettings(16)));
   settingsBtn.addEventListener('click', showSettings);
   const historyBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   historyBtn.type = 'button';
-  historyBtn.setAttribute('aria-label', 'View history');
+  historyBtn.setAttribute('aria-label', 'Open history workspace');
   historyBtn.appendChild(createIcon(iconClock(16)));
   historyBtn.addEventListener('click', () => showHistory());
   const logsBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   logsBtn.type = 'button';
-  logsBtn.setAttribute('aria-label', 'View logs');
+  logsBtn.setAttribute('aria-label', 'Open diagnostics workspace');
   logsBtn.appendChild(createIcon(iconTerminal(16)));
   logsBtn.addEventListener('click', showLogs);
   appendChildren(bar, detailBtn, refreshBtn, settingsBtn, historyBtn, logsBtn);
@@ -437,12 +457,180 @@ function createNotificationBanner(): HTMLElement | null {
   return banner;
 }
 
-// ========== PANEL MODE ==========
+// ========== PERSISTENT WORKSPACE ==========
 
-function renderPanel(container: HTMLElement): void {
-  container.appendChild(createCompactHeader());
-  const banner = createNotificationBanner();
-  if (banner) container.appendChild(banner);
+const WORKSPACE_NAVIGATION: Array<{ route: WorkspaceRoute; label: string; icon: (size?: number) => string }> = [
+  { route: 'current', label: 'Current page', icon: iconShield },
+  { route: 'history', label: 'History', icon: iconClock },
+  { route: 'providers', label: 'Providers', icon: iconSettings },
+  { route: 'detection', label: 'Detection', icon: iconShieldCheck },
+  { route: 'monitoring', label: 'Monitoring', icon: iconRefresh },
+  { route: 'data', label: 'Data & privacy', icon: iconZap },
+  { route: 'diagnostics', label: 'Diagnostics', icon: iconTerminal },
+];
+
+const WORKSPACE_COPY: Record<WorkspaceRoute, { title: string; subtitle: string }> = {
+  current: { title: 'Current page', subtitle: 'Analyze the legal terms on the page you are viewing.' },
+  history: { title: 'History', subtitle: 'Inspect saved versions and compare terms over time.' },
+  providers: { title: 'Providers', subtitle: 'Choose where Goodman sends legal text for analysis.' },
+  detection: { title: 'Detection', subtitle: 'Control how Goodman identifies terms and weights risk.' },
+  monitoring: { title: 'Monitoring', subtitle: 'Manage alerts, tracked domains, and domain-specific preferences.' },
+  data: { title: 'Data & privacy', subtitle: 'Review local data and corpus contribution preferences.' },
+  diagnostics: { title: 'Diagnostics', subtitle: 'Review recent analysis pipeline activity.' },
+};
+
+function renderWorkspace(container: HTMLElement): void {
+  container.className = 'tc-workspace';
+  container.textContent = '';
+  const shell = createElement('div', 'tc-workspace-shell');
+  const sidebar = createWorkspaceSidebar();
+  const main = createElement('main', 'tc-workspace-main');
+  const header = createWorkspaceHeader();
+  const content = createElement('div', 'tc-workspace-content');
+  content.id = 'tc-workspace-content';
+  appendChildren(main, header, content);
+  appendChildren(shell, sidebar, main);
+  container.appendChild(shell);
+  void renderWorkspaceRoute(content).catch(e => {
+    console.warn('[Goodman] workspace route render failed:', e);
+    content.textContent = '';
+    content.appendChild(createPanelErrorState('Could not load this workspace view.'));
+  });
+}
+
+function createWorkspaceSidebar(): HTMLElement {
+  const sidebar = createElement('aside', 'tc-workspace-sidebar');
+  const brand = createElement('div', 'tc-workspace-brand');
+  const logo = createElement('img', 'tc-workspace-logo') as HTMLImageElement;
+  logo.src = chrome.runtime.getURL('icons/goodman-48.png');
+  logo.alt = '';
+  appendChildren(brand, logo, createElement('span', 'tc-workspace-name', 'Goodman'));
+
+  const nav = createElement('nav', 'tc-workspace-nav');
+  nav.setAttribute('aria-label', 'Goodman workspace');
+  for (const item of WORKSPACE_NAVIGATION) {
+    if (item.route === 'providers') {
+      nav.appendChild(createElement('p', 'tc-workspace-nav-label', 'Configure'));
+    }
+    if (item.route === 'diagnostics') {
+      nav.appendChild(createElement('p', 'tc-workspace-nav-label', 'Support'));
+    }
+    nav.appendChild(createWorkspaceNavButton(item));
+  }
+
+  const domains = createElement('section', 'tc-workspace-domains');
+  domains.appendChild(createElement('p', 'tc-workspace-nav-label', 'Recent domains'));
+  const domainList = createElement('div', 'tc-workspace-domain-list');
+  domainList.setAttribute('aria-label', 'Recent tracked domains');
+  domainList.appendChild(createElement('p', 'tc-workspace-domain-empty', 'Loading domains…'));
+  domains.appendChild(domainList);
+  void renderWorkspaceDomains(domainList);
+
+  appendChildren(sidebar, brand, nav, domains, createAttribution());
+  return sidebar;
+}
+
+function createWorkspaceNavButton(item: { route: WorkspaceRoute; label: string; icon: (size?: number) => string }): HTMLButtonElement {
+  const button = createElement('button', 'tc-workspace-nav-button') as HTMLButtonElement;
+  button.type = 'button';
+  button.classList.toggle('is-active', workspaceRoute === item.route);
+  if (workspaceRoute === item.route) button.setAttribute('aria-current', 'page');
+  button.appendChild(createIcon(item.icon(16), 'tc-workspace-nav-icon'));
+  button.appendChild(createElement('span', undefined, item.label));
+  button.addEventListener('click', () => navigateWorkspace(item.route));
+  return button;
+}
+
+async function renderWorkspaceDomains(container: HTMLElement): Promise<void> {
+  const domains = await getAllTrackedDomains();
+  container.textContent = '';
+  if (domains.length === 0) {
+    container.appendChild(createElement('p', 'tc-workspace-domain-empty', 'No tracked domains yet.'));
+    return;
+  }
+  for (const domain of domains.slice(0, 8)) {
+    const button = createElement('button', 'tc-workspace-domain-button', domain) as HTMLButtonElement;
+    button.type = 'button';
+    button.title = domain;
+    button.classList.toggle('is-active', workspaceRoute === 'history' && workspaceDomain === domain);
+    button.addEventListener('click', () => navigateWorkspace('history', domain));
+    container.appendChild(button);
+  }
+}
+
+function createWorkspaceHeader(): HTMLElement {
+  const copy = WORKSPACE_COPY[workspaceRoute];
+  const header = createElement('header', 'tc-workspace-header');
+  const titleGroup = createElement('div');
+  appendChildren(
+    titleGroup,
+    createElement('h1', 'tc-workspace-title', copy.title),
+    createElement('p', 'tc-workspace-subtitle', copy.subtitle)
+  );
+  const actions = createElement('div', 'tc-workspace-header-actions');
+  if (workspaceRoute === 'current') {
+    actions.appendChild(createButton(state.analysis ? 'Re-analyze' : 'Analyze page', 'primary', handleAnalyze));
+  }
+  appendChildren(header, titleGroup, actions);
+  return header;
+}
+
+async function renderWorkspaceRoute(container: HTMLElement): Promise<void> {
+  container.textContent = '';
+  if (workspaceRoute === 'current') {
+    const banner = createNotificationBanner();
+    if (banner) container.appendChild(banner);
+    renderCurrentPageWorkspace(container);
+    return;
+  }
+
+  switch (workspaceRoute) {
+    case 'history':
+      await renderHistoryPanel(container, workspaceDomain ?? getCurrentDomain());
+      break;
+    case 'providers':
+      await renderProviderSettings(container);
+      break;
+    case 'detection':
+      await renderDetectionSettings(container);
+      break;
+    case 'monitoring':
+      await renderMonitoringWorkspace(container);
+      break;
+    case 'data':
+      await renderDataWorkspace(container);
+      break;
+    case 'diagnostics':
+      await renderDiagnosticsWorkspace(container);
+      break;
+  }
+}
+
+async function renderMonitoringWorkspace(container: HTMLElement): Promise<void> {
+  const notifications = createElement('section', 'tc-workspace-section');
+  const domains = createElement('section', 'tc-workspace-section');
+  await renderNotificationSettings(notifications);
+  await renderDomainSettings(domains);
+  appendChildren(container, notifications, domains);
+}
+
+async function renderDataWorkspace(container: HTMLElement): Promise<void> {
+  const cache = createElement('section', 'tc-workspace-section');
+  const corpus = createElement('section', 'tc-workspace-section');
+  await renderCacheSettings(cache);
+  await renderCorpusSettings(corpus);
+  appendChildren(container, cache, corpus);
+}
+
+function navigateWorkspace(route: WorkspaceRoute, domain?: string): void {
+  workspaceRoute = route;
+  workspaceDomain = domain;
+  renderCurrentApp();
+}
+
+// ========== WORKSPACE CURRENT-PAGE VIEW ==========
+
+function renderCurrentPageWorkspace(container: HTMLElement): void {
 
   if (state.loading) {
     container.appendChild(createPanelLoadingState('Analyzing this page...'));
@@ -450,7 +638,6 @@ function renderPanel(container: HTMLElement): void {
   }
   if (state.error && !state.analysis) {
     container.appendChild(createPanelErrorState(state.error));
-    container.appendChild(createPanelFooter());
     return;
   }
   if (!state.analysis) {
@@ -459,7 +646,6 @@ function renderPanel(container: HTMLElement): void {
     } else {
       container.appendChild(createCompactIdleState());
     }
-    container.appendChild(createPanelFooter());
     return;
   }
   switch (state.analysis.status) {
@@ -500,7 +686,6 @@ function renderPanel(container: HTMLElement): void {
       container.appendChild(createCompactIdleState());
       break;
   }
-  container.appendChild(createPanelFooter());
 }
 
 function createPanelSummaryView(summary: Summary, analysis: PageAnalysisRecord): HTMLElement {
@@ -553,16 +738,6 @@ function createPanelErrorState(error: string): HTMLElement {
   appendChildren(actions, createButton('Retry', 'primary', handleAnalyze), createButton('Settings', 'secondary', showSettings));
   appendChildren(card, title, copy, actions);
   return card;
-}
-
-function createPanelFooter(): HTMLElement {
-  const footer = createElement('div', 'tc-footer-nav');
-  appendChildren(footer,
-    createButton('Re-analyze', 'pill', () => handleAnalyze()),
-    createButton('Settings', 'pill', showSettings),
-    createButton('History', 'pill', () => showHistory()),
-  );
-  return footer;
 }
 
 // ========== SHARED COMPONENTS ==========
@@ -753,11 +928,16 @@ async function handleCancelAnalysis(): Promise<void> {
   renderCurrentApp();
 }
 
-async function handleKeepOpen(): Promise<void> {
+async function handleKeepOpen(route: WorkspaceRoute = 'current', domain?: string): Promise<void> {
   try {
     const response = await sendToBackground({
       type: 'OPEN_WORKSPACE_SURFACE',
-      payload: { tabId: state.tabId ?? undefined, windowId: state.windowId ?? undefined },
+      payload: {
+        tabId: state.tabId ?? undefined,
+        windowId: state.windowId ?? undefined,
+        route,
+        domain,
+      },
     });
     if (response && typeof response === 'object' && 'ok' in response && response.ok === false) {
       state.error = 'Could not open a persistent Goodman workspace.';
@@ -770,82 +950,32 @@ async function handleKeepOpen(): Promise<void> {
   }
 }
 
-// ========== SUB-VIEWS ==========
+// ========== WORKSPACE ROUTING ==========
 
 function showSettings(): void {
-  const app = document.getElementById('app');
-  if (!app) return;
-  app.className = 'tc-page';
-  app.textContent = '';
-  const panel = createElement('section', 'tc-settings-panel');
-  const body = createElement('div', 'tc-settings-body');
-  const contentDiv = createElement('div');
-  contentDiv.id = 'tc-settings-tabpanel';
-  contentDiv.setAttribute('role', 'tabpanel');
-  contentDiv.tabIndex = -1;
-  const tabBar = createElement('div', 'tc-tabs');
-  tabBar.setAttribute('role', 'tablist');
-  tabBar.setAttribute('aria-label', 'Settings sections');
-  appendChildren(body, createViewHeader('Settings', 'Providers, detection, notifications, cache, and corpus.'), tabBar, contentDiv);
-  panel.appendChild(body);
-  app.appendChild(panel);
-  const buttons: HTMLButtonElement[] = [];
-  for (const tab of SETTINGS_TABS) {
-    const button = createElement('button', 'tc-tab', tab) as HTMLButtonElement;
-    button.type = 'button';
-    button.id = `tc-settings-tab-${tab.toLowerCase()}`;
-    button.setAttribute('role', 'tab');
-    button.setAttribute('aria-controls', contentDiv.id);
-    button.setAttribute('aria-selected', 'false');
-    button.tabIndex = -1;
-    button.addEventListener('click', async () => {
-      setActiveTab(buttons, button);
-      await renderSettingsTab(tab, contentDiv);
-    });
-    button.addEventListener('keydown', (e) => {
-      const next = getNextSettingsTabButton(buttons, button, e.key);
-      if (!next) return;
-      e.preventDefault();
-      next.focus();
-      next.click();
-    });
-    buttons.push(button);
-    tabBar.appendChild(button);
-  }
-  const firstTab = buttons[0];
-  if (firstTab) setActiveTab(buttons, firstTab);
-  void renderSettingsTab('Providers', contentDiv).catch(e => console.warn('[Goodman] initial settings render failed:', e));
+  void showWorkspaceRoute('providers');
 }
 
 function showHistory(initialDomain?: string): void {
-  const app = document.getElementById('app');
-  if (!app) return;
-  app.className = 'tc-page';
-  app.textContent = '';
-  const panel = createElement('section', 'tc-history-panel');
-  const body = createElement('div', 'tc-history-body');
-  const contentDiv = createElement('div');
-  appendChildren(body, createViewHeader('History', 'Inspect saved versions and compare T&C changes over time.'), contentDiv);
-  panel.appendChild(body);
-  app.appendChild(panel);
-  void renderHistoryPanel(contentDiv, initialDomain ?? getCurrentDomain()).catch(e => console.warn('[Goodman] history panel render failed:', e));
+  void showWorkspaceRoute('history', initialDomain);
 }
 
-async function showLogs(): Promise<void> {
-  const app = document.getElementById('app');
-  if (!app) return;
-  app.className = 'tc-page';
-  app.textContent = '';
-  const panel = createElement('section', 'tc-settings-panel');
-  const body = createElement('div', 'tc-settings-body');
-  appendChildren(body, createViewHeader('Logs', 'Pipeline logs from recent analysis runs.'));
-  panel.appendChild(body);
-  app.appendChild(panel);
-  app.appendChild(createAttribution());
+function showLogs(): void {
+  void showWorkspaceRoute('diagnostics');
+}
 
+async function showWorkspaceRoute(route: WorkspaceRoute, domain?: string): Promise<void> {
+  if (surfaceMode === 'workspace') {
+    navigateWorkspace(route, domain);
+    return;
+  }
+  await handleKeepOpen(route, domain);
+}
+
+async function renderDiagnosticsWorkspace(container: HTMLElement): Promise<void> {
   const analysisResult = await getStorage('pageAnalysis');
   if (!analysisResult.ok) {
-    body.appendChild(createElement('p', 'tc-empty-note', 'Could not load logs.'));
+    container.appendChild(createElement('p', 'tc-empty-note', 'Could not load logs.'));
     return;
   }
   const records = Object.values(analysisResult.data) as PageAnalysisRecord[];
@@ -853,7 +983,7 @@ async function showLogs(): Promise<void> {
     .filter((r) => r.progressLogs && r.progressLogs.length > 0)
     .sort((a, b) => b.updatedAt - a.updatedAt);
   if (withLogs.length === 0) {
-    body.appendChild(createElement('p', 'tc-empty-note', 'No analysis logs yet.'));
+    container.appendChild(createElement('p', 'tc-empty-note', 'No analysis logs yet.'));
     return;
   }
   for (const record of withLogs) {
@@ -871,64 +1001,8 @@ async function showLogs(): Promise<void> {
     if (record.progressLogs && record.progressLogs.length > 0) {
       run.appendChild(createLogStream(record.progressLogs));
     }
-    body.appendChild(run);
+    container.appendChild(run);
   }
-}
-
-function createViewHeader(title: string, subtitle: string): HTMLElement {
-  const wrapper = createElement('div');
-  const header = createElement('div', 'tc-view-header');
-  const backBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
-  backBtn.type = 'button';
-  backBtn.setAttribute('aria-label', 'Go back');
-  backBtn.appendChild(createIcon(iconChevronLeft(16)));
-  backBtn.addEventListener('click', handleBack);
-  appendChildren(header, backBtn, createElement('h2', 'tc-view-title', title));
-  appendChildren(wrapper, header, createElement('p', 'tc-page-copy', subtitle));
-  return wrapper;
-}
-
-function handleBack(): void {
-  void refreshPopupState().then(() => renderCurrentApp()).catch(e => console.warn('[Goodman] back navigation refresh failed:', e));
-}
-
-function setActiveTab(buttons: HTMLButtonElement[], activeButton: HTMLButtonElement): void {
-  for (const button of buttons) {
-    const active = button === activeButton;
-    button.classList.toggle('is-active', active);
-    button.setAttribute('aria-selected', String(active));
-    button.tabIndex = active ? 0 : -1;
-  }
-  const panelId = activeButton.getAttribute('aria-controls');
-  if (panelId) {
-    const panel = document.getElementById(panelId);
-    if (panel) panel.setAttribute('aria-labelledby', activeButton.id);
-  }
-}
-
-async function renderSettingsTab(tab: SettingsTab, contentDiv: HTMLElement): Promise<void> {
-  switch (tab) {
-    case 'Providers': await renderProviderSettings(contentDiv); break;
-    case 'Detection': await renderDetectionSettings(contentDiv); break;
-    case 'Notifications': await renderNotificationSettings(contentDiv); break;
-    case 'Domains': await renderDomainSettings(contentDiv); break;
-    case 'Cache': await renderCacheSettings(contentDiv); break;
-    case 'Corpus': await renderCorpusSettings(contentDiv); break;
-  }
-}
-
-function getNextSettingsTabButton(
-  buttons: HTMLButtonElement[],
-  current: HTMLButtonElement,
-  key: string
-): HTMLButtonElement | null {
-  const index = buttons.indexOf(current);
-  if (index < 0) return null;
-  if (key === 'Home') return buttons[0] ?? null;
-  if (key === 'End') return buttons[buttons.length - 1] ?? null;
-  if (key === 'ArrowRight' || key === 'ArrowDown') return buttons[(index + 1) % buttons.length] ?? null;
-  if (key === 'ArrowLeft' || key === 'ArrowUp') return buttons[(index - 1 + buttons.length) % buttons.length] ?? null;
-  return null;
 }
 
 // ========== STATE ==========

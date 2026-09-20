@@ -221,14 +221,19 @@ function registerActionLauncher(): void {
 async function openWorkspaceSurface(
   target?: chrome.tabs.Tab | OpenWorkspaceSurfaceMessage['payload']
 ): Promise<boolean> {
-  const extensionPage = chrome.runtime.getURL('src/popup/index.html');
+  const route = isWorkspaceTarget(target) ? target.route : undefined;
+  const domain = isWorkspaceTarget(target) ? target.domain : undefined;
+  const routeQuery = new URLSearchParams({ workspace: '1' });
+  if (route) routeQuery.set('route', route);
+  if (domain) routeQuery.set('domain', domain);
+  const extensionPage = chrome.runtime.getURL(`src/popup/index.html?${routeQuery}`);
   const windowId = await resolveWorkspaceWindowId(target);
 
   if (chrome.sidePanel?.open) {
     try {
       await chrome.sidePanel.setOptions?.({
         enabled: true,
-        path: 'src/popup/index.html#panel',
+        path: `src/popup/index.html#panel&${routeQuery}`,
       });
 
       if (typeof windowId === 'number') {
@@ -263,6 +268,12 @@ async function openWorkspaceSurface(
   }
 
   return false;
+}
+
+function isWorkspaceTarget(
+  target: chrome.tabs.Tab | OpenWorkspaceSurfaceMessage['payload'] | undefined
+): target is OpenWorkspaceSurfaceMessage['payload'] {
+  return Boolean(target && ('tabId' in target || 'route' in target || 'domain' in target));
 }
 
 async function resolveWorkspaceWindowId(

@@ -47,8 +47,22 @@ export interface GetPageAnalysisMessage {
 
 export interface OpenWorkspaceSurfaceMessage {
   type: 'OPEN_WORKSPACE_SURFACE';
-  payload: { tabId?: number; windowId?: number };
+  payload: {
+    tabId?: number;
+    windowId?: number;
+    route?: WorkspaceRoute;
+    domain?: string;
+  };
 }
+
+export type WorkspaceRoute =
+  | 'current'
+  | 'history'
+  | 'providers'
+  | 'detection'
+  | 'monitoring'
+  | 'data'
+  | 'diagnostics';
 
 export interface CancelPageAnalysisMessage {
   type: 'CANCEL_PAGE_ANALYSIS';

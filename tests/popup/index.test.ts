@@ -63,6 +63,7 @@ async function flush(): Promise<void> {
 
 describe('popup index', () => {
   beforeEach(() => {
+    window.history.replaceState({}, '', '/');
     document.body.innerHTML = '<div id="app"></div>';
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     mockStorage.onboardingCompleted = true;
@@ -85,7 +86,7 @@ describe('popup index', () => {
       'This page asks you to agree to terms.'
     );
     expect(document.body.textContent).toContain('inline');
-    expect(document.body.textContent).toContain('View Details');
+    expect(document.body.textContent).toContain('Open Workspace');
   });
 
   it('groups red flags by clause taxonomy label', async () => {
@@ -113,7 +114,7 @@ describe('popup index', () => {
     await flush();
 
     const viewDetailsButton = Array.from(document.querySelectorAll('button')).find(
-      (button) => button.textContent === 'View Details'
+      (button) => button.textContent === 'Open Workspace'
     );
 
     viewDetailsButton?.click();
@@ -124,8 +125,25 @@ describe('popup index', () => {
       payload: {
         tabId: 7,
         windowId: undefined,
+        route: 'current',
+        domain: undefined,
       },
     });
+  });
+
+  it('renders the routed workspace with active sidebar navigation', async () => {
+    window.history.replaceState({}, '', '/?workspace=1&route=history&domain=example.com');
+    mockStorage.pageAnalysis = {
+      'https://example.com/checkout': readyAnalysis(),
+    };
+
+    await loadPopupModule();
+    document.dispatchEvent(new Event('DOMContentLoaded'));
+    await flush();
+
+    expect(document.querySelector('.tc-workspace-sidebar')).not.toBeNull();
+    expect(document.querySelector('button[aria-current="page"]')?.textContent).toContain('History');
+    expect(renderHistoryPanel).toHaveBeenCalledWith(expect.any(HTMLElement), 'example.com');
   });
 
   it('renders provider setup state from persisted analysis', async () => {
@@ -220,7 +238,7 @@ describe('popup index', () => {
     expect(log?.getAttribute('aria-live')).toBe('polite');
   });
 
-  it('renders settings tabs with keyboard navigation semantics', async () => {
+  it('opens provider settings in the persistent workspace', async () => {
     mockStorage.settings = structuredClone(DEFAULT_SETTINGS);
     mockStorage.pageAnalysis = {
       'https://example.com/checkout': readyAnalysis(),
@@ -231,31 +249,15 @@ describe('popup index', () => {
     await flush();
 
     const settingsButton = document.querySelector(
-      'button[aria-label="Open settings"]'
+      'button[aria-label="Open provider settings"]'
     ) as HTMLButtonElement;
     settingsButton.click();
     await flush();
 
-    const tablist = document.querySelector('[role="tablist"]');
-    const tabs = Array.from(document.querySelectorAll('[role="tab"]')) as HTMLButtonElement[];
-    expect(tablist?.getAttribute('aria-label')).toBe('Settings sections');
-    expect(tabs.map(tab => tab.textContent)).toEqual([
-      'Providers',
-      'Detection',
-      'Notifications',
-      'Domains',
-      'Cache',
-      'Corpus',
-    ]);
-    expect(tabs[0]?.getAttribute('aria-selected')).toBe('true');
-    expect(tabs[0]?.tabIndex).toBe(0);
-
-    tabs[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    await flush();
-
-    expect(tabs[1]?.getAttribute('aria-selected')).toBe('true');
-    expect(tabs[1]?.tabIndex).toBe(0);
-    expect(document.querySelector('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe(tabs[1]?.id);
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'OPEN_WORKSPACE_SURFACE',
+      payload: { tabId: 7, windowId: undefined, route: 'providers', domain: undefined },
+    });
   });
 
   it('cancels an in-flight analysis from the popup', async () => {
@@ -468,10 +470,9 @@ describe('popup index', () => {
     historyButton?.click();
     await flush();
 
-    expect(renderHistoryPanel).toHaveBeenCalledWith(
-      expect.any(HTMLElement),
-      'other.com'
-    );
-    expect(document.body.textContent).toContain('History for other.com');
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'OPEN_WORKSPACE_SURFACE',
+      payload: { tabId: 7, windowId: undefined, route: 'history', domain: 'other.com' },
+    });
   });
 });
