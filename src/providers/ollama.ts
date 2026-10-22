@@ -4,6 +4,7 @@ import { CancelledError, NetworkError, ProviderError, TCGuardError } from '@shar
 import { isCancelledError } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
+import { fetchBounded } from '@shared/network';
 
 const DEFAULT_BASE_URL = 'http://localhost:11434';
 
@@ -15,10 +16,7 @@ export class OllamaProvider implements LLMProvider {
     private defaultModel: string = 'llama3.2'
   ) {}
 
-  async summarize(
-    text: string,
-    options: SummarizeOptions
-  ): Promise<Result<Summary, TCGuardError>> {
+  async summarize(text: string, options: SummarizeOptions): Promise<Result<Summary, TCGuardError>> {
     const url = `${this.baseUrl}/api/chat`;
 
     const body = {
@@ -32,7 +30,7 @@ export class OllamaProvider implements LLMProvider {
     };
 
     try {
-      const response = await fetch(url, {
+      const response = await fetchBounded(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: options.signal,
@@ -72,7 +70,7 @@ export class OllamaProvider implements LLMProvider {
   async listModels(): Promise<string[]> {
     try {
       const url = `${this.baseUrl}/api/tags`;
-      const response = await fetch(url);
+      const response = await fetchBounded(url);
       if (!response.ok) return [];
 
       const json = (await response.json()) as Record<string, unknown>;

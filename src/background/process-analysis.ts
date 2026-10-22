@@ -1,11 +1,7 @@
 import { chunkText } from '@shared/chunker';
-import { getProviderByName } from '@providers/factory';
+import { resolveAnalysisContext } from '@summarizer/context';
 import type { Summary, SummarizeOptions } from '@providers/types';
-import {
-  isCancelledError,
-  sleepWithAbort,
-  throwIfAborted,
-} from '@shared/cancellation';
+import { isCancelledError, sleepWithAbort, throwIfAborted } from '@shared/cancellation';
 import { MAX_INPUT_TEXT_LENGTH } from '@shared/constants';
 import { CancelledError } from '@shared/errors';
 import { appendProgressLog } from '@shared/analysis-progress';
@@ -53,11 +49,9 @@ const llmQueue: Array<{
   signal?: AbortSignal;
 }> = [];
 const activeAnalysisControllers = new Map<number, AbortController>();
+const activeAnalysisUrls = new Map<number, string>();
 
-async function withLlmLimit<T>(
-  fn: () => Promise<T>,
-  signal?: AbortSignal
-): Promise<T> {
+async function withLlmLimit<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
   if (activeLlmRequests >= MAX_CONCURRENT_LLM) {
     await waitForLlmSlot(signal);
   }
@@ -72,19 +66,24 @@ async function withLlmLimit<T>(
   }
 }
 
-export async function cancelPageAnalysis(tabId: number): Promise<boolean> {
+export async function cancelPageAnalysis(tabId: number, expectedUrl?: string): Promise<boolean> {
   const controller = activeAnalysisControllers.get(tabId);
+  if (controller && expectedUrl && activeAnalysisUrls.get(tabId) !== expectedUrl) return false;
   if (controller) {
     controller.abort();
   }
 
   const record = await getPageAnalysis(tabId);
+  if (
+    activeAnalysisControllers.get(tabId) !== controller ||
+    (expectedUrl && record?.url !== expectedUrl)
+  )
+    return Boolean(controller);
   if (!record || record.status !== 'analyzing') {
     return Boolean(controller);
   }
 
-  const progressPercent =
-    typeof record.progressPercent === 'number' ? record.progressPercent : 0;
+  const progressPercent = typeof record.progressPercent === 'number' ? record.progressPercent : 0;
   const progressLogs = appendProgressLog(
     record.progressLogs ?? [],
     'Analysis was cancelled before completion.',
@@ -92,18 +91,27 @@ export async function cancelPageAnalysis(tabId: number): Promise<boolean> {
     'warning'
   );
 
-  await setPageAnalysisRecord({
-    ...record,
-    status: 'cancelled',
-    summary: null,
-    error: null,
-    progressLabel: 'Cancelled',
-    progressPercent,
-    progressLogs,
-    updatedAt: Date.now(),
-  });
+  const saved = await setPageAnalysisRecord(
+    {
+      ...record,
+      status: 'cancelled',
+      summary: null,
+      error: null,
+      progressLabel: 'Cancelled',
+      progressPercent,
+      progressLogs,
+      updatedAt: Date.now(),
+    },
+    () => activeAnalysisControllers.get(tabId) === controller
+  );
 
-  return true;
+  return saved.ok;
+}
+
+export function discardPageAnalysis(tabId: number): void {
+  activeAnalysisControllers.get(tabId)?.abort();
+  activeAnalysisControllers.delete(tabId);
+  activeAnalysisUrls.delete(tabId);
 }
 
 export async function processPageAnalysis(
@@ -112,21 +120,11 @@ export async function processPageAnalysis(
   activeAnalysisControllers.get(input.tabId)?.abort();
   const controller = new AbortController();
   activeAnalysisControllers.set(input.tabId, controller);
+  activeAnalysisUrls.set(input.tabId, input.url);
   const signal = controller.signal;
 
-  if (input.text.length > MAX_INPUT_TEXT_LENGTH) {
-    console.warn(
-      '[Goodman] input text truncated from',
-      input.text.length,
-      'to',
-      MAX_INPUT_TEXT_LENGTH
-    );
-    input.text = input.text.slice(0, MAX_INPUT_TEXT_LENGTH);
-  }
-
   let textHash: string | null = null;
-  const existingRecord = await getPageAnalysisByUrl(input.url);
-  let progressLogs: PageAnalysisLogEntry[] = existingRecord?.progressLogs ?? [];
+  let progressLogs: PageAnalysisLogEntry[] = [];
 
   const persistAnalysisUpdate = async (
     overrides: {
@@ -142,17 +140,32 @@ export async function processPageAnalysis(
   ): Promise<void> => {
     throwIfAborted(signal);
     progressLogs = appendProgressLog(progressLogs, logMessage, progressPercent, level);
-    await setPageAnalysisRecord(
+    const saved = await setPageAnalysisRecord(
       buildPageAnalysisRecord(input, {
         ...overrides,
         progressPercent,
         progressLabel,
         progressLogs,
-      })
+      }),
+      () => activeAnalysisControllers.get(input.tabId) === controller && !signal.aborted
     );
+    if (!saved.ok) throw saved.error;
   };
 
   try {
+    if (input.text.length > MAX_INPUT_TEXT_LENGTH) {
+      const error = `The agreement exceeds the ${MAX_INPUT_TEXT_LENGTH}-character analysis limit. Open the original; no partial summary was requested.`;
+      await persistAnalysisUpdate(
+        { status: 'error', textHash: null, summary: null, error },
+        100,
+        'Agreement too large',
+        error,
+        'error'
+      );
+      return { ok: false, error };
+    }
+    const existingRecord = await getPageAnalysisByUrl(input.url);
+    progressLogs = existingRecord?.progressLogs ?? [];
     textHash = await computeTextHash(input.text);
     throwIfAborted(signal);
 
@@ -168,7 +181,34 @@ export async function processPageAnalysis(
       'Computed a text fingerprint and started checking the local summary cache.'
     );
 
-    const cachedSummary = await getCachedSummary(textHash, input.domain);
+    console.warn(`[Goodman:bg] resolving provider: ${input.provider}`);
+    const providerResult = await resolveAnalysisContext(input.provider, input.domain);
+    throwIfAborted(signal);
+    console.warn(
+      `[Goodman:bg] provider resolved: ok=${providerResult.ok}${providerResult.ok ? '' : ` error=${providerResult.error.message}`}`
+    );
+    if (!providerResult.ok) {
+      const errorMessage = providerResult.error.userMessage ?? providerResult.error.message;
+
+      await persistAnalysisUpdate(
+        {
+          status: 'needs_provider',
+          textHash,
+          summary: null,
+          error: errorMessage,
+        },
+        100,
+        'Provider setup required',
+        errorMessage,
+        'warning'
+      );
+
+      return { ok: false, error: errorMessage };
+    }
+
+    const context = providerResult.data;
+
+    const cachedSummary = await getCachedSummary(textHash, input.domain, context.cacheHash);
     throwIfAborted(signal);
     if (cachedSummary) {
       const summary = toSummary(cachedSummary.summary);
@@ -200,30 +240,6 @@ export async function processPageAnalysis(
       );
 
       return { ok: true, data: summary };
-    }
-
-    console.warn(`[Goodman:bg] resolving provider: ${input.provider}`);
-    const providerResult = await getProviderByName(input.provider);
-    throwIfAborted(signal);
-    console.warn(`[Goodman:bg] provider resolved: ok=${providerResult.ok}${providerResult.ok ? '' : ` error=${providerResult.error.message}`}`);
-    if (!providerResult.ok) {
-      const errorMessage =
-        providerResult.error.userMessage ?? providerResult.error.message;
-
-      await persistAnalysisUpdate(
-        {
-          status: 'needs_provider',
-          textHash,
-          summary: null,
-          error: errorMessage,
-        },
-        100,
-        'Provider setup required',
-        errorMessage,
-        'warning'
-      );
-
-      return { ok: false, error: errorMessage };
     }
 
     const chunks = chunkText(input.text);
@@ -270,13 +286,15 @@ export async function processPageAnalysis(
                 chunks,
                 input.provider,
                 summarizeMetadata,
-                signal
+                signal,
+                context
               )
             : await singleShotSummarizeWithProvider(
                 input.text,
                 input.provider,
                 summarizeMetadata,
-                signal
+                signal,
+                context
               );
 
         try {
@@ -287,15 +305,16 @@ export async function processPageAnalysis(
         return result;
       }, signal);
 
-    console.warn(`[Goodman:bg] calling LLM provider for ${input.url}`);
+    console.warn('[Goodman:bg] calling configured LLM provider');
     let summaryResult = await runSummarize();
-    console.warn(`[Goodman:bg] LLM result: ok=${summaryResult.ok}${summaryResult.ok ? '' : ` code=${summaryResult.error.code} msg=${summaryResult.error.message}`}`);
+    console.warn(
+      `[Goodman:bg] LLM result: ok=${summaryResult.ok}${summaryResult.ok ? '' : ` code=${summaryResult.error.code} msg=${summaryResult.error.message}`}`
+    );
     if (!summaryResult.ok && summaryResult.error.retryable) {
       const delayMs =
         'retryAfterSeconds' in summaryResult.error
           ? Math.min(
-              (summaryResult.error as { retryAfterSeconds: number }).retryAfterSeconds *
-                1000,
+              (summaryResult.error as { retryAfterSeconds: number }).retryAfterSeconds * 1000,
               5_000
             )
           : 2000;
@@ -320,8 +339,7 @@ export async function processPageAnalysis(
         throw new CancelledError();
       }
 
-      const errorMessage =
-        summaryResult.error.userMessage ?? summaryResult.error.message;
+      const errorMessage = summaryResult.error.userMessage ?? summaryResult.error.message;
       await persistAnalysisUpdate(
         {
           status: 'error',
@@ -349,7 +367,7 @@ export async function processPageAnalysis(
       'Saving results',
       'Summary received. Caching the result and syncing version history.'
     );
-    await cacheSummary(textHash, summaryResult.data, input.domain);
+    await cacheSummary(textHash, summaryResult.data, input.domain, context.cacheHash);
     throwIfAborted(signal);
     await syncVersionHistory(input.domain, input.text, summaryResult.data);
     throwIfAborted(signal);
@@ -369,7 +387,14 @@ export async function processPageAnalysis(
     return { ok: true, data: summaryResult.data };
   } catch (error) {
     if (isCancelledError(error) || signal.aborted) {
-      await persistCancelledUpdate(input, textHash, progressLogs);
+      if (activeAnalysisControllers.get(input.tabId) === controller) {
+        await persistCancelledUpdate(
+          input,
+          textHash,
+          progressLogs,
+          () => activeAnalysisControllers.get(input.tabId) === controller
+        );
+      }
       return {
         ok: false,
         error: 'Analysis cancelled.',
@@ -377,17 +402,31 @@ export async function processPageAnalysis(
       };
     }
 
-    throw error;
+    const message = 'Could not finish or save this analysis. Check extension storage and retry.';
+    if (activeAnalysisControllers.get(input.tabId) === controller) {
+      await setPageAnalysisRecord(
+        buildPageAnalysisRecord(input, {
+          status: 'error',
+          textHash,
+          summary: null,
+          error: message,
+          progressPercent: 100,
+          progressLabel: 'Analysis failed',
+          progressLogs,
+        }),
+        () => activeAnalysisControllers.get(input.tabId) === controller
+      );
+    }
+    return { ok: false, error: message };
   } finally {
     if (activeAnalysisControllers.get(input.tabId) === controller) {
       activeAnalysisControllers.delete(input.tabId);
+      activeAnalysisUrls.delete(input.tabId);
     }
   }
 }
 
-function buildSummarizeMetadata(
-  input: ProcessPageAnalysisInput
-): SummarizeOptions['metadata'] {
+function buildSummarizeMetadata(input: ProcessPageAnalysisInput): SummarizeOptions['metadata'] {
   return {
     url: input.url,
     domain: input.domain,
@@ -493,7 +532,8 @@ function releaseLlmSlot(): void {
 async function persistCancelledUpdate(
   input: ProcessPageAnalysisInput,
   textHash: string | null,
-  progressLogs: PageAnalysisLogEntry[]
+  progressLogs: PageAnalysisLogEntry[],
+  isCurrent: () => boolean
 ): Promise<void> {
   const progressPercent = progressLogs[progressLogs.length - 1]?.progress ?? 0;
   const cancelledLogs = appendProgressLog(
@@ -511,6 +551,7 @@ async function persistCancelledUpdate(
       progressPercent,
       progressLabel: 'Cancelled',
       progressLogs: cancelledLogs,
-    })
+    }),
+    isCurrent
   );
 }

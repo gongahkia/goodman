@@ -62,6 +62,26 @@ async function flush(): Promise<void> {
 }
 
 describe('popup index', () => {
+  it('keeps the history DOM stable for notification-only changes and refreshes changed versions', async () => {
+    const onChanged = { addListener: vi.fn() };
+    Object.defineProperty(chrome.storage, 'onChanged', { value: onChanged, configurable: true });
+    try {
+      window.history.replaceState({}, '', '/?workspace=1&route=history&domain=example.com');
+      await loadPopupModule();
+      document.dispatchEvent(new Event('DOMContentLoaded'));
+      await flush();
+      const initialRenders = vi.mocked(renderHistoryPanel).mock.calls.length;
+      expect(initialRenders).toBeGreaterThan(0);
+      const listener = onChanged.addListener.mock.calls.at(-1)![0];
+      vi.useFakeTimers();
+      listener({ pendingNotifications: {} }, 'local');
+      await vi.advanceTimersByTimeAsync(400);
+      expect(vi.mocked(renderHistoryPanel).mock.calls.length).toBe(initialRenders);
+      listener({ versionHistory: {} }, 'local');
+      await vi.advanceTimersByTimeAsync(400);
+      expect(vi.mocked(renderHistoryPanel).mock.calls.length).toBeGreaterThan(initialRenders);
+    } finally { vi.useRealTimers(); Reflect.deleteProperty(chrome.storage, 'onChanged'); }
+  });
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
     document.body.innerHTML = '<div id="app"></div>';
@@ -315,11 +335,11 @@ describe('popup index', () => {
 
     expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
       type: 'CANCEL_TC',
-      payload: { tabId: 7 },
+      payload: { tabId: 7, expectedUrl: 'https://example.com/checkout' },
     });
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
       type: 'CANCEL_PAGE_ANALYSIS',
-      payload: { tabId: 7 },
+      payload: { tabId: 7, expectedUrl: 'https://example.com/checkout' },
     });
     expect(document.body.textContent).toContain('Analysis cancelled');
   });

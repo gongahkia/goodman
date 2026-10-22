@@ -1,9 +1,21 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { getPendingNotifications, notifyChange } from '@versioning/notifications';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  clearNotification,
+  getPendingNotifications,
+  notifyChange,
+} from '@versioning/notifications';
 import { DEFAULT_SETTINGS } from '@shared/storage';
-import { mockStorage } from '../mocks/chrome';
+import { mockStorage, chrome } from '../mocks/chrome';
 
 describe('pending notifications', () => {
+  it('does not write an already-viewed notification while rendering history', async () => {
+    mockStorage.pendingNotifications = [
+      { domain: 'example.com', addedRedFlags: 1, timestamp: 1, viewed: true },
+    ];
+    vi.mocked(chrome.storage.local.set).mockClear();
+    await clearNotification('example.com');
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     mockStorage.settings = {

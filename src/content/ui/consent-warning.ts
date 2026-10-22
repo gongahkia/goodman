@@ -12,10 +12,14 @@ export async function renderConsentWarningBadge(
   detection: ScoredDetection,
   summary: Summary | null,
   domain: string,
-  themePreference: 'auto' | 'light' | 'dark'
+  themePreference: 'auto' | 'light' | 'dark',
+  signal?: AbortSignal
 ): Promise<void> {
   const findings = detection.darkPatterns ?? [];
-  if (findings.length === 0 || await isDismissed(domain)) {
+  if (signal?.aborted) return;
+  const dismissed = await isDismissed(domain);
+  if (signal?.aborted) return;
+  if (findings.length === 0 || dismissed) {
     removeConsentWarningBadge();
     return;
   }
@@ -53,7 +57,9 @@ export async function renderConsentWarningBadge(
   dismiss.textContent = 'Dismiss for this site';
   dismiss.addEventListener('click', () => {
     removeConsentWarningBadge();
-    void dismissForSite(domain).catch(e => console.warn('[Goodman] dismiss consent warning failed:', e));
+    void dismissForSite(domain).catch((e) =>
+      console.warn('[Goodman] dismiss consent warning failed:', e)
+    );
   });
 
   badge.appendChild(label);

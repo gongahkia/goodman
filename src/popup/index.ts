@@ -130,7 +130,13 @@ async function initMain(app: HTMLElement): Promise<void> {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
-      if ('pageAnalysis' in changes || 'pendingNotifications' in changes) {
+      const readingHistory = surfaceMode === 'workspace' && workspaceRoute === 'history';
+      if (readingHistory && 'pendingNotifications' in changes && !('versionHistory' in changes) && !('textRetention' in changes)) {
+        void refreshNotifications().catch(e => console.warn('[Goodman] notification refresh failed:', e));
+        return;
+      }
+      if ((!readingHistory && 'pageAnalysis' in changes) || 'pendingNotifications' in changes ||
+          (readingHistory && ('versionHistory' in changes || 'textRetention' in changes))) {
         if (refreshTimer) clearTimeout(refreshTimer);
         refreshTimer = setTimeout(() => {
           void refreshPopupState().then(() => renderCurrentApp()).catch(e => console.warn('[Goodman] popup state refresh failed:', e));
@@ -917,9 +923,10 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
 
 async function handleCancelAnalysis(): Promise<void> {
   if (state.tabId === null) return;
+  const payload = { tabId: state.tabId, expectedUrl: state.tabUrl };
   try {
-    await chrome.tabs.sendMessage(state.tabId, { type: 'CANCEL_TC', payload: { tabId: state.tabId } });
-    await sendToBackground({ type: 'CANCEL_PAGE_ANALYSIS', payload: { tabId: state.tabId } });
+    await chrome.tabs.sendMessage(state.tabId, { type: 'CANCEL_TC', payload });
+    await sendToBackground({ type: 'CANCEL_PAGE_ANALYSIS', payload });
   } catch (e) { console.warn('[Goodman] cancel analysis messaging failed:', e); }
   state.loading = false;
   state.analysisStartedAt = null;

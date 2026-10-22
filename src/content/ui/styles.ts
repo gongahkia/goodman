@@ -18,6 +18,7 @@ export function getOverlayStyles(): string {
       --tc-severity-critical: #b54745;
 
       pointer-events: auto;
+      box-sizing: border-box;
       position: absolute;
       top: 0;
       left: 0;

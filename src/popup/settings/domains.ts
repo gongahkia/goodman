@@ -19,7 +19,8 @@ import {
   type NotificationThreshold,
   type WatchClauseId,
 } from '@shared/domain-preferences';
-import { getAllTrackedDomains } from '@versioning/schema';
+import { getAllTrackedDomains, getTextRetention } from '@versioning/schema';
+import { sendToBackground } from '@shared/messaging';
 
 export async function renderDomainSettings(container: HTMLElement): Promise<void> {
   container.textContent = '';
@@ -40,7 +41,7 @@ export async function renderDomainSettings(container: HTMLElement): Promise<void
   const addButton = createButton('Add', 'primary', () => {
     const domain = input.value.trim().toLowerCase();
     if (!domain || blacklist.includes(domain)) return;
-    void addDomain(domain, container).catch(e => console.warn('[Goodman] add domain failed:', e));
+    void addDomain(domain, container).catch((e) => console.warn('[Goodman] add domain failed:', e));
   });
   addButton.setAttribute('aria-label', 'Add domain to blocklist');
   input.addEventListener('keydown', (e) => {
@@ -55,12 +56,11 @@ export async function renderDomainSettings(container: HTMLElement): Promise<void
     for (const domain of blacklist) {
       const row = createElement('div', 'tc-domain-row');
       const label = createElement('div', 'tc-domain-label');
-      appendChildren(
-        label,
-        createElement('div', 'tc-domain-name', domain)
-      );
+      appendChildren(label, createElement('div', 'tc-domain-name', domain));
       const removeButton = createButton('Remove', 'secondary', () => {
-        void removeDomain(domain, container).catch(e => console.warn('[Goodman] remove domain failed:', e));
+        void removeDomain(domain, container).catch((e) =>
+          console.warn('[Goodman] remove domain failed:', e)
+        );
       });
       removeButton.setAttribute('aria-label', `Remove ${domain} from blocklist`);
       appendChildren(row, label, removeButton);
@@ -115,10 +115,56 @@ async function createDomainPreferenceRow(domain: string): Promise<HTMLElement> {
     createThresholdField(domain, preferences),
     createClauseWatchField(domain, preferences),
     createLanguageField(domain, preferences),
-    createIgnorePatternsField(domain, preferences)
+    createIgnorePatternsField(domain, preferences),
+    await createTextRetentionField(domain)
   );
   row.appendChild(body);
   return row;
+}
+
+async function createTextRetentionField(domain: string): Promise<HTMLElement> {
+  const field = createElement('div', 'tc-field');
+  const label = createElement('label', 'tc-clause-option tc-retention-option');
+  const check = createElement('input') as HTMLInputElement;
+  check.type = 'checkbox';
+  check.checked = await getTextRetention(domain);
+  check.setAttribute('aria-label', `${domain} save agreement text on this device`);
+  const copy = createElement('span', '', 'Save agreement text on this device for text comparisons');
+  const help = createElement(
+    'p',
+    'tc-option-copy',
+    'Off by default. Saves text from future analyses on this device only. Turning off deletes saved text; summaries remain. Older text may be removed to stay within storage limits.'
+  );
+  const status = createElement('p', 'tc-option-copy');
+  status.setAttribute('role', 'status');
+  check.addEventListener('change', () => {
+    const enabled = check.checked;
+    check.disabled = true;
+    status.textContent = 'Saving…';
+    void sendToBackground({ type: 'SET_TEXT_RETENTION', payload: { domain, enabled } })
+      .then((response) => {
+        if (
+          !response ||
+          typeof response !== 'object' ||
+          !('ok' in response) ||
+          response.ok !== true
+        )
+          throw new Error('Could not save text preference');
+        status.textContent = enabled
+          ? 'Agreement text will be saved from future analyses.'
+          : 'Saved agreement text deleted.';
+      })
+      .catch(() => {
+        check.checked = !enabled;
+        status.textContent = 'Could not save this preference. Try again.';
+      })
+      .finally(() => {
+        check.disabled = false;
+      });
+  });
+  appendChildren(label, check, copy);
+  appendChildren(field, label, help, status);
+  return field;
 }
 
 function createThresholdField(domain: string, preferences: DomainPreferences): HTMLElement {
@@ -148,10 +194,7 @@ function createThresholdField(domain: string, preferences: DomainPreferences): H
 
 function createClauseWatchField(domain: string, preferences: DomainPreferences): HTMLElement {
   const field = createElement('div', 'tc-field');
-  appendChildren(
-    field,
-    createElement('div', 'tc-field-label', 'Watch clauses')
-  );
+  appendChildren(field, createElement('div', 'tc-field-label', 'Watch clauses'));
   const grid = createElement('div', 'tc-clause-grid');
   for (const option of WATCH_CLAUSE_OPTIONS) {
     const label = createElement('label', 'tc-clause-option');
@@ -181,41 +224,40 @@ function createLanguageField(domain: string, preferences: DomainPreferences): HT
       summaryLanguage: input.value.trim(),
     });
   });
-  appendChildren(
-    field,
-    createElement('label', 'tc-field-label', 'Summary language'),
-    input
-  );
+  appendChildren(field, createElement('label', 'tc-field-label', 'Summary language'), input);
   return field;
 }
 
 function createIgnorePatternsField(domain: string, preferences: DomainPreferences): HTMLElement {
   const field = createElement('div', 'tc-field');
-  const input = createInput('text', 'regex, comma-separated', preferences.ignorePatterns.join(', '));
+  const input = createInput(
+    'text',
+    'regex, comma-separated',
+    preferences.ignorePatterns.join(', ')
+  );
   input.setAttribute('aria-label', `${domain} ignore patterns`);
   input.addEventListener('change', () => {
     void saveDomainPreferencePatch(domain, {
       ignorePatterns: splitIgnorePatterns(input.value),
     });
   });
-  appendChildren(
-    field,
-    createElement('label', 'tc-field-label', 'Ignore patterns'),
-    input
-  );
+  appendChildren(field, createElement('label', 'tc-field-label', 'Ignore patterns'), input);
   return field;
 }
 
 function getSelectedWatchClauses(container: HTMLElement): WatchClauseId[] {
   return Array.from(container.querySelectorAll<HTMLInputElement>('input[type="checkbox"]:checked'))
-    .map(input => input.value)
+    .map((input) => input.value)
     .filter((value): value is WatchClauseId =>
-      WATCH_CLAUSE_OPTIONS.some(option => option.id === value)
+      WATCH_CLAUSE_OPTIONS.some((option) => option.id === value)
     );
 }
 
 function splitIgnorePatterns(value: string): string[] {
-  return value.split(',').map(item => item.trim()).filter(Boolean);
+  return value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 async function saveDomainPreferencePatch(

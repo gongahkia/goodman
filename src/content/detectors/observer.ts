@@ -16,11 +16,9 @@ export function startObserver(
     const relevant = mutations.filter(isRelevantMutation);
     if (relevant.length === 0) return;
 
-    pendingMutations.push(...relevant);
-
-    if (debounceTimer) {
-      clearTimeout(debounceTimer);
-    }
+    // Keep a bounded sample and flush even while a page changes continuously.
+    pendingMutations.push(...relevant.slice(0, 100 - pendingMutations.length));
+    if (debounceTimer) return;
 
     debounceTimer = setTimeout(() => {
       const batch = [...pendingMutations];
@@ -33,6 +31,21 @@ export function startObserver(
   observer.observe(document.body, {
     childList: true,
     subtree: true,
+    characterData: true,
+    attributes: true,
+    attributeFilter: [
+      'hidden',
+      'aria-hidden',
+      'class',
+      'style',
+      'href',
+      'for',
+      'type',
+      'role',
+      'aria-label',
+      'checked',
+      'disabled',
+    ],
   });
 
   return observer;
@@ -51,12 +64,18 @@ export function stopObserver(): void {
 }
 
 function isRelevantMutation(mutation: MutationRecord): boolean {
+  const target =
+    mutation.target.nodeType === Node.ELEMENT_NODE
+      ? (mutation.target as Element)
+      : mutation.target.parentElement;
+  if (target && isOverlayNode(target)) return false;
+  if (mutation.type === 'characterData' || mutation.type === 'attributes') return true;
   if (mutation.type !== 'childList') return false;
 
-  for (const node of mutation.addedNodes) {
+  for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
     if (
-      node.nodeType === Node.ELEMENT_NODE &&
-      !isOverlayNode(node as Element)
+      node.nodeType === Node.TEXT_NODE ||
+      (node.nodeType === Node.ELEMENT_NODE && !isOverlayNode(node as Element))
     ) {
       return true;
     }
@@ -66,5 +85,5 @@ function isRelevantMutation(mutation: MutationRecord): boolean {
 }
 
 function isOverlayNode(node: Element): boolean {
-  return node.id === 'goodman-overlay-host';
+  return Boolean(node.closest('#goodman-overlay-host, #goodman-consent-warning-host'));
 }

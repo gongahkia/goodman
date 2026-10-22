@@ -1,18 +1,28 @@
 import type { DetectedElement } from '@content/detectors/checkbox';
+import { extractElementText } from './dom-text';
 
 const CONTAINER_TAGS = ['DIV', 'SECTION', 'FORM', 'ARTICLE', 'MAIN'];
 const MIN_TEXT_LENGTH = 200;
 
 export function extractInlineText(detection: DetectedElement): string {
-  const container = findContainer(detection.element);
-  let text = (container.innerText ?? container.textContent ?? '').trim();
+  const container =
+    detection.type === 'fullpage'
+      ? (detection.element.querySelector('main,article,[role="main"]') ?? detection.element)
+      : findContainer(detection.element);
+  let text = extractElementText(container);
 
-  if (text.length < MIN_TEXT_LENGTH && container.parentElement) {
+  if (
+    detection.type !== 'fullpage' &&
+    text.length < MIN_TEXT_LENGTH &&
+    container.parentElement &&
+    container.parentElement !== document.body &&
+    container.parentElement !== document.documentElement
+  ) {
     const parent = findContainer(container.parentElement);
-    text = (parent.innerText ?? parent.textContent ?? '').trim();
+    text = extractElementText(parent);
   }
 
-  return text.replace(/\s+/g, ' ').trim();
+  return text;
 }
 
 function findContainer(element: HTMLElement): HTMLElement {

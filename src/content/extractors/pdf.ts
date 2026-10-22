@@ -1,15 +1,24 @@
 import { ok, err } from '@shared/result';
 import type { Result } from '@shared/result';
 import { sendToBackground } from '@shared/messaging';
+import { MAX_PDF_BYTES, MAX_PDF_TEXT_LENGTH, parsePdfBytes } from '@shared/pdf-parser';
+import { fetchLegalDocument } from './fetch';
 
-const FETCH_TIMEOUT_MS = 5000;
-
-export async function extractPdfText(url: string): Promise<Result<string, Error>> {
+export async function extractPdfText(
+  url: string,
+  downloadedBytes?: Uint8Array
+): Promise<Result<string, Error>> {
   try {
-    const bytes = await fetchPdfBytes(url);
-    const pdfJsText = await extractWithPdfJs(bytes);
-    const fallbackText = extractTextFromPdfBytes(bytes);
-    const fullText = (pdfJsText || fallbackText).trim();
+    const bytes = downloadedBytes ?? (await fetchLegalDocument(url)).bytes;
+    if (!bytes.length || bytes.length > MAX_PDF_BYTES)
+      throw new Error('PDF exceeds the download size limit or is empty');
+    // Firefox content scripts use Xray wrappers for page stream APIs. Parse in
+    // the extension's own background realm; Chromium keeps its local parser.
+    const fullText = (
+      await (chrome.runtime.getURL('').startsWith('moz-extension:')
+        ? parseInBackground(bytes)
+        : parsePdfBytes(bytes))
+    ).trim();
     if (fullText.trim().length === 0) {
       return err(new Error('PDF contains no extractable text (may be image-only)'));
     }
@@ -24,72 +33,27 @@ export async function extractPdfText(url: string): Promise<Result<string, Error>
   }
 }
 
-async function extractWithPdfJs(bytes: Uint8Array): Promise<string> {
+async function parseInBackground(bytes: Uint8Array): Promise<string> {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const pdfjs = await import('pdfjs-dist');
-    const loadingTask = pdfjs.getDocument({ data: bytes });
-    const pdf = await loadingTask.promise;
-    const pages: string[] = [];
-
-    for (let i = 1; i <= pdf.numPages; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent();
-      const pageText = textContent.items
-        .map((item) => ('str' in item ? item.str : ''))
-        .join(' ');
-      pages.push(pageText);
+    const response = (await Promise.race([
+      sendToBackground({ type: 'PARSE_PDF', payload: { body: btoa(binary) } }),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Background PDF parsing timed out')), 35_000);
+      }),
+    ])) as { ok?: boolean; data?: unknown; error?: string } | null;
+    if (response?.ok !== true) throw new Error(response?.error || 'Could not parse PDF');
+    if (typeof response.data !== 'string' || response.data.length > MAX_PDF_TEXT_LENGTH) {
+      throw new Error('Invalid PDF parsing response');
     }
-
-    return pages.join('\n\n');
-  } catch (e) {
-    console.warn('[Goodman] pdfjs extraction failed, falling back to raw byte parser:', e);
-    return '';
+    return response.data;
+  } finally {
+    clearTimeout(timer);
   }
-}
-
-async function fetchPdfBytes(url: string): Promise<Uint8Array> {
-  const requestUrl = resolveUrl(url);
-
-  try {
-    const response = await fetchWithTimeout<{
-      ok: boolean;
-      data?: string;
-      error?: string;
-    }>({
-      type: 'FETCH_URL',
-      payload: { url: requestUrl, responseType: 'base64' },
-    });
-
-    if (response.ok && response.data) {
-      return decodeBase64(response.data);
-    }
-  } catch (e) {
-    console.warn('[Goodman] background PDF fetch failed, falling back to direct fetch:', e);
-  }
-
-  const directResponse = await fetch(requestUrl);
-  if (!directResponse.ok) {
-    throw new Error(`Failed to fetch PDF: HTTP ${directResponse.status}`);
-  }
-
-  return new Uint8Array(await directResponse.arrayBuffer());
-}
-
-function decodeBase64(base64: string): Uint8Array {
-  const binaryString = atob(base64);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-  return bytes;
-}
-
-function extractTextFromPdfBytes(bytes: Uint8Array): string {
-  const decoded = new TextDecoder('latin1').decode(bytes);
-  const matches = [...decoded.matchAll(/\(([^()]*)\)\s*Tj/g)].map((match) =>
-    (match[1] ?? '').replace(/\\\(/g, '(').replace(/\\\)/g, ')')
-  );
-  return matches.join(' ').trim();
 }
 
 export function isPdfUrl(url: string): boolean {
@@ -99,25 +63,5 @@ export function isPdfUrl(url: string): boolean {
   } catch (e) {
     console.warn('[Goodman] isPdfUrl failed to parse URL:', url, e);
     return false;
-  }
-}
-
-async function fetchWithTimeout<T>(
-  message: Parameters<typeof sendToBackground>[0]
-): Promise<T> {
-  return Promise.race([
-    sendToBackground(message) as Promise<T>,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error('Background fetch timed out')), FETCH_TIMEOUT_MS);
-    }),
-  ]);
-}
-
-function resolveUrl(url: string): string {
-  try {
-    return new URL(url, window.location.href).href;
-  } catch (e) {
-    console.warn('[Goodman] PDF resolveUrl failed, using original:', url, e);
-    return url;
   }
 }

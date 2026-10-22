@@ -54,4 +54,38 @@ describe('startObserver', () => {
 
     expect(callback).toHaveBeenCalledTimes(1);
   });
+
+  it('detects changes to existing legal text, hidden state and removed consent surfaces', async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML =
+      '<section><p>Original terms.</p><label hidden>Consent</label></section>';
+    const callback = vi.fn();
+    startObserver(callback);
+    document.querySelector('p')!.firstChild!.textContent = 'Replacement terms.';
+    await Promise.resolve();
+    vi.advanceTimersByTime(550);
+    expect(callback).toHaveBeenCalledTimes(1);
+    document.querySelector('label')!.removeAttribute('hidden');
+    await Promise.resolve();
+    vi.advanceTimersByTime(550);
+    expect(callback).toHaveBeenCalledTimes(2);
+    document.querySelector('section')!.remove();
+    await Promise.resolve();
+    vi.advanceTimersByTime(550);
+    expect(callback).toHaveBeenCalledTimes(3);
+  });
+
+  it('flushes continuous mutation traffic promptly and bounds retained records', async () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    startObserver(callback);
+    for (let index = 0; index < 120; index++) {
+      document.body.appendChild(document.createElement('p'));
+      await Promise.resolve();
+      vi.advanceTimersByTime(10);
+    }
+    expect(callback.mock.calls.length).toBeGreaterThanOrEqual(2);
+    for (const [mutations] of callback.mock.calls)
+      expect(mutations.length).toBeLessThanOrEqual(100);
+  });
 });

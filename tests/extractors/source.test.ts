@@ -13,15 +13,18 @@ vi.mock('@content/extractors/pdf', () => ({
   extractPdfText: vi.fn(),
   isPdfUrl: vi.fn(),
 }));
+vi.mock('@content/extractors/fetch', () => ({
+  fetchLegalDocument: vi.fn(),
+  isPdfDocument: vi.fn(),
+}));
 
 import { extractInlineText } from '@content/extractors/inline';
 import { extractLinkedText } from '@content/extractors/linked';
 import { extractPdfText, isPdfUrl } from '@content/extractors/pdf';
 import { resolveDetectionTextSource } from '@content/extractors/source';
+import { fetchLegalDocument, isPdfDocument } from '@content/extractors/fetch';
 
-function makeDetection(
-  overrides: Partial<DetectedElement> = {}
-): DetectedElement {
+function makeDetection(overrides: Partial<DetectedElement> = {}): DetectedElement {
   return {
     element: document.createElement('input'),
     type: 'checkbox',
@@ -43,6 +46,12 @@ describe('resolveDetectionTextSource', () => {
   });
 
   it('prefers linked HTML content when inline text is short', async () => {
+    vi.mocked(fetchLegalDocument).mockResolvedValue({
+      bytes: new Uint8Array(),
+      contentType: 'text/html',
+      url: 'https://example.com/terms',
+    });
+    vi.mocked(isPdfDocument).mockReturnValue(false);
     vi.mocked(extractInlineText).mockReturnValue('short');
     vi.mocked(isPdfUrl).mockReturnValue(false);
     vi.mocked(extractLinkedText).mockResolvedValue({
@@ -62,6 +71,12 @@ describe('resolveDetectionTextSource', () => {
   });
 
   it('prefers PDF content when the nearest link targets a PDF', async () => {
+    vi.mocked(fetchLegalDocument).mockResolvedValue({
+      bytes: new Uint8Array(),
+      contentType: 'application/pdf',
+      url: 'https://example.com/terms.pdf',
+    });
+    vi.mocked(isPdfDocument).mockReturnValue(true);
     vi.mocked(extractInlineText).mockReturnValue('short');
     vi.mocked(isPdfUrl).mockReturnValue(true);
     vi.mocked(extractPdfText).mockResolvedValue({

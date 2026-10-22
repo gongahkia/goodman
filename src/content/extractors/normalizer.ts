@@ -22,13 +22,20 @@ const BOILERPLATE_PATTERNS = [
   /^all\s+rights\s+reserved\.?\s*$/gim,
 ];
 
-export function normalizeText(raw: string): NormalizedResult {
+export function normalizeExtractedText(raw: string): NormalizedResult {
+  return normalizeText(raw, { plainText: true, preserveLegalLines: true });
+}
+
+export function normalizeText(
+  raw: string,
+  options: { plainText?: boolean; preserveLegalLines?: boolean } = {}
+): NormalizedResult {
   const metadata: NormalizerMetadata = {
     effectiveDate: null,
     lastUpdated: null,
   };
 
-  let text = stripHtmlTags(raw);
+  let text = options.plainText ? raw : stripHtmlTags(raw);
 
   for (const pattern of DATE_LINE_PATTERNS) {
     const match = text.match(pattern);
@@ -39,12 +46,14 @@ export function normalizeText(raw: string): NormalizedResult {
       } else {
         metadata.lastUpdated = dateStr;
       }
-      text = text.replace(match[0], '');
+      if (!options.preserveLegalLines) text = text.replace(match[0], '');
     }
   }
 
-  for (const pattern of BOILERPLATE_PATTERNS) {
-    text = text.replace(pattern, '');
+  if (!options.preserveLegalLines) {
+    for (const pattern of BOILERPLATE_PATTERNS) {
+      text = text.replace(pattern, '');
+    }
   }
 
   text = collapseWhitespace(text);

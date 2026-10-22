@@ -5,6 +5,16 @@ export function chunkText(
   maxTokens: number = DEFAULT_CHUNK_MAX_TOKENS,
   overlapTokens: number = DEFAULT_CHUNK_OVERLAP_TOKENS
 ): string[] {
+  if (
+    !Number.isFinite(maxTokens) ||
+    maxTokens < 1 ||
+    !Number.isFinite(overlapTokens) ||
+    overlapTokens < 0
+  ) {
+    throw new RangeError(
+      'Chunk budgets must be finite and non-negative, with at least one token per chunk'
+    );
+  }
   const estimatedTokens = estimateTokens(text);
   const safeMax = Math.floor(maxTokens * 0.85); // safety margin for token estimation variance
   if (estimatedTokens <= safeMax) {
@@ -42,7 +52,26 @@ export function chunkText(
     chunks.push(currentChunk.trim());
   }
 
-  return addReferenceContext(addOverlap(chunks, overlapTokens), sectionHeaders);
+  return addReferenceContext(addOverlap(chunks, overlapTokens), sectionHeaders).flatMap((chunk) =>
+    splitToBudget(chunk, Math.floor(maxTokens * 3.5))
+  );
+}
+
+function splitToBudget(text: string, maxChars: number): string[] {
+  const chunks: string[] = [];
+  let offset = 0;
+  while (offset < text.length) {
+    let end = Math.min(text.length, offset + maxChars);
+    if (end < text.length) {
+      const space = text.lastIndexOf(' ', end - 1);
+      if (space > offset + maxChars / 2) end = space + 1;
+      // UTF-16 offsets must not split a supplementary Unicode character.
+      if (/[\uD800-\uDBFF]/.test(text[end - 1] ?? '')) end--;
+    }
+    chunks.push(text.slice(offset, end));
+    offset = end;
+  }
+  return chunks;
 }
 
 export function estimateTokens(text: string): number {
@@ -61,7 +90,7 @@ function splitIntoStructuralBlocks(text: string): string[] {
   let sawStructuralHeader = false;
 
   for (const line of lines) {
-    if (isStructuralHeader(line) && current.some(item => item.trim())) {
+    if (isStructuralHeader(line) && current.some((item) => item.trim())) {
       blocks.push(current.join('\n').trim());
       current = [line];
       sawStructuralHeader = true;
@@ -71,7 +100,7 @@ function splitIntoStructuralBlocks(text: string): string[] {
     }
   }
 
-  if (current.some(item => item.trim())) {
+  if (current.some((item) => item.trim())) {
     blocks.push(current.join('\n').trim());
   }
 
@@ -79,7 +108,10 @@ function splitIntoStructuralBlocks(text: string): string[] {
     return blocks.filter(Boolean);
   }
 
-  return text.split(/\n\n+/).map(item => item.trim()).filter(Boolean);
+  return text
+    .split(/\n\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
 }
 
 function isStructuralHeader(line: string): boolean {
@@ -95,7 +127,10 @@ function isStructuralHeader(line: string): boolean {
 function splitOversizedBlock(text: string, maxTokens: number): string[] {
   const { header, body } = extractLeadingHeader(text);
   const prefix = header ? `${header}\n\n` : '';
-  const paragraphs = body.split(/\n\n+/).map(item => item.trim()).filter(Boolean);
+  const paragraphs = body
+    .split(/\n\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
   const chunks: string[] = [];
   let current = '';
 
@@ -173,7 +208,10 @@ function addOverlap(chunks: string[], overlapTokens: number): string[] {
 
 function getOverlapText(chunk: string, overlapChars: number): string {
   if (overlapChars <= 0) return '';
-  const paragraphs = chunk.split(/\n\n+/).map(item => item.trim()).filter(Boolean);
+  const paragraphs = chunk
+    .split(/\n\n+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
   const selected: string[] = [];
   let total = 0;
 
@@ -186,15 +224,13 @@ function getOverlapText(chunk: string, overlapChars: number): string {
   }
 
   const overlap = selected.join('\n\n');
-  return overlap.length > overlapChars * 1.5
-    ? overlap.slice(-overlapChars)
-    : overlap;
+  return overlap.length > overlapChars * 1.5 ? overlap.slice(-overlapChars) : overlap;
 }
 
 function collectSectionHeaders(text: string): SectionHeader[] {
   return text
     .split('\n')
-    .map(line => extractSectionHeader(line))
+    .map((line) => extractSectionHeader(line))
     .filter((header): header is SectionHeader => header !== null);
 }
 
@@ -210,7 +246,7 @@ function extractSectionHeader(line: string): SectionHeader | null {
 
 function addReferenceContext(chunks: string[], sectionHeaders: SectionHeader[]): string[] {
   if (sectionHeaders.length === 0) return chunks;
-  return chunks.map(chunk => {
+  return chunks.map((chunk) => {
     const context = getReferenceContext(chunk, sectionHeaders);
     return context ? `${context}\n\n${chunk}` : chunk;
   });
@@ -222,12 +258,11 @@ function getReferenceContext(chunk: string, sectionHeaders: SectionHeader[]): st
     if (match[1]) references.add(match[1]);
   }
 
-  const lines = [...references]
-    .flatMap(ref => {
-      const header = sectionHeaders.find(item => item.ref === ref);
-      if (!header || chunk.includes(header.title)) return [];
-      return [`Clause ${ref} = ${header.title}`];
-    });
+  const lines = [...references].flatMap((ref) => {
+    const header = sectionHeaders.find((item) => item.ref === ref);
+    if (!header || chunk.includes(header.title)) return [];
+    return [`Clause ${ref} = ${header.title}`];
+  });
 
   return lines.length > 0 ? `Reference context: ${lines.join('; ')}.` : '';
 }

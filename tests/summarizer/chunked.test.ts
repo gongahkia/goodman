@@ -24,12 +24,14 @@ function makeSummary(overrides: Partial<Summary> = {}): Summary {
   return {
     summary: 'chunk summary',
     keyPoints: ['kp1'],
-    redFlags: [{
-      category: 'data_selling',
-      description: 'sells data',
-      severity: 'high',
-      quote: 'we sell',
-    }],
+    redFlags: [
+      {
+        category: 'data_selling',
+        description: 'sells data',
+        severity: 'high',
+        quote: 'we sell',
+      },
+    ],
     severity: 'high',
     ...overrides,
   };
@@ -48,6 +50,16 @@ beforeEach(() => {
 });
 
 describe('chunkedSummarize', () => {
+  it('does not report complete success when one clause chunk failed', async () => {
+    mockSingleShot
+      .mockResolvedValueOnce(ok(makeSummary()))
+      .mockResolvedValueOnce(err(new InvalidResponseError('unread critical clause')));
+    mockGetActiveProvider.mockResolvedValue(ok(makeMockProvider()));
+    const result = await chunkedSummarize(['readable clause', 'unread critical clause']);
+    expect(result.ok).toBe(false);
+    expect(mockGetActiveProvider).not.toHaveBeenCalled();
+  });
+
   it('single chunk delegates to singleShotSummarize', async () => {
     const summary = makeSummary();
     mockSingleShot.mockResolvedValue(ok(summary));
@@ -67,7 +79,9 @@ describe('chunkedSummarize', () => {
   it('multi-chunk runs map phase in batches', async () => {
     const s = makeSummary();
     mockSingleShot.mockResolvedValue(ok(s));
-    mockGetActiveProvider.mockResolvedValue(ok(makeMockProvider(ok(makeSummary({ summary: 'merged' })))));
+    mockGetActiveProvider.mockResolvedValue(
+      ok(makeMockProvider(ok(makeSummary({ summary: 'merged' }))))
+    );
     const chunks = ['c1', 'c2', 'c3', 'c4', 'c5'];
     const result = await chunkedSummarize(chunks);
     expect(mockSingleShot).toHaveBeenCalledTimes(5);
@@ -77,9 +91,7 @@ describe('chunkedSummarize', () => {
   it('reduce phase merges summaries', async () => {
     const s1 = makeSummary({ summary: 'part one', keyPoints: ['a'] });
     const s2 = makeSummary({ summary: 'part two', keyPoints: ['b'] });
-    mockSingleShot
-      .mockResolvedValueOnce(ok(s1))
-      .mockResolvedValueOnce(ok(s2));
+    mockSingleShot.mockResolvedValueOnce(ok(s1)).mockResolvedValueOnce(ok(s2));
     const merged = makeSummary({ summary: 'merged result' });
     mockGetActiveProvider.mockResolvedValue(ok(makeMockProvider(ok(merged))));
     const result = await chunkedSummarize(['c1', 'c2']);
@@ -100,21 +112,23 @@ describe('chunkedSummarize', () => {
       redFlags: [],
       severity: 'low',
     });
-    mockSingleShot
-      .mockResolvedValueOnce(ok(s1))
-      .mockResolvedValueOnce(ok(s2));
-    mockGetActiveProvider.mockResolvedValue(ok(makeMockProvider(ok(makeSummary({ summary: 'merged result' })))));
+    mockSingleShot.mockResolvedValueOnce(ok(s1)).mockResolvedValueOnce(ok(s2));
+    mockGetActiveProvider.mockResolvedValue(
+      ok(makeMockProvider(ok(makeSummary({ summary: 'merged result' }))))
+    );
 
     const result = await chunkedSummarize(['c1', 'c2']);
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data.redFlags).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        category: 'third_party_sharing',
-        description: expect.stringContaining('disagree'),
-      }),
-    ]));
+    expect(result.data.redFlags).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'third_party_sharing',
+          description: expect.stringContaining('disagree'),
+        }),
+      ])
+    );
   });
 });
 
@@ -128,6 +142,7 @@ describe('chunkedSummarizeWithProvider', () => {
       small,
       'openai',
       undefined,
+      undefined,
       undefined
     );
     expect(result.ok).toBe(true);
@@ -136,7 +151,9 @@ describe('chunkedSummarizeWithProvider', () => {
   it('multi-chunk named provider uses map-reduce', async () => {
     const s = makeSummary();
     mockSingleShotWithProvider.mockResolvedValue(ok(s));
-    mockGetProviderByName.mockResolvedValue(ok(makeMockProvider(ok(makeSummary({ summary: 'reduced' })))));
+    mockGetProviderByName.mockResolvedValue(
+      ok(makeMockProvider(ok(makeSummary({ summary: 'reduced' }))))
+    );
     const result = await chunkedSummarizeWithProvider(['chunk one', 'chunk two'], 'openai');
     expect(result.ok).toBe(true);
     expect(mockSingleShotWithProvider).toHaveBeenCalledTimes(2);

@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@versioning/schema', () => ({
   getAllTrackedDomains: vi.fn(),
+  getTextRetention: vi.fn().mockResolvedValue(false),
 }));
 
 import { getAllTrackedDomains } from '@versioning/schema';
 import { renderDomainSettings } from '@popup/settings/domains';
 import { DEFAULT_DOMAIN_PREFERENCES } from '@shared/domain-preferences';
-import { mockStorage } from '../mocks/chrome';
+import { mockStorage, chrome } from '../mocks/chrome';
 
 describe('domain settings', () => {
   beforeEach(() => {
@@ -24,7 +25,9 @@ describe('domain settings', () => {
     expect(container.textContent).toContain('Per-domain preferences');
     expect(container.textContent).toContain('spotify.com');
     expect(container.textContent).toContain('Arbitration');
-    expect(container.querySelector('select')?.getAttribute('aria-label')).toBe('spotify.com notification threshold');
+    expect(container.querySelector('select')?.getAttribute('aria-label')).toBe(
+      'spotify.com notification threshold'
+    );
   });
 
   it('saves watched clause and summary language overrides', async () => {
@@ -45,7 +48,9 @@ describe('domain settings', () => {
       });
     });
 
-    const language = container.querySelector('input[aria-label="spotify.com summary language"]') as HTMLInputElement;
+    const language = container.querySelector(
+      'input[aria-label="spotify.com summary language"]'
+    ) as HTMLInputElement;
     language.value = 'Spanish';
     language.dispatchEvent(new Event('change', { bubbles: true }));
 
@@ -57,5 +62,42 @@ describe('domain settings', () => {
         },
       });
     });
+  });
+
+  it('keeps text retention off by default and sends an explicit preference change', async () => {
+    chrome.runtime.sendMessage.mockResolvedValueOnce({ ok: true, data: null });
+    const container = document.createElement('div');
+    await renderDomainSettings(container);
+    const check = container.querySelector(
+      '[aria-label="spotify.com save agreement text on this device"]'
+    ) as HTMLInputElement;
+    expect(check.checked).toBe(false);
+    expect(container.textContent).toContain('Turning off deletes saved text');
+    check.checked = true;
+    check.dispatchEvent(new Event('change'));
+    expect(check.disabled).toBe(true);
+    await vi.waitFor(() => expect(check.disabled).toBe(false));
+    expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
+      type: 'SET_TEXT_RETENTION',
+      payload: { domain: 'spotify.com', enabled: true },
+    });
+    expect(container.textContent).toContain('Agreement text will be saved from future analyses');
+  });
+
+  it('restores the checkbox and reports a failed preference save', async () => {
+    chrome.runtime.sendMessage.mockResolvedValueOnce({
+      ok: false,
+      error: 'synthetic quota failure',
+    });
+    const container = document.createElement('div');
+    await renderDomainSettings(container);
+    const check = container.querySelector(
+      '[aria-label="spotify.com save agreement text on this device"]'
+    ) as HTMLInputElement;
+    check.checked = true;
+    check.dispatchEvent(new Event('change'));
+    await vi.waitFor(() => expect(check.disabled).toBe(false));
+    expect(check.checked).toBe(false);
+    expect(container.textContent).toContain('Could not save this preference');
   });
 });

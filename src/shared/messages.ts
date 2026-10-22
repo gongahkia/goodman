@@ -1,10 +1,6 @@
 import type { Result } from './result';
 import type { ClauseTaxonomyWeights } from './clause-taxonomy';
-import type {
-  AnalysisSourceType,
-  DetectionType,
-  PageAnalysisRecord,
-} from './page-analysis';
+import type { AnalysisSourceType, DetectionType, PageAnalysisRecord } from './page-analysis';
 
 export interface DetectTCMessage {
   type: 'DETECT_TC';
@@ -13,7 +9,7 @@ export interface DetectTCMessage {
 
 export interface CancelTCMessage {
   type: 'CANCEL_TC';
-  payload: { tabId: number };
+  payload: { tabId: number; expectedUrl?: string };
 }
 
 export interface ExtractTextMessage {
@@ -23,7 +19,12 @@ export interface ExtractTextMessage {
 
 export interface FetchURLMessage {
   type: 'FETCH_URL';
-  payload: { url: string; responseType?: 'text' | 'base64' };
+  payload: { url: string; responseType?: 'text' | 'base64' | 'document' };
+}
+
+export interface ParsePdfMessage {
+  type: 'PARSE_PDF';
+  payload: { body: string };
 }
 
 export interface SummarizeMessage {
@@ -66,7 +67,7 @@ export type WorkspaceRoute =
 
 export interface CancelPageAnalysisMessage {
   type: 'CANCEL_PAGE_ANALYSIS';
-  payload: { tabId: number };
+  payload: { tabId: number; expectedUrl?: string };
 }
 
 export interface SavePageAnalysisMessage {
@@ -92,11 +93,17 @@ export interface TCChangedMessage {
   payload: { domain: string; diff: unknown };
 }
 
+export interface SetTextRetentionMessage {
+  type: 'SET_TEXT_RETENTION';
+  payload: { domain: string; enabled: boolean };
+}
+
 export type Message =
   | DetectTCMessage
   | CancelTCMessage
   | ExtractTextMessage
   | FetchURLMessage
+  | ParsePdfMessage
   | SummarizeMessage
   | GetSettingsMessage
   | SaveSettingsMessage
@@ -105,18 +112,13 @@ export type Message =
   | CancelPageAnalysisMessage
   | SavePageAnalysisMessage
   | ProcessPageAnalysisMessage
+  | SetTextRetentionMessage
   | TCChangedMessage;
 
 export type MessageType = Message['type'];
 
 export interface Settings {
-  activeProvider:
-    | 'openai'
-    | 'claude'
-    | 'gemini'
-    | 'ollama'
-    | 'custom'
-    | 'fixture';
+  activeProvider: 'openai' | 'claude' | 'gemini' | 'ollama' | 'custom' | 'fixture';
   providers: Record<string, ProviderConfig>;
   detectionSensitivity: 'aggressive' | 'normal' | 'conservative';
   darkMode: 'auto' | 'light' | 'dark';

@@ -36,7 +36,7 @@ const baseManifest = {
   web_accessible_resources: [
     {
       matches: ['<all_urls>'],
-      resources: ['icons/saul.png'],
+      resources: ['icons/saul.png', 'assets/pdf.worker*.mjs'],
     },
   ],
 };

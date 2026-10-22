@@ -92,15 +92,22 @@ describe('OllamaProvider', () => {
   });
 
   it('validateApiKey returns true when models are available', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'llama3.2' }, { name: 'mistral' }] })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ models: [{ name: 'llama3.2' }, { name: 'mistral' }] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const valid = await provider.validateApiKey('');
     expect(valid).toBe(true);
 
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/api/tags`);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/api/tags`,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+      })
+    );
   });
 
   it('validateApiKey returns false when no models available', async () => {
@@ -120,9 +127,9 @@ describe('OllamaProvider', () => {
   });
 
   it('listModels returns model names from /api/tags', async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({ models: [{ name: 'llama3.2' }, { name: 'codellama' }] })
-    );
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(jsonResponse({ models: [{ name: 'llama3.2' }, { name: 'codellama' }] }));
     vi.stubGlobal('fetch', fetchMock);
 
     const models = await provider.listModels();

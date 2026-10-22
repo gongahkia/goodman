@@ -3,11 +3,20 @@ import { parseSummaryResponse } from '@providers/response-parser';
 import validSummary from '../fixtures/valid-summary.json';
 
 describe('parseSummaryResponse', () => {
+  it.each(['{}', '[]', '{"summary":""}', '{"summary":42}'])(
+    'rejects an unusable summary response: %s',
+    (raw) => {
+      expect(parseSummaryResponse(raw).ok).toBe(false);
+    }
+  );
+
   it('should parse valid JSON into a correct Summary object', () => {
     const result = parseSummaryResponse(JSON.stringify(validSummary));
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.summary).toBe('This service collects your data and shares it with third parties.');
+      expect(result.data.summary).toBe(
+        'This service collects your data and shares it with third parties.'
+      );
       expect(result.data.keyPoints).toHaveLength(3);
       expect(result.data.redFlags).toHaveLength(1);
       expect(result.data.redFlags[0]!.category).toBe('data_selling');
@@ -47,7 +56,12 @@ describe('parseSummaryResponse', () => {
       redFlags: [
         { category: 'data_retention', description: 'kept forever', severity: 'high', quote: '' },
         { category: 'ai_training', description: 'trains models', severity: 'high', quote: '' },
-        { category: 'government_disclosure', description: 'shared with gov', severity: 'medium', quote: '' },
+        {
+          category: 'government_disclosure',
+          description: 'shared with gov',
+          severity: 'medium',
+          quote: '',
+        },
       ],
       severity: 'high',
     });
@@ -56,7 +70,9 @@ describe('parseSummaryResponse', () => {
     if (result.ok) {
       expect(result.data.redFlags).toHaveLength(3);
       expect(result.data.redFlags.map((f) => f.category)).toEqual([
-        'data_retention', 'ai_training', 'government_disclosure',
+        'data_retention',
+        'ai_training',
+        'government_disclosure',
       ]);
     }
   });
