@@ -13,23 +13,29 @@ function jsonResponse(json: unknown, status = 200): Response {
 
 function validGeminiResponse() {
   return {
-    candidates: [{
-      content: {
-        parts: [{
-          text: JSON.stringify({
-            summary: 'Gemini summary.',
-            keyPoints: ['Key point'],
-            redFlags: [{
-              category: 'data_selling',
-              description: 'Sells your data',
-              severity: 'high',
-              quote: 'we sell data',
-            }],
-            severity: 'high',
-          }),
-        }],
+    candidates: [
+      {
+        content: {
+          parts: [
+            {
+              text: JSON.stringify({
+                summary: 'Gemini summary.',
+                keyPoints: ['Key point'],
+                redFlags: [
+                  {
+                    category: 'data_selling',
+                    description: 'Sells your data',
+                    severity: 'high',
+                    quote: 'we sell data',
+                  },
+                ],
+                severity: 'high',
+              }),
+            },
+          ],
+        },
       },
-    }],
+    ],
   };
 }
 
@@ -124,7 +130,14 @@ describe('GeminiProvider', () => {
     const valid = await provider.validateApiKey('gm-real-key');
     expect(valid).toBe(true);
 
-    expect(fetchMock).toHaveBeenCalledWith(`${BASE_URL}/models?key=gm-real-key`);
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${BASE_URL}/models?key=gm-real-key`,
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+        credentials: 'omit',
+        referrerPolicy: 'no-referrer',
+      })
+    );
   });
 
   it('validateApiKey returns false on 401', async () => {

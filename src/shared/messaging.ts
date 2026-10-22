@@ -18,13 +18,27 @@ export type MessageHandler = (
 export function onMessage(handler: MessageHandler): void {
   chrome.runtime.onMessage.addListener(
     (message: unknown, sender: MessageSender, sendResponse: (response?: unknown) => void) => {
-      const result = handler(message as Message, sender);
-      if (result) {
-        result.then(sendResponse).catch((e) => {
-          console.error('[Goodman] message handler error:', e);
-          sendResponse({ ok: false, error: String(e) });
-        });
-        return true; // keep channel open for async response
+      if (
+        !message ||
+        typeof message !== 'object' ||
+        !('type' in message) ||
+        typeof message.type !== 'string' ||
+        message.type.length > 64
+      ) {
+        sendResponse({ ok: false, error: 'Invalid request' });
+        return false;
+      }
+      try {
+        const result = handler(message as Message, sender);
+        if (result) {
+          result.then(sendResponse).catch(() => {
+            console.warn('[Goodman] asynchronous message request failed');
+            sendResponse({ ok: false, error: 'Could not process request' });
+          });
+          return true; // keep channel open for async response
+        }
+      } catch {
+        sendResponse({ ok: false, error: 'Invalid request' });
       }
       return false;
     }

@@ -5,19 +5,27 @@ import type { TCGuardError } from '@shared/errors';
 import type { Summary, RedFlag, RedFlagCategory, Severity, RedFlagSeverity } from './types';
 
 const VALID_CATEGORIES: RedFlagCategory[] = [
-  'data_selling', 'arbitration_clause', 'class_action_waiver',
-  'automatic_renewal', 'biometric_data', 'third_party_sharing',
-  'jurisdiction_change', 'liability_limitation', 'content_ownership_transfer',
-  'unilateral_changes', 'no_deletion_right', 'location_tracking',
-  'data_retention', 'ai_training', 'government_disclosure',
+  'data_selling',
+  'arbitration_clause',
+  'class_action_waiver',
+  'automatic_renewal',
+  'biometric_data',
+  'third_party_sharing',
+  'jurisdiction_change',
+  'liability_limitation',
+  'content_ownership_transfer',
+  'unilateral_changes',
+  'no_deletion_right',
+  'location_tracking',
+  'data_retention',
+  'ai_training',
+  'government_disclosure',
 ];
 
 const VALID_SEVERITIES: Severity[] = ['low', 'medium', 'high', 'critical'];
 const VALID_FLAG_SEVERITIES: RedFlagSeverity[] = ['low', 'medium', 'high'];
 
-export function parseSummaryResponse(
-  raw: string
-): Result<Summary, TCGuardError> {
+export function parseSummaryResponse(raw: string): Result<Summary, TCGuardError> {
   try {
     const cleaned = extractJsonObject(raw);
     const parsed = JSON.parse(cleaned) as unknown;
@@ -44,7 +52,10 @@ export function parseSummaryObject(raw: unknown): Summary {
 }
 
 function validateSummary(obj: Record<string, unknown>): Summary {
-  const summary = typeof obj['summary'] === 'string' ? obj['summary'] : 'Summary unavailable.';
+  if (typeof obj['summary'] !== 'string' || !obj['summary'].trim()) {
+    throw new InvalidResponseError('Response has no usable summary');
+  }
+  const summary = obj['summary'];
 
   const keyPoints = Array.isArray(obj['keyPoints'])
     ? (obj['keyPoints'] as unknown[]).filter((p): p is string => typeof p === 'string')

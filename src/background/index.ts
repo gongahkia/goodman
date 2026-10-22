@@ -18,24 +18,36 @@ import {
   setStorage,
 } from '@shared/storage';
 // chrome.runtime.MessageSender replaced with chrome.runtime.MessageSender
-import { cancelPageAnalysis, processPageAnalysis } from './process-analysis';
+import { cancelPageAnalysis, discardPageAnalysis, processPageAnalysis } from './process-analysis';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { pruneCache } from '@summarizer/cache';
+import { fetchBounded } from '@shared/network';
+import { MAX_INPUT_TEXT_LENGTH } from '@shared/constants';
+import { setTextRetention } from '@versioning/schema';
+import { handleParsePdf } from './parse-pdf';
 
 registerTabCleanup();
 registerKeepAlive();
 registerActionLauncher();
-void runMigrations().then(() => {
-  void prunePageAnalysisState().catch(e => console.warn('[Goodman] prune page analysis failed:', e));
-  void pruneCache().catch(e => console.warn('[Goodman] prune cache failed:', e));
-}).catch(e => console.error('[Goodman] migrations failed:', e));
+void runMigrations()
+  .then(() => {
+    void prunePageAnalysisState().catch((e) =>
+      console.warn('[Goodman] prune page analysis failed:', e)
+    );
+    void pruneCache().catch((e) => console.warn('[Goodman] prune cache failed:', e));
+  })
+  .catch((e) => console.error('[Goodman] migrations failed:', e));
 
 onMessage(
   (msg: Message, sender: chrome.runtime.MessageSender): Promise<MessageResponse> | undefined => {
-    console.warn(`[Goodman:bg] received message: ${msg.type} from tab ${sender.tab?.id ?? 'unknown'}`);
+    console.warn(
+      `[Goodman:bg] received message: ${msg.type} from tab ${sender.tab?.id ?? 'unknown'}`
+    );
     switch (msg.type) {
       case 'FETCH_URL':
         return handleFetchUrl(msg.payload.url, msg.payload.responseType);
+      case 'PARSE_PDF':
+        return handleParsePdf(msg.payload);
       case 'GET_SETTINGS':
         return handleGetSettings();
       case 'SAVE_SETTINGS':
@@ -45,31 +57,61 @@ onMessage(
       case 'OPEN_WORKSPACE_SURFACE':
         return handleOpenWorkspaceSurface(msg.payload);
       case 'CANCEL_PAGE_ANALYSIS':
-        return handleCancelPageAnalysis(msg.payload.tabId);
+        return handleCancelPageAnalysis(
+          sender.tab?.id ?? msg.payload.tabId,
+          msg.payload.expectedUrl
+        );
       case 'SAVE_PAGE_ANALYSIS':
         return handleSavePageAnalysis(msg.payload, sender);
       case 'PROCESS_PAGE_ANALYSIS':
         return handleProcessPageAnalysis(msg.payload, sender);
       case 'SUMMARIZE':
         return handleSummarize(msg.payload);
+      case 'SET_TEXT_RETENTION':
+        return handleSetTextRetention(msg.payload, sender);
       default:
         return undefined;
     }
   }
 );
 
+async function handleSetTextRetention(
+  payload: { domain: string; enabled: boolean },
+  sender: chrome.runtime.MessageSender
+): Promise<MessageResponse> {
+  if (
+    !sender.url?.startsWith(chrome.runtime.getURL('')) ||
+    !payload ||
+    typeof payload.domain !== 'string' ||
+    typeof payload.enabled !== 'boolean'
+  ) {
+    return { ok: false, error: 'Change saved agreement text from Goodman settings.' };
+  }
+  await setTextRetention(payload.domain, payload.enabled);
+  return { ok: true, data: null };
+}
+
 async function handleFetchUrl(
   url: string,
-  responseType: 'text' | 'base64' = 'text'
+  responseType: 'text' | 'base64' | 'document' = 'text'
 ): Promise<MessageResponse> {
   try {
-    const response = await fetch(url);
+    const response = await fetchBounded(url, {}, { timeoutMs: 10_000, maxBytes: 8 * 1024 * 1024 });
     if (!response.ok) {
       return { ok: false, error: `Failed to fetch URL: HTTP ${response.status}` };
     }
 
-    if (responseType === 'base64') {
+    if (responseType === 'base64' || responseType === 'document') {
       const bytes = new Uint8Array(await response.arrayBuffer());
+      if (responseType === 'document')
+        return {
+          ok: true,
+          data: {
+            body: bytesToBase64(bytes),
+            contentType: response.headers.get('content-type') ?? '',
+            url: response.url || url,
+          },
+        };
       return { ok: true, data: bytesToBase64(bytes) };
     }
 
@@ -90,9 +132,15 @@ async function handleGetSettings(): Promise<MessageResponse> {
   return { ok: true, data: result.data };
 }
 
-async function handleSaveSettings(
-  settings: Settings
-): Promise<MessageResponse> {
+async function handleSaveSettings(settings: Settings): Promise<MessageResponse> {
+  if (
+    !settings ||
+    typeof settings !== 'object' ||
+    !settings.providers ||
+    typeof settings.providers !== 'object'
+  ) {
+    return { ok: false, error: 'Invalid settings' };
+  }
   const result = await setStorage('settings', settings);
   if (!result.ok) {
     return { ok: false, error: 'Could not save settings' };
@@ -117,8 +165,11 @@ async function handleOpenWorkspaceSurface(
   return { ok: true, data: null };
 }
 
-async function handleCancelPageAnalysis(tabId: number): Promise<MessageResponse> {
-  const cancelled = await cancelPageAnalysis(tabId);
+async function handleCancelPageAnalysis(
+  tabId: number,
+  expectedUrl?: string
+): Promise<MessageResponse> {
+  const cancelled = await cancelPageAnalysis(tabId, expectedUrl);
   return { ok: true, data: { cancelled } };
 }
 
@@ -150,29 +201,58 @@ async function handleProcessPageAnalysis(
   if (typeof tabId !== 'number') {
     return { ok: false, error: 'Could not resolve tab id' };
   }
+  if (
+    !payload ||
+    typeof payload.text !== 'string' ||
+    !payload.text.trim() ||
+    typeof payload.url !== 'string' ||
+    typeof payload.provider !== 'string'
+  ) {
+    return { ok: false, error: 'Invalid analysis request' };
+  }
+  let url: URL;
+  try {
+    url = new URL(payload.url);
+    if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Unsupported page');
+  } catch {
+    return { ok: false, error: 'Invalid page URL' };
+  }
 
-  console.warn(`[Goodman:bg] starting processPageAnalysis for ${payload.url} with provider=${payload.provider}`);
+  console.warn(`[Goodman:bg] starting analysis with provider=${payload.provider}`);
   const result = await processPageAnalysis({
     tabId,
     ...payload,
+    domain: url.hostname,
   });
-  console.warn(`[Goodman:bg] processPageAnalysis done: ok=${result.ok} cancelled=${result.cancelled} error=${result.error ?? 'none'}`);
+  console.warn(
+    `[Goodman:bg] processPageAnalysis done: ok=${result.ok} cancelled=${result.cancelled} error=${result.error ?? 'none'}`
+  );
 
   if (result.cancelled) {
     return { ok: false, error: result.error ?? 'Analysis cancelled.', cancelled: true };
   }
 
   if (!result.ok) {
-    console.error('[Goodman] analysis failed:', payload.url, result.error);
+    console.error('[Goodman] analysis failed:', result.error);
     return { ok: false, error: result.error ?? 'Failed to process page analysis' };
   }
 
   return { ok: true, data: result.data };
 }
 
-async function handleSummarize(
-  payload: { text: string; provider: string }
-): Promise<MessageResponse> {
+async function handleSummarize(payload: {
+  text: string;
+  provider: string;
+}): Promise<MessageResponse> {
+  if (
+    !payload ||
+    typeof payload.text !== 'string' ||
+    !payload.text.trim() ||
+    payload.text.length > MAX_INPUT_TEXT_LENGTH ||
+    typeof payload.provider !== 'string'
+  ) {
+    return { ok: false, error: 'Invalid or oversized summary request' };
+  }
   const result = await singleShotSummarizeWithProvider(payload.text, payload.provider);
   if (!result.ok) {
     console.error('[Goodman] summarize failed:', result.error.message);
@@ -185,14 +265,12 @@ function registerTabCleanup(): void {
   if (!chrome.tabs?.onRemoved) return;
 
   chrome.tabs.onRemoved.addListener(async (tabId: number) => {
+    discardPageAnalysis(tabId);
     await removePageAnalysis(tabId);
   });
 }
 
-function resolveTabId(
-  fallbackTabId: number,
-  sender: chrome.runtime.MessageSender
-): number | null {
+function resolveTabId(fallbackTabId: number, sender: chrome.runtime.MessageSender): number | null {
   if (typeof sender.tab?.id === 'number') {
     return sender.tab.id;
   }
@@ -208,7 +286,10 @@ function registerKeepAlive(): void {
   if (!chrome.alarms) return;
   chrome.alarms.create('keepalive', { periodInMinutes: 0.4 });
   chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'keepalive') void prunePageAnalysisState().catch(e => console.warn('[Goodman] keepalive prune failed:', e));
+    if (alarm.name === 'keepalive')
+      void prunePageAnalysisState().catch((e) =>
+        console.warn('[Goodman] keepalive prune failed:', e)
+      );
   });
 }
 

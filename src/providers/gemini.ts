@@ -10,6 +10,7 @@ import {
 import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
+import { fetchBounded } from '@shared/network';
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta';
 const MAX_RETRIES = 2;
@@ -23,10 +24,7 @@ export class GeminiProvider implements LLMProvider {
     private defaultModel: string = 'gemini-1.5-pro'
   ) {}
 
-  async summarize(
-    text: string,
-    options: SummarizeOptions
-  ): Promise<Result<Summary, TCGuardError>> {
+  async summarize(text: string, options: SummarizeOptions): Promise<Result<Summary, TCGuardError>> {
     const model = options.model || this.defaultModel || 'gemini-1.5-pro';
     const url = `${BASE_URL}/models/${model}:generateContent?key=${this.apiKey}`;
 
@@ -46,7 +44,7 @@ export class GeminiProvider implements LLMProvider {
   async validateApiKey(key: string): Promise<boolean> {
     try {
       const url = `${BASE_URL}/models?key=${key}`;
-      const response = await fetch(url);
+      const response = await fetchBounded(url);
       return response.ok;
     } catch (e) {
       console.warn('[Goodman] Gemini API key validation failed:', e);
@@ -61,7 +59,7 @@ export class GeminiProvider implements LLMProvider {
     signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
-      const response = await fetch(url, {
+      const response = await fetchBounded(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal,

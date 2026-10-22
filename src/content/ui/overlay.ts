@@ -50,7 +50,7 @@ export function createOverlay(
 
   shadow.appendChild(container);
   document.body.appendChild(host);
-  positionCleanup = positionOverlay(host, detection.element);
+  positionCleanup = positionOverlay(host, detection.element, container);
   currentOverlay = host;
   document.addEventListener('keydown', handleEscape);
   showSaulToast();
@@ -99,8 +99,14 @@ function createHeader(severityValue: string): HTMLElement {
   severityBadge.className = `goodman-severity-pill goodman-severity-${normalizeSeverity(
     severityValue
   )}`;
-  const severityIndicator: Record<string, string> = { low: '\u25cf ', medium: '\u25c6 ', high: '\u25b2 ', critical: '\u25b2 ' };
-  severityBadge.textContent = (severityIndicator[normalizeSeverity(severityValue)] ?? '') + severityValue.toUpperCase();
+  const severityIndicator: Record<string, string> = {
+    low: '\u25cf ',
+    medium: '\u25c6 ',
+    high: '\u25b2 ',
+    critical: '\u25b2 ',
+  };
+  severityBadge.textContent =
+    (severityIndicator[normalizeSeverity(severityValue)] ?? '') + severityValue.toUpperCase();
 
   titleRow.appendChild(title);
   titleRow.appendChild(severityBadge);
@@ -194,9 +200,7 @@ function createRedFlags(
     name.textContent = flag.category.replace(/_/g, ' ');
 
     const pill = document.createElement('span');
-    pill.className = `goodman-severity-pill goodman-severity-${normalizeSeverity(
-      flag.severity
-    )}`;
+    pill.className = `goodman-severity-pill goodman-severity-${normalizeSeverity(flag.severity)}`;
     pill.textContent = flag.severity.toUpperCase();
 
     const chevron = document.createElement('span');
@@ -270,7 +274,9 @@ function handleCopy(): void {
   if (cachedSummary.redFlags.length > 0) {
     lines.push('', 'Red Flags:');
     for (const f of cachedSummary.redFlags) {
-      lines.push(`- [${f.severity.toUpperCase()}] ${f.category.replace(/_/g, ' ')}: ${f.description}`);
+      lines.push(
+        `- [${f.severity.toUpperCase()}] ${f.category.replace(/_/g, ' ')}: ${f.description}`
+      );
     }
   }
   navigator.clipboard.writeText(lines.join('\n')).catch(() => {}); // silent fail if clipboard unavailable
@@ -301,12 +307,21 @@ function showSaulToast(): void {
   const imgUrl = chrome.runtime?.getURL?.('icons/saul.png') ?? '';
   if (!imgUrl) return;
   toast.style.cssText = [
-    'position:fixed', 'bottom:24px', 'right:24px', 'z-index:2147483646',
-    'display:flex', 'align-items:center', 'gap:12px',
-    'padding:12px 18px', 'border-radius:16px',
-    'background:#fffbf5', 'border:1px solid #e6ddd0',
+    'position:fixed',
+    'bottom:24px',
+    'right:24px',
+    'z-index:2147483646',
+    'display:flex',
+    'align-items:center',
+    'gap:12px',
+    'padding:12px 18px',
+    'border-radius:16px',
+    'background:#fffbf5',
+    'border:1px solid #e6ddd0',
     'box-shadow:0 12px 40px rgba(0,0,0,0.15)',
-    'font-family:ui-sans-serif,-apple-system,sans-serif', 'font-size:14px', 'color:#2c2c2c',
+    'font-family:ui-sans-serif,-apple-system,sans-serif',
+    'font-size:14px',
+    'color:#2c2c2c',
     'animation:goodman-saul-in 400ms cubic-bezier(0.16,1,0.3,1)',
     'cursor:pointer',
   ].join(';');

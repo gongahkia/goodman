@@ -1,7 +1,8 @@
 import type { Summary } from '@providers/types';
 import type { StoredSummary } from '@shared/storage';
+import { withStorageLock } from '@shared/storage';
 import { checkForChanges } from '@versioning/detector';
-import type { DiffResult } from '@versioning/diff';
+import { computeDiff, type DiffResult } from '@versioning/diff';
 import { notifyChange } from '@versioning/notifications';
 import { addVersion } from '@versioning/schema';
 import { compareSummaries, type SummaryDiff } from '@versioning/summary-diff';
@@ -19,43 +20,47 @@ export async function syncVersionHistory(
   text: string,
   summary: Summary
 ): Promise<VersionTrackingResult> {
-  const changeResult = await checkForChanges(domain, text);
-  const versionEntry = await addVersion(domain, text, summary);
+  return withStorageLock('versionTracking', async () => {
+    const changeResult = await checkForChanges(domain, text);
+    const versionEntry = await addVersion(domain, text, summary);
 
-  if (!changeResult.previousVersion) {
+    if (!changeResult.previousVersion) {
+      return {
+        changed: false,
+        notified: false,
+        versionNumber: versionEntry?.version ?? null,
+        summaryDiff: null,
+        textDiff: null,
+      };
+    }
+
+    if (!changeResult.changed || !versionEntry) {
+      return {
+        changed: false,
+        notified: false,
+        versionNumber: null,
+        summaryDiff: null,
+        textDiff: null,
+      };
+    }
+
+    const previousSummary = toSummary(changeResult.previousVersion.summary);
+    const summaryDiff = compareSummaries(previousSummary, summary);
+    const meaningfulChange = isMeaningfulSummaryChange(summaryDiff);
+    const notified = meaningfulChange ? await notifyChange(domain, summaryDiff) : false;
+
     return {
-      changed: false,
-      notified: false,
-      versionNumber: versionEntry?.version ?? null,
-      summaryDiff: null,
-      textDiff: null,
+      changed: true,
+      notified,
+      versionNumber: versionEntry.version,
+      summaryDiff,
+      textDiff:
+        changeResult.previousVersion.sourceText !== undefined &&
+        versionEntry.sourceText !== undefined
+          ? computeDiff(changeResult.previousVersion.sourceText, versionEntry.sourceText)
+          : null,
     };
-  }
-
-  if (!changeResult.changed || !versionEntry) {
-    return {
-      changed: false,
-      notified: false,
-      versionNumber: null,
-      summaryDiff: null,
-      textDiff: null,
-    };
-  }
-
-  const previousSummary = toSummary(changeResult.previousVersion.summary);
-  const summaryDiff = compareSummaries(previousSummary, summary);
-  const meaningfulChange = isMeaningfulSummaryChange(summaryDiff);
-  const notified = meaningfulChange
-    ? await notifyChange(domain, summaryDiff)
-    : false;
-
-  return {
-    changed: true,
-    notified,
-    versionNumber: versionEntry.version,
-    summaryDiff,
-    textDiff: null, // fullText no longer stored; text diff unavailable
-  };
+  });
 }
 
 function isMeaningfulSummaryChange(diff: SummaryDiff): boolean {

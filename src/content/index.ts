@@ -7,22 +7,14 @@ import { detectFullPageTC } from '@content/detectors/fullpage';
 import { startObserver } from '@content/detectors/observer';
 import { scoreDetections } from '@content/detectors/scoring';
 import { resolveDetectionTextSource } from '@content/extractors/source';
-import { normalizeText } from '@content/extractors/normalizer';
+import { normalizeExtractedText } from '@content/extractors/normalizer';
 import { chunkText } from '@shared/chunker';
 import { computeTextHash } from '@summarizer/cache';
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { createOverlay, removeOverlay } from '@content/ui/overlay';
-import {
-  renderConsentWarningBadge,
-  removeConsentWarningBadge,
-} from '@content/ui/consent-warning';
-import {
-  getPageAnalysisByUrl,
-  getStorage,
-  setPageAnalysisByUrl,
-  DEFAULT_SETTINGS,
-} from '@shared/storage';
+import { renderConsentWarningBadge, removeConsentWarningBadge } from '@content/ui/consent-warning';
+import { getPageAnalysisByUrl, getStorage, DEFAULT_SETTINGS } from '@shared/storage';
 import type {
   PageAnalysisLogEntry,
   PageAnalysisLogLevel,
@@ -30,16 +22,15 @@ import type {
 } from '@shared/page-analysis';
 import type { Settings } from '@shared/messages';
 import type { Summary } from '@providers/types';
-import {
-  getMissingProviderMessage,
-  isProviderConfigured,
-} from '@shared/provider-config';
+import { getMissingProviderMessage, isProviderConfigured } from '@shared/provider-config';
 import { MIN_OBSERVER_INTERVAL_MS } from '@shared/constants';
 import { appendProgressLog } from '@shared/analysis-progress';
-import { isCancelledError, throwIfAborted } from '@shared/cancellation';
+import { isCancelledError, throwIfAborted, waitWithAbort } from '@shared/cancellation';
+import { CancelledError } from '@shared/errors';
 
 let analysisInFlight = false;
-let rerunRequested = false;
+let pendingDetection: { force: boolean; settingsOverride?: Partial<Settings> } | null = null;
+let observerTimer: ReturnType<typeof setTimeout> | null = null;
 let lastRenderedTextHash: string | null = null;
 let lastRunResult: MessageResponse = { ok: true, data: [] };
 let lastObserverDetectionTs = 0;
@@ -52,6 +43,8 @@ if (typeof document !== 'undefined') {
         case 'DETECT_TC':
           return queueDetection(true, msg.payload.settingsOverride);
         case 'CANCEL_TC':
+          if (msg.payload.expectedUrl && msg.payload.expectedUrl !== window.location.href)
+            return Promise.resolve({ ok: true, data: null });
           return cancelCurrentAnalysis();
         default:
           return undefined;
@@ -62,28 +55,61 @@ if (typeof document !== 'undefined') {
 
 if (typeof document !== 'undefined') {
   startObserver(() => {
-    const now = Date.now();
-    if (now - lastObserverDetectionTs < MIN_OBSERVER_INTERVAL_MS) return;
-    lastObserverDetectionTs = now;
-    void queueDetection(false).catch(e => console.warn('[Goodman] observer detection failed:', e));
+    checkUrlChange();
+    if (observerTimer) return;
+    const delay = Math.max(0, MIN_OBSERVER_INTERVAL_MS - (Date.now() - lastObserverDetectionTs));
+    observerTimer = setTimeout(() => {
+      observerTimer = null;
+      lastObserverDetectionTs = Date.now();
+      void queueDetection(false).catch((e) =>
+        console.warn('[Goodman] observer detection failed:', e)
+      );
+    }, delay);
   });
-  void queueDetection(false).catch(e => console.warn('[Goodman] initial detection failed:', e));
+  void queueDetection(false).catch((e) => console.warn('[Goodman] initial detection failed:', e));
 }
 
 let lastUrl = typeof location !== 'undefined' ? location.href : '';
 function checkUrlChange(): void {
   if (location.href !== lastUrl) {
+    const previousUrl = lastUrl;
     lastUrl = location.href;
+    currentAnalysisController?.abort();
+    removeOverlay();
+    removeConsentWarningBadge();
     lastRenderedTextHash = null;
-    void queueDetection(true).catch(e => console.warn('[Goodman] URL change detection failed:', e));
+    void sendToBackground({
+      type: 'CANCEL_PAGE_ANALYSIS',
+      payload: { tabId: -1, expectedUrl: previousUrl },
+    }).catch((e) => console.warn('[Goodman] navigation cancellation failed:', e));
+    void queueDetection(true).catch((e) =>
+      console.warn('[Goodman] URL change detection failed:', e)
+    );
   }
 }
-if (typeof history !== 'undefined') {
+if (typeof window !== 'undefined') {
   window.addEventListener('popstate', checkUrlChange);
-  const origPushState = history.pushState.bind(history);
-  const origReplaceState = history.replaceState.bind(history);
-  history.pushState = (...args: Parameters<typeof history.pushState>) => { origPushState(...args); checkUrlChange(); };
-  history.replaceState = (...args: Parameters<typeof history.replaceState>) => { origReplaceState(...args); checkUrlChange(); };
+  window.addEventListener('hashchange', checkUrlChange);
+  // Page history methods run in a different JavaScript world from the content script.
+  let navigationTimer = setInterval(checkUrlChange, 500);
+  window.addEventListener('pageshow', () => {
+    clearInterval(navigationTimer);
+    navigationTimer = setInterval(checkUrlChange, 500);
+    checkUrlChange();
+  });
+  window.addEventListener('pagehide', () => {
+    clearInterval(navigationTimer);
+    if (observerTimer) clearTimeout(observerTimer);
+    observerTimer = null;
+    pendingDetection = null;
+    currentAnalysisController?.abort();
+    void sendToBackground({
+      type: 'CANCEL_PAGE_ANALYSIS',
+      payload: { tabId: -1, expectedUrl: lastUrl },
+    }).catch(() => {
+      /* The document may be closing its message channel. */
+    });
+  });
 }
 
 async function queueDetection(
@@ -91,7 +117,10 @@ async function queueDetection(
   settingsOverride?: Partial<Settings>
 ): Promise<MessageResponse> {
   if (analysisInFlight) {
-    rerunRequested = true;
+    pendingDetection = {
+      force: force || (pendingDetection?.force ?? false),
+      settingsOverride: settingsOverride ?? pendingDetection?.settingsOverride,
+    };
     return lastRunResult;
   }
 
@@ -117,9 +146,12 @@ async function queueDetection(
       currentAnalysisController = null;
     }
     analysisInFlight = false;
-    if (rerunRequested) {
-      rerunRequested = false;
-      void queueDetection(false).catch(e => console.warn('[Goodman] queued rerun failed:', e));
+    if (pendingDetection) {
+      const pending = pendingDetection;
+      pendingDetection = null;
+      void queueDetection(pending.force, pending.settingsOverride).catch((e) =>
+        console.warn('[Goodman] queued rerun failed:', e)
+      );
     }
   }
 }
@@ -129,21 +161,28 @@ async function handleDetectTC(
   settingsOverride?: Partial<Settings>,
   signal?: AbortSignal
 ): Promise<MessageResponse> {
-  throwIfAborted(signal);
+  const pageUrl = window.location.href;
+  const pageDomain = window.location.hostname;
+  const assertCurrentPage = (): void => {
+    throwIfAborted(signal);
+    if (window.location.href !== pageUrl)
+      throw new CancelledError('Page navigation superseded this analysis.');
+  };
+  assertCurrentPage();
 
   if (!document.body) {
     return { ok: false, error: 'Document body is unavailable' };
   }
 
   const blacklistResult = await getStorage('domainBlacklist');
-  throwIfAborted(signal);
-  if (blacklistResult.ok && blacklistResult.data.includes(window.location.hostname)) {
+  assertCurrentPage();
+  if (blacklistResult.ok && blacklistResult.data.includes(pageDomain)) {
     removeConsentWarningBadge();
     return { ok: true, data: [] };
   }
 
   const settingsResult = await getStorage('settings');
-  throwIfAborted(signal);
+  assertCurrentPage();
   const settings = resolveSettings(
     settingsResult.ok ? settingsResult.data : null,
     settingsOverride
@@ -172,14 +211,15 @@ async function handleDetectTC(
     logMessage: string,
     level: PageAnalysisLogLevel = 'info'
   ): Promise<void> => {
-    throwIfAborted(signal);
+    assertCurrentPage();
     progressLogs = appendProgressLog(progressLogs, logMessage, progressPercent, level);
     Object.assign(analysisState, updates, {
       progressPercent,
       progressLabel,
       progressLogs,
     });
-    await persistPageAnalysisState(analysisState);
+    await persistPageAnalysisState(analysisState, pageUrl);
+    assertCurrentPage();
   };
 
   if (force) {
@@ -191,10 +231,7 @@ async function handleDetectTC(
     );
   }
 
-  const detections = [
-    ...detectCheckboxes(document.body),
-    ...detectModals(document.body),
-  ];
+  const detections = [...detectCheckboxes(document.body), ...detectModals(document.body)];
 
   const fullPage = detectFullPageTC(document.body);
   if (fullPage) detections.push(fullPage);
@@ -223,7 +260,8 @@ async function handleDetectTC(
   }
 
   const best = scored[0]!;
-  await renderConsentWarningBadge(best, null, window.location.hostname, themePreference);
+  await renderConsentWarningBadge(best, null, pageDomain, themePreference, signal);
+  assertCurrentPage();
   if (force) {
     await persistStage(
       {
@@ -246,10 +284,27 @@ async function handleDetectTC(
       'Extracting the legal text from the detected surface.'
     );
   }
-  const resolvedText = await resolveDetectionTextSource(best);
-  throwIfAborted(signal);
+  let resolvedText;
+  try {
+    resolvedText = await waitWithAbort(resolveDetectionTextSource(best), signal);
+  } catch (error) {
+    assertCurrentPage();
+    await persistStage(
+      {
+        status: 'extraction_failed',
+        summary: null,
+        error: 'Could not read the linked agreement. Open it or retry before relying on a summary.',
+      },
+      100,
+      'Extraction failed',
+      'The linked agreement could not be extracted.',
+      'error'
+    );
+    return { ok: false, error: error instanceof Error ? error.message : 'Extraction failed' };
+  }
+  assertCurrentPage();
 
-  const normalized = normalizeText(resolvedText.text);
+  const normalized = normalizeExtractedText(resolvedText.text);
   if (force) {
     await persistStage(
       {
@@ -281,11 +336,14 @@ async function handleDetectTC(
       'Detected a likely terms surface, but the extracted text was too short to analyze.',
       'warning'
     );
-    return { ok: true, data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })) };
+    return {
+      ok: true,
+      data: scored.map((d) => ({ type: d.type, confidence: d.weightedConfidence })),
+    };
   }
 
   const textHash = await computeTextHash(normalized.text);
-  throwIfAborted(signal);
+  assertCurrentPage();
   if (force) {
     await persistStage(
       {
@@ -345,7 +403,7 @@ async function handleDetectTC(
       'Running the local fixture summarizer for this page.'
     );
     const summaryResult = await summarizeLocally(normalized.text, providerName, signal);
-    throwIfAborted(signal);
+    assertCurrentPage();
     if (!summaryResult.ok) {
       lastRenderedTextHash = null;
       await persistStage(
@@ -383,7 +441,8 @@ async function handleDetectTC(
     );
     removeOverlay();
     createOverlay(best, summaryResult.data, themePreference);
-    await renderConsentWarningBadge(best, summaryResult.data, window.location.hostname, themePreference);
+    await renderConsentWarningBadge(best, summaryResult.data, pageDomain, themePreference, signal);
+    assertCurrentPage();
     lastRenderedTextHash = textHash;
 
     return {
@@ -407,19 +466,22 @@ async function handleDetectTC(
     'Handing off the prepared text to the background worker for summarization.'
   );
 
-  const summaryResponse = await sendToBackground({
-    type: 'PROCESS_PAGE_ANALYSIS',
-    payload: {
-      text: normalized.text,
-      provider: providerName,
-      url: window.location.href,
-      domain: window.location.hostname,
-      sourceType: resolvedText.sourceType,
-      detectionType: best.type,
-      confidence: best.weightedConfidence,
-    },
-  });
-  throwIfAborted(signal);
+  const summaryResponse = await waitWithAbort(
+    sendToBackground({
+      type: 'PROCESS_PAGE_ANALYSIS',
+      payload: {
+        text: normalized.text,
+        provider: providerName,
+        url: pageUrl,
+        domain: pageDomain,
+        sourceType: resolvedText.sourceType,
+        detectionType: best.type,
+        confidence: best.weightedConfidence,
+      },
+    }),
+    signal
+  );
+  assertCurrentPage();
 
   const result = summaryResponse as {
     ok: boolean;
@@ -439,7 +501,8 @@ async function handleDetectTC(
 
   removeOverlay();
   createOverlay(best, result.data, themePreference);
-  await renderConsentWarningBadge(best, result.data, window.location.hostname, themePreference);
+  await renderConsentWarningBadge(best, result.data, pageDomain, themePreference, signal);
+  assertCurrentPage();
   lastRenderedTextHash = textHash;
 
   return {
@@ -449,15 +512,22 @@ async function handleDetectTC(
 }
 
 async function persistPageAnalysisState(
-  record: Omit<PageAnalysisRecord, 'tabId' | 'url' | 'domain' | 'updatedAt'>
+  record: Omit<PageAnalysisRecord, 'tabId' | 'url' | 'domain' | 'updatedAt'>,
+  pageUrl: string
 ): Promise<void> {
-  await setPageAnalysisByUrl(window.location.href, {
-    tabId: -1,
-    ...record,
-    url: window.location.href,
-    domain: window.location.hostname,
-    updatedAt: Date.now(),
+  const saved = await sendToBackground({
+    type: 'SAVE_PAGE_ANALYSIS',
+    payload: {
+      tabId: -1,
+      ...record,
+      url: pageUrl,
+      domain: new URL(pageUrl).hostname,
+      updatedAt: Date.now(),
+    },
   });
+  if (!saved || typeof saved !== 'object' || !('ok' in saved) || saved.ok !== true) {
+    throw new Error('Could not save page analysis');
+  }
 }
 
 function hasConfiguredProvider(settings: Settings | null): boolean {
@@ -465,10 +535,7 @@ function hasConfiguredProvider(settings: Settings | null): boolean {
     return false;
   }
 
-  return isProviderConfigured(
-    settings.activeProvider,
-    settings.providers[settings.activeProvider]
-  );
+  return isProviderConfigured(settings.activeProvider, settings.providers[settings.activeProvider]);
 }
 
 function resolveSettings(
@@ -524,17 +591,29 @@ async function summarizeLocally(
 }
 
 async function cancelCurrentAnalysis(): Promise<MessageResponse> {
-  rerunRequested = false;
+  const pageUrl = window.location.href;
+  const controller = currentAnalysisController;
+  pendingDetection = null;
   currentAnalysisController?.abort();
   removeOverlay();
   removeConsentWarningBadge();
   lastRenderedTextHash = null;
-  await persistCancelledPageAnalysisState();
+  await sendToBackground({
+    type: 'CANCEL_PAGE_ANALYSIS',
+    payload: { tabId: -1, expectedUrl: pageUrl },
+  });
+  if (
+    window.location.href === pageUrl &&
+    (!currentAnalysisController || currentAnalysisController === controller)
+  ) {
+    await persistCancelledPageAnalysisState(pageUrl);
+  }
   return { ok: true, data: null };
 }
 
-async function persistCancelledPageAnalysisState(): Promise<void> {
-  const existing = await getPageAnalysisByUrl(window.location.href);
+async function persistCancelledPageAnalysisState(pageUrl: string): Promise<void> {
+  const existing = await getPageAnalysisByUrl(pageUrl);
+  if (window.location.href !== pageUrl) return;
   const progressPercent =
     typeof existing?.progressPercent === 'number' ? existing.progressPercent : 0;
   const progressLogs = appendProgressLog(
@@ -544,20 +623,26 @@ async function persistCancelledPageAnalysisState(): Promise<void> {
     'warning'
   );
 
-  await setPageAnalysisByUrl(window.location.href, {
-    tabId: existing?.tabId ?? -1,
-    url: window.location.href,
-    domain: window.location.hostname,
-    status: 'cancelled',
-    sourceType: existing?.sourceType ?? null,
-    detectionType: existing?.detectionType ?? null,
-    confidence: existing?.confidence ?? null,
-    textHash: existing?.textHash ?? null,
-    summary: null,
-    error: null,
-    progressPercent,
-    progressLabel: 'Cancelled',
-    progressLogs,
-    updatedAt: Date.now(),
+  const saved = await sendToBackground({
+    type: 'SAVE_PAGE_ANALYSIS',
+    payload: {
+      tabId: existing?.tabId ?? -1,
+      url: pageUrl,
+      domain: new URL(pageUrl).hostname,
+      status: 'cancelled',
+      sourceType: existing?.sourceType ?? null,
+      detectionType: existing?.detectionType ?? null,
+      confidence: existing?.confidence ?? null,
+      textHash: existing?.textHash ?? null,
+      summary: null,
+      error: null,
+      progressPercent,
+      progressLabel: 'Cancelled',
+      progressLogs,
+      updatedAt: Date.now(),
+    },
   });
+  if (!saved || typeof saved !== 'object' || !('ok' in saved) || saved.ok !== true) {
+    throw new Error('Could not save cancelled page analysis');
+  }
 }

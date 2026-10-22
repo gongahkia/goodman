@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
 import {
   DEFAULT_SETTINGS,
@@ -16,11 +16,9 @@ import {
 } from '@shared/storage';
 import { DEFAULT_DOMAIN_PREFERENCES } from '@shared/domain-preferences';
 import { DEFAULT_CLAUSE_TAXONOMY_WEIGHTS } from '@shared/clause-taxonomy';
-import { mockStorage } from '../mocks/chrome';
+import { mockStorage, chrome } from '../mocks/chrome';
 
-function makePageAnalysisRecord(
-  overrides: Partial<PageAnalysisRecord> = {}
-): PageAnalysisRecord {
+function makePageAnalysisRecord(overrides: Partial<PageAnalysisRecord> = {}): PageAnalysisRecord {
   return {
     tabId: 12,
     url: 'https://example.com/signup',
@@ -38,6 +36,13 @@ function makePageAnalysisRecord(
 }
 
 describe('shared storage', () => {
+  it('does not generate storage change events when pruning has nothing to change', async () => {
+    const record = makePageAnalysisRecord({ updatedAt: Date.now() });
+    await setPageAnalysisRecord(record);
+    vi.mocked(chrome.storage.local.set).mockClear();
+    expect((await prunePageAnalysisState()).ok).toBe(true);
+    expect(chrome.storage.local.set).not.toHaveBeenCalled();
+  });
   it('returns empty page analysis by default', async () => {
     const result = await getStorage('pageAnalysis');
 
@@ -190,7 +195,7 @@ describe('shared storage', () => {
 
     await runMigrations();
 
-    expect(mockStorage.storageVersion).toBe(3);
+    expect(mockStorage.storageVersion).toBe(4);
     expect(mockStorage.settings).toMatchObject({
       activeProvider: DEFAULT_SETTINGS.activeProvider,
       providers: {
@@ -201,7 +206,9 @@ describe('shared storage', () => {
       },
       clauseTaxonomyWeights: DEFAULT_CLAUSE_TAXONOMY_WEIGHTS,
     });
-    expect((mockStorage.settings as { providers: Record<string, unknown> }).providers.hosted).toBeUndefined();
+    expect(
+      (mockStorage.settings as { providers: Record<string, unknown> }).providers.hosted
+    ).toBeUndefined();
   });
 
   it('persists domain notification preferences', async () => {

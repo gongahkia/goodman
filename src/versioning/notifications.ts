@@ -5,17 +5,11 @@ import {
   setStorage,
   withStorageLock,
 } from '@shared/storage';
-import {
-  matchesWatchedClause,
-  type DomainPreferences,
-} from '@shared/domain-preferences';
+import { matchesWatchedClause, type DomainPreferences } from '@shared/domain-preferences';
 import type { PendingNotification } from '@shared/storage';
 import type { SummaryDiff } from './summary-diff';
 
-export async function notifyChange(
-  domain: string,
-  diff: SummaryDiff
-): Promise<boolean> {
+export async function notifyChange(domain: string, diff: SummaryDiff): Promise<boolean> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return false;
 
@@ -67,17 +61,14 @@ function shouldNotifyForDomainPreferences(
   }
 }
 
-function matchesWatchedClauses(
-  diff: SummaryDiff,
-  preferences: DomainPreferences
-): boolean {
+function matchesWatchedClauses(diff: SummaryDiff, preferences: DomainPreferences): boolean {
   if (preferences.watchClauses.length === 0) return true;
   const flags = [
     ...diff.addedRedFlags,
     ...diff.removedRedFlags,
-    ...diff.changedRedFlags.flatMap(change => [change.old, change.new]),
+    ...diff.changedRedFlags.flatMap((change) => [change.old, change.new]),
   ];
-  return flags.some(flag =>
+  return flags.some((flag) =>
     matchesWatchedClause(
       flag.category,
       preferences.watchClauses,
@@ -95,7 +86,7 @@ function hasRedFlagChange(diff: SummaryDiff): boolean {
 }
 
 function isIgnoredByPatterns(diff: SummaryDiff, patterns: string[]): boolean {
-  const regexes = patterns.flatMap(pattern => {
+  const regexes = patterns.flatMap((pattern) => {
     try {
       return [new RegExp(pattern, 'i')];
     } catch {
@@ -105,14 +96,14 @@ function isIgnoredByPatterns(diff: SummaryDiff, patterns: string[]): boolean {
   if (regexes.length === 0) return false;
 
   const diffText = collectDiffText(diff);
-  return diffText.length > 0 && diffText.every(text => regexes.some(regex => regex.test(text)));
+  return diffText.length > 0 && diffText.every((text) => regexes.some((regex) => regex.test(text)));
 }
 
 function collectDiffText(diff: SummaryDiff): string[] {
   return [
-    ...diff.addedRedFlags.flatMap(flag => [flag.category, flag.description, flag.quote]),
-    ...diff.removedRedFlags.flatMap(flag => [flag.category, flag.description, flag.quote]),
-    ...diff.changedRedFlags.flatMap(change => [
+    ...diff.addedRedFlags.flatMap((flag) => [flag.category, flag.description, flag.quote]),
+    ...diff.removedRedFlags.flatMap((flag) => [flag.category, flag.description, flag.quote]),
+    ...diff.changedRedFlags.flatMap((change) => [
       change.old.category,
       change.old.description,
       change.old.quote,
@@ -136,11 +127,12 @@ export function clearNotification(domain: string): Promise<void> {
   return withStorageLock('pendingNotifications', async () => {
     const result = await getStorage('pendingNotifications');
     if (!result.ok) return;
+    if (!result.data.some((notification) => notification.domain === domain && !notification.viewed))
+      return;
 
-    const updated = result.data.map((n) =>
-      n.domain === domain ? { ...n, viewed: true } : n
-    );
-    await setStorage('pendingNotifications', updated);
+    const updated = result.data.map((n) => (n.domain === domain ? { ...n, viewed: true } : n));
+    const saved = await setStorage('pendingNotifications', updated);
+    if (!saved.ok) throw saved.error;
 
     const remaining = updated.filter((n) => !n.viewed);
     if (remaining.length === 0) {
@@ -158,8 +150,7 @@ function upsertPendingNotification(
   incoming: PendingNotification
 ): PendingNotification[] {
   const existing = notifications.find(
-    (notification) =>
-      notification.domain === incoming.domain && notification.viewed === false
+    (notification) => notification.domain === incoming.domain && notification.viewed === false
   );
   const nextNotification = existing
     ? {
@@ -168,9 +159,7 @@ function upsertPendingNotification(
       }
     : incoming;
 
-  const filtered = notifications.filter(
-    (notification) => notification.domain !== incoming.domain
-  );
+  const filtered = notifications.filter((notification) => notification.domain !== incoming.domain);
 
   return deduplicatePendingNotifications([...filtered, nextNotification]);
 }

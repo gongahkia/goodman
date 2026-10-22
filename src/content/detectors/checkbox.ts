@@ -101,7 +101,9 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
 
   const contextText = contextSegments.join(' ').toLowerCase();
   const darkPatterns = detectConsentDarkPatterns(getCheckboxEvaluationRoot(checkbox, label));
-  const hasPrecheckedDataOptIn = darkPatterns.some((finding) => finding.id === 'prechecked_data_opt_in');
+  const hasPrecheckedDataOptIn = darkPatterns.some(
+    (finding) => finding.id === 'prechecked_data_opt_in'
+  );
   if (!hasStrongAgreementLanguage(contextText) && !hasPrecheckedDataOptIn) return null;
   if (!hasLegalContext(contextText, nearestLink) && !hasPrecheckedDataOptIn) return null;
   if (looksLikeMarketingOptIn(contextText, nearestLink) && !hasPrecheckedDataOptIn) return null;
@@ -123,10 +125,9 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
   if (!hasPrecheckedDataOptIn) score -= Math.min(marketingMatches * 0.2, 0.4);
   if (hasPrecheckedDataOptIn) score += 0.65;
 
-  const uniqueKeywords = [...new Set([
-    ...foundKeywords,
-    ...darkPatterns.map((finding) => finding.id),
-  ])];
+  const uniqueKeywords = [
+    ...new Set([...foundKeywords, ...darkPatterns.map((finding) => finding.id)]),
+  ];
   const confidence = Math.max(0, Math.min(score, 1.0));
 
   if (uniqueKeywords.length === 0 || confidence < 0.45) return null;
@@ -144,7 +145,9 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
 
 function findAssociatedLabel(checkbox: HTMLInputElement): HTMLLabelElement | null {
   if (checkbox.id) {
-    const label = document.querySelector(`label[for="${checkbox.id}"]`);
+    const label = Array.from(document.querySelectorAll('label')).find(
+      (item) => item.htmlFor === checkbox.id
+    );
     if (label) return label as HTMLLabelElement;
   }
   const parent = checkbox.closest('label');
@@ -182,10 +185,7 @@ function findNearestLink(el: Element): string | null {
   return anchor?.getAttribute('href') ?? null;
 }
 
-function findLinksWithinDistance(
-  checkbox: HTMLElement,
-  maxDistance: number
-): HTMLAnchorElement[] {
+function findLinksWithinDistance(checkbox: HTMLElement, maxDistance: number): HTMLAnchorElement[] {
   const rect = checkbox.getBoundingClientRect();
   const links = document.querySelectorAll('a[href]');
   const nearby: HTMLAnchorElement[] = [];
@@ -208,10 +208,7 @@ function hasStrongAgreementLanguage(text: string): boolean {
 }
 
 function hasLegalContext(text: string, nearestLink: string | null): boolean {
-  return (
-    LEGAL_KEYWORDS.some((keyword) => text.includes(keyword)) ||
-    isLegalHref(nearestLink)
-  );
+  return LEGAL_KEYWORDS.some((keyword) => text.includes(keyword)) || isLegalHref(nearestLink);
 }
 
 function looksLikeMarketingOptIn(text: string, nearestLink: string | null): boolean {
@@ -226,10 +223,7 @@ function looksLikeMarketingOptIn(text: string, nearestLink: string | null): bool
 }
 
 function countMatches(text: string, keywords: string[]): number {
-  return keywords.reduce(
-    (count, keyword) => count + (text.includes(keyword) ? 1 : 0),
-    0
-  );
+  return keywords.reduce((count, keyword) => count + (text.includes(keyword) ? 1 : 0), 0);
 }
 
 function isLegalLink(link: HTMLAnchorElement): boolean {

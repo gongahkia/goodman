@@ -1,7 +1,14 @@
-import { getStorage, setStorage } from '@shared/storage';
+import { getStorage, setStorage, withStorageLock } from '@shared/storage';
 import type { VersionEntry } from '@shared/storage';
 import type { Summary } from '@providers/types';
-import { MAX_VERSIONS_PER_DOMAIN, MAX_TRACKED_DOMAINS } from '@shared/constants';
+import { MAX_INPUT_TEXT_LENGTH } from '@shared/constants';
+import { copyStoredSummary } from '@shared/summary-validation';
+import {
+  enforceTextBudget,
+  isHistoryDomain,
+  normalizeTextRetention,
+  normalizeVersionHistory,
+} from './history-data';
 import { computeTextHash } from '@summarizer/cache';
 
 export type { VersionEntry };
@@ -22,84 +29,106 @@ export async function addVersion(
   text: string,
   summary: Summary
 ): Promise<VersionEntry | null> {
+  if (!isHistoryDomain(domain) || text.length > MAX_INPUT_TEXT_LENGTH)
+    throw new Error('Invalid or oversized history input');
   const textHash = await computeTextHash(text);
-
-  const historyResult = await getStorage('versionHistory');
-  if (!historyResult.ok) return null;
-
-  const history = { ...historyResult.data };
-  const domainHistory = [...(history[domain] ?? [])];
-
-  const latest = domainHistory[domainHistory.length - 1];
-  if (latest && latest.textHash === textHash) {
-    return null;
-  }
-
-  const version = (latest?.version ?? 0) + 1;
-  const entry: VersionEntry = {
-    domain,
-    textHash,
-    summary: {
-      summary: summary.summary,
-      keyPoints: summary.keyPoints,
-      redFlags: summary.redFlags.map((f) => ({
-        category: f.category,
-        description: f.description,
-        severity: f.severity,
-        quote: f.quote,
-      })),
-      severity: summary.severity,
-    },
-    timestamp: Date.now(),
-    version,
-  };
-
-  domainHistory.push(entry);
-
-  if (domainHistory.length > MAX_VERSIONS_PER_DOMAIN) {
-    domainHistory.shift();
-  }
-
-  history[domain] = domainHistory;
-  pruneDomains(history);
-  await setStorage('versionHistory', history);
-
-  return entry;
+  return withStorageLock('versionHistory', async () => {
+    const { history, retention } = await readHistory();
+    const domainHistory = history[domain] ?? [];
+    const latest = domainHistory.at(-1);
+    if (latest?.textHash === textHash) {
+      if (retention[domain] === true && latest.sourceText === undefined) {
+        latest.sourceText = text;
+        enforceTextBudget(history);
+        const written = await setStorage('versionHistory', history);
+        if (!written.ok) throw written.error;
+      }
+      return null;
+    }
+    const version = (latest?.version ?? 0) + 1;
+    if (!Number.isSafeInteger(version)) throw new Error('History version counter is invalid');
+    const entry: VersionEntry = {
+      domain,
+      textHash,
+      version,
+      summary: copyStoredSummary(summary),
+      timestamp: Date.now(),
+      ...(retention[domain] === true ? { sourceText: text } : {}),
+    };
+    domainHistory.push(entry);
+    history[domain] = domainHistory;
+    const boundedHistory = normalizeVersionHistory(history, retention);
+    const written = await setStorage('versionHistory', boundedHistory);
+    if (!written.ok) throw written.error;
+    return boundedHistory[domain]?.at(-1) ?? null;
+  });
 }
 
-export async function getVersionHistory(
-  domain: string
-): Promise<VersionEntry[]> {
-  const historyResult = await getStorage('versionHistory');
-  if (!historyResult.ok) return [];
+export async function getTextRetention(domain: string): Promise<boolean> {
+  const result = await getStorage('textRetention');
+  if (!result.ok) throw result.error;
+  return normalizeTextRetention(result.data)[domain] === true;
+}
 
-  const entries = historyResult.data[domain] ?? [];
-  return entries.sort((a, b) => a.timestamp - b.timestamp);
+export async function setTextRetention(domain: string, enabled: boolean): Promise<void> {
+  if (!isHistoryDomain(domain) || typeof enabled !== 'boolean')
+    throw new Error('Invalid text retention preference');
+  return withStorageLock('versionHistory', async () => {
+    const { history, retention } = await readHistory();
+    if (enabled) retention[domain] = true;
+    else delete retention[domain];
+    const nextRetention = normalizeTextRetention(retention);
+    // One local write under the same lock as version creation; opting out purges text.
+    await chrome.storage.local.set({
+      textRetention: nextRetention,
+      versionHistory: normalizeVersionHistory(history, nextRetention),
+    });
+  });
+}
+
+async function readHistory(): Promise<{
+  history: Record<string, VersionEntry[]>;
+  retention: Record<string, boolean>;
+}> {
+  const [historyResult, retentionResult] = await Promise.all([
+    getStorage('versionHistory'),
+    getStorage('textRetention'),
+  ]);
+  if (!historyResult.ok) throw historyResult.error;
+  if (!retentionResult.ok) throw retentionResult.error;
+  const retention = normalizeTextRetention(retentionResult.data);
+  const history = normalizeVersionHistory(historyResult.data, retention);
+  // Do not present corrupted retained bytes as the text identified by a saved hash.
+  await Promise.all(
+    Object.values(history)
+      .flat()
+      .map(async (entry) => {
+        if (
+          entry.sourceText !== undefined &&
+          (await computeTextHash(entry.sourceText)) !== entry.textHash
+        )
+          delete entry.sourceText;
+      })
+  );
+  return { history, retention };
+}
+
+export async function getVersionHistory(domain: string): Promise<VersionEntry[]> {
+  return (await readHistory()).history[domain] ?? [];
 }
 
 export async function getAllTrackedDomains(): Promise<string[]> {
-  const historyResult = await getStorage('versionHistory');
-  if (!historyResult.ok) return [];
-
-  return Object.keys(historyResult.data);
+  return Object.keys((await readHistory()).history);
 }
 
 export async function getVersionHistorySnapshot(): Promise<Record<string, VersionEntry[]>> {
-  const historyResult = await getStorage('versionHistory');
-  if (!historyResult.ok) return {};
-
-  const entries: Array<[string, VersionEntry[]]> = Object.entries(historyResult.data)
-    .map(([domain, history]) => [
-      domain,
-      [...history].sort((a, b) => a.timestamp - b.timestamp),
-    ]);
-
-  entries.sort(([domainA, historyA], [domainB, historyB]) => {
-    const latestA = historyA[historyA.length - 1]?.timestamp ?? 0;
-    const latestB = historyB[historyB.length - 1]?.timestamp ?? 0;
-    return latestB - latestA || domainA.localeCompare(domainB);
-  });
-
+  const { history } = await readHistory();
+  const entries = Object.entries(history);
+  entries.sort(
+    ([domainA, historyA], [domainB, historyB]) =>
+      (historyB.at(-1)?.timestamp ?? 0) - (historyA.at(-1)?.timestamp ?? 0) ||
+      domainA.localeCompare(domainB)
+  );
   return Object.fromEntries(entries);
 }
 
@@ -116,28 +145,13 @@ export async function getDomainHistorySummaries(): Promise<DomainHistorySummary[
         latest,
         previous,
         lastDiffAt: previous ? latest.timestamp : null,
-        severityTrend: getSeverityTrend(previous?.summary.severity ?? null, latest.summary.severity),
+        severityTrend: getSeverityTrend(
+          previous?.summary.severity ?? null,
+          latest.summary.severity
+        ),
       } satisfies DomainHistorySummary;
     })
     .filter((summary): summary is DomainHistorySummary => summary !== null);
-}
-
-function pruneDomains(history: Record<string, VersionEntry[]>): void {
-  const domains = Object.keys(history);
-  if (domains.length <= MAX_TRACKED_DOMAINS) return;
-
-  const sorted = domains
-    .map((d) => {
-      const entries = history[d] ?? [];
-      const latest = entries[entries.length - 1];
-      return { domain: d, latestTs: latest?.timestamp ?? 0 };
-    })
-    .sort((a, b) => b.latestTs - a.latestTs);
-
-  for (let i = MAX_TRACKED_DOMAINS; i < sorted.length; i++) {
-    const item = sorted[i];
-    if (item) delete history[item.domain];
-  }
 }
 
 function getSeverityTrend(
@@ -154,9 +168,13 @@ function getSeverityTrend(
 
 function severityRank(severity: VersionEntry['summary']['severity']): number {
   switch (severity) {
-    case 'low': return 1;
-    case 'medium': return 2;
-    case 'high': return 3;
-    case 'critical': return 4;
+    case 'low':
+      return 1;
+    case 'medium':
+      return 2;
+    case 'high':
+      return 3;
+    case 'critical':
+      return 4;
   }
 }

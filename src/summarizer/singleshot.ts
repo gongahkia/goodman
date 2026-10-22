@@ -7,6 +7,7 @@ import { buildSystemPrompt, buildUserPrompt } from '@providers/prompts';
 import { DEFAULT_MAX_TOKENS, DEFAULT_TEMPERATURE } from '@shared/constants';
 import type { SummarizeOptions } from '@providers/types';
 import { getDomainPreferences } from '@shared/storage';
+import type { AnalysisContext } from './context';
 
 export async function singleShotSummarize(
   text: string,
@@ -39,13 +40,14 @@ export async function singleShotSummarizeWithProvider(
   text: string,
   providerName: string,
   metadata?: SummarizeOptions['metadata'],
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  context?: AnalysisContext
 ): Promise<Result<Summary, TCGuardError>> {
-  const providerResult = await getProviderByName(providerName);
+  const providerResult = context ? ok(context.provider) : await getProviderByName(providerName);
   if (!providerResult.ok) return providerResult;
 
   const provider = providerResult.data;
-  const language = await getSummaryLanguage(metadata);
+  const language = context ? context.language : await getSummaryLanguage(metadata);
   const userPrompt = buildUserPrompt(text, language);
 
   const result = await provider.summarize(userPrompt, {

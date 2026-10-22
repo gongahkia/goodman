@@ -3,8 +3,8 @@ import type { AnalysisSourceType } from '@shared/page-analysis';
 import { extractInlineText } from './inline';
 import { extractLinkedText } from './linked';
 import { extractPdfText, isPdfUrl } from './pdf';
-
-const MIN_INLINE_TEXT_LENGTH = 500;
+import { ExtractionError } from '@shared/errors';
+import { fetchLegalDocument, isPdfDocument } from './fetch';
 
 export interface ResolvedTextSource {
   text: string;
@@ -16,23 +16,30 @@ export async function resolveDetectionTextSource(
 ): Promise<ResolvedTextSource> {
   const inlineText = extractInlineText(detection);
 
-  if (!detection.nearestLink || inlineText.length >= MIN_INLINE_TEXT_LENGTH) {
+  if (!detection.nearestLink) {
     return { text: inlineText, sourceType: 'inline' };
   }
 
-  if (isPdfUrl(detection.nearestLink)) {
-    const pdfResult = await extractPdfText(detection.nearestLink);
-    if (pdfResult.ok && pdfResult.data.length > inlineText.length) {
+  const resource = await fetchLegalDocument(detection.nearestLink);
+  if (isPdfDocument(resource)) {
+    const pdfResult = await extractPdfText(detection.nearestLink, resource.bytes);
+    if (pdfResult.ok && pdfResult.data.trim()) {
       return { text: pdfResult.data, sourceType: 'pdf' };
     }
 
-    return { text: inlineText, sourceType: 'inline' };
+    throw new ExtractionError(
+      pdfResult.ok ? 'Linked PDF has no legal text' : pdfResult.error.message
+    );
   }
+  if (isPdfUrl(detection.nearestLink))
+    throw new ExtractionError('The linked PDF returned a different document type');
 
-  const linkedResult = await extractLinkedText(detection.nearestLink);
-  if (linkedResult.ok && linkedResult.data.text.length > inlineText.length) {
+  const linkedResult = await extractLinkedText(detection.nearestLink, resource);
+  if (linkedResult.ok && linkedResult.data.text.trim()) {
     return { text: linkedResult.data.text, sourceType: 'linked' };
   }
 
-  return { text: inlineText, sourceType: 'inline' };
+  throw new ExtractionError(
+    linkedResult.ok ? 'Linked agreement has no legal text' : linkedResult.error.message
+  );
 }

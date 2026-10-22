@@ -4,7 +4,19 @@ import { MIN_MODAL_TEXT_LENGTH } from '@shared/constants';
 
 const CONSENT_CLASS_PATTERN = /cookie|consent|gdpr|privacy|banner|notice/i;
 const TC_KEYWORDS = ['terms', 'conditions', 'privacy', 'policy', 'agree', 'consent', 'cookie'];
-const ACTION_KEYWORDS = ['accept', 'agree', 'reject', 'manage', 'close', 'decline', 'allow', 'deny', 'got it', 'i understand'];
+const ACTION_KEYWORDS = [
+  'accept',
+  'agree',
+  'reject',
+  'manage',
+  'close',
+  'decline',
+  'allow',
+  'deny',
+  'got it',
+  'i understand',
+];
+const ACTION_PATTERN = new RegExp(`\\b(?:${ACTION_KEYWORDS.join('|')})\\b`, 'i');
 
 export function detectModals(root: Element): DetectedElement[] {
   const results: DetectedElement[] = [];
@@ -74,6 +86,12 @@ function findByPosition(root: Element): DetectedElement[] {
 }
 
 function analyzeCandidate(el: HTMLElement): DetectedElement | null {
+  if (el.closest('[hidden],[aria-hidden="true"],[inert],nav,[role="navigation"]')) return null;
+  const visibility = getComputedStyle(el).visibility;
+  if (visibility === 'hidden' || visibility === 'collapse') return null;
+  for (let ancestor: Element | null = el; ancestor; ancestor = ancestor.parentElement) {
+    if (getComputedStyle(ancestor).display === 'none') return null;
+  }
   const text = (el.textContent ?? '').toLowerCase();
   if (text.trim().length < MIN_MODAL_TEXT_LENGTH) return null;
   const foundKeywords: string[] = [];
@@ -121,8 +139,9 @@ function analyzeCandidate(el: HTMLElement): DetectedElement | null {
 function hasAction(el: HTMLElement): boolean {
   const buttons = el.querySelectorAll('button, [role="button"], input[type="submit"], a');
   for (const btn of buttons) {
-    const btnText = (btn.textContent ?? '').toLowerCase();
-    if (ACTION_KEYWORDS.some((kw) => btnText.includes(kw))) {
+    if (btn.closest('nav,[role="navigation"]')) continue;
+    const btnText = (btn.textContent ?? '').replace(/\s+/g, ' ').trim();
+    if (ACTION_PATTERN.test(btnText)) {
       return true;
     }
   }

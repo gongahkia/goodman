@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { extractLinkedText } from '@content/extractors/linked';
 import { chrome } from '../mocks/chrome';
+import { legalDocumentResponse } from '../mocks/legal-document';
 
 describe('extractLinkedText', () => {
   beforeEach(() => {
@@ -12,11 +13,8 @@ describe('extractLinkedText', () => {
   });
 
   it('removes script, style, and hidden noise from linked legal pages', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue(
-        new Response(
-          `
+    chrome.runtime.sendMessage.mockResolvedValue(
+      legalDocumentResponse(`
             <html>
               <body>
                 <main>
@@ -29,27 +27,27 @@ describe('extractLinkedText', () => {
                 </main>
               </body>
             </html>
-          `,
-          {
-            status: 200,
-            headers: { 'Content-Type': 'text/html' },
-          }
-        )
-      )
+          `)
     );
 
     const result = await extractLinkedText('https://example.com/terms');
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data.text).toContain(
-      'These Terms of Service require binding arbitration.'
-    );
-    expect(result.data.text).toContain(
-      'Your subscription renews automatically unless cancelled.'
-    );
+    expect(result.data.text).toContain('These Terms of Service require binding arbitration.');
+    expect(result.data.text).toContain('Your subscription renews automatically unless cancelled.');
     expect(result.data.text).not.toContain('window.__TRACKING__');
     expect(result.data.text).not.toContain('Enable JavaScript to continue.');
     expect(result.data.text).not.toContain('Hidden upsell copy');
+  });
+
+  it('returns the upstream error without an unbounded direct retry', async () => {
+    const direct = vi.fn();
+    vi.stubGlobal('fetch', direct);
+    const result = await extractLinkedText('https://example.test/missing');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toContain('HTTP 404');
+    expect(direct).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 });

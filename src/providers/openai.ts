@@ -11,6 +11,7 @@ import {
 import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
+import { fetchBounded } from '@shared/network';
 
 const API_URL = 'https://api.openai.com/v1/chat/completions';
 const MODELS_URL = 'https://api.openai.com/v1/models';
@@ -26,10 +27,7 @@ export class OpenAIProvider implements LLMProvider {
     private baseUrl: string = API_URL
   ) {}
 
-  async summarize(
-    text: string,
-    options: SummarizeOptions
-  ): Promise<Result<Summary, TCGuardError>> {
+  async summarize(text: string, options: SummarizeOptions): Promise<Result<Summary, TCGuardError>> {
     const body = {
       model: options.model || this.defaultModel || 'gpt-4o',
       messages: [
@@ -46,7 +44,7 @@ export class OpenAIProvider implements LLMProvider {
 
   async validateApiKey(key: string): Promise<boolean> {
     try {
-      const response = await fetch(MODELS_URL, {
+      const response = await fetchBounded(MODELS_URL, {
         headers: { Authorization: `Bearer ${key}` },
       });
       return response.ok;
@@ -62,7 +60,7 @@ export class OpenAIProvider implements LLMProvider {
     signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
-      const response = await fetch(this.baseUrl, {
+      const response = await fetchBounded(this.baseUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

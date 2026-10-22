@@ -5,7 +5,7 @@ import { ProviderError } from '@shared/errors';
 import type { TCGuardError } from '@shared/errors';
 import { isProviderConfigured } from '@shared/provider-config';
 import type { LLMProvider } from './types';
-import type { Settings } from '@shared/messages';
+import type { Settings, ProviderConfig } from '@shared/messages';
 import { OpenAIProvider } from './openai';
 import { ClaudeProvider } from './claude';
 import { GeminiProvider } from './gemini';
@@ -58,14 +58,17 @@ export function getAllProviders(): LLMProvider[] {
 }
 
 export async function getProviderByName(
-  name: string
+  name: string,
+  configSnapshot?: ProviderConfig
 ): Promise<Result<LLMProvider, TCGuardError>> {
-  const settingsResult = await getStorage('settings');
-  if (!settingsResult.ok) {
-    return err(new ProviderError('Settings', 'Could not read settings'));
+  let config = configSnapshot;
+  if (!config) {
+    const settingsResult = await getStorage('settings');
+    if (!settingsResult.ok) {
+      return err(new ProviderError('Settings', 'Could not read settings'));
+    }
+    config = settingsResult.data.providers[name];
   }
-
-  const config = settingsResult.data.providers[name];
   if (!config || !isProviderConfigured(name as Settings['activeProvider'], config)) {
     return err(
       new ProviderError(

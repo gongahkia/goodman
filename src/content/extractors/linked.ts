@@ -1,7 +1,8 @@
-import { sendToBackground } from '@shared/messaging';
 import { ok, err } from '@shared/result';
 import type { Result } from '@shared/result';
-import { normalizeText } from './normalizer';
+import { normalizeExtractedText } from './normalizer';
+import { extractElementText } from './dom-text';
+import { decodeLegalDocument, fetchLegalDocument, type LegalDocument } from './fetch';
 
 export interface LinkedTextResult {
   text: string;
@@ -13,51 +14,26 @@ export interface RelatedLink {
   label: string;
 }
 
-const FETCH_TIMEOUT_MS = 5000;
-
 export async function extractLinkedText(
-  url: string
+  url: string,
+  downloaded?: LegalDocument
 ): Promise<Result<LinkedTextResult, Error>> {
   try {
-    const html = await fetchHtml(url);
+    const resource = downloaded ?? (await fetchLegalDocument(url));
+    const mime = resource.contentType.split(';')[0]?.trim().toLowerCase();
+    if (mime && !['text/html', 'application/xhtml+xml', 'text/plain'].includes(mime))
+      throw new Error('Unsupported linked agreement content type');
+    const html = decodeLegalDocument(resource);
+    if (mime === 'text/plain')
+      return ok({ text: normalizeExtractedText(html).text, relatedLinks: [] });
     const text = extractMainContent(html);
-    const normalized = normalizeText(text);
-    const relatedLinks = extractRelatedLinks(html, url);
+    const normalized = normalizeExtractedText(text);
+    const relatedLinks = extractRelatedLinks(html, resource.url);
 
     return ok({ text: normalized.text, relatedLinks });
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
   }
-}
-
-async function fetchHtml(url: string): Promise<string> {
-  const requestUrl = resolveUrl(url);
-  const msg = { type: 'FETCH_URL' as const, payload: { url: requestUrl, responseType: 'text' as const } };
-
-  for (const timeout of [FETCH_TIMEOUT_MS, Math.round(FETCH_TIMEOUT_MS * 1.5)]) {
-    try {
-      const response = await fetchWithTimeout<{ ok: boolean; data?: string; error?: string }>(msg, timeout);
-      if (response.ok && response.data) return response.data;
-    } catch (e) { console.warn('[Goodman] background fetch attempt failed, retrying:', e); }
-  }
-
-  const directResponse = await fetch(requestUrl);
-  if (!directResponse.ok) {
-    throw new Error(`Failed to fetch URL: HTTP ${directResponse.status}`);
-  }
-  return directResponse.text();
-}
-
-async function fetchWithTimeout<T>(
-  message: Parameters<typeof sendToBackground>[0],
-  timeoutMs: number = FETCH_TIMEOUT_MS
-): Promise<T> {
-  return Promise.race([
-    sendToBackground(message) as Promise<T>,
-    new Promise<T>((_, reject) => {
-      setTimeout(() => reject(new Error('Background fetch timed out')), timeoutMs);
-    }),
-  ]);
 }
 
 function extractMainContent(html: string): string {
@@ -67,13 +43,14 @@ function extractMainContent(html: string): string {
   const selectors = ['main', 'article', '[role="main"]', 'body'];
   for (const selector of selectors) {
     const el = doc.querySelector(selector);
-    if (el && (el.textContent?.trim().length ?? 0) > 100) {
+    if (el) {
       removeNonContentElements(el);
-      return el.textContent?.trim() ?? '';
+      const text = extractElementText(el);
+      if (text) return text;
     }
   }
 
-  return doc.body?.textContent?.trim() ?? '';
+  return '';
 }
 
 function removeNonContentElements(el: Element): void {
@@ -113,7 +90,10 @@ function extractRelatedLinks(html: string, baseUrl: string): RelatedLink[] {
     if (href && legalPatterns.test(label + ' ' + href)) {
       try {
         const absoluteUrl = new URL(href, baseUrl).href;
-        if (absoluteUrl !== baseUrl) {
+        if (
+          ['http:', 'https:'].includes(new URL(absoluteUrl).protocol) &&
+          absoluteUrl !== baseUrl
+        ) {
           links.push({ url: absoluteUrl, label });
         }
       } catch (e) {
@@ -123,13 +103,4 @@ function extractRelatedLinks(html: string, baseUrl: string): RelatedLink[] {
   }
 
   return links;
-}
-
-function resolveUrl(url: string): string {
-  try {
-    return new URL(url, window.location.href).href;
-  } catch (e) {
-    console.warn('[Goodman] linked resolveUrl failed, using original:', url, e);
-    return url;
-  }
 }

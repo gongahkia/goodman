@@ -9,16 +9,21 @@ import {
   normalizeDomainPreferences,
   type DomainPreferences,
 } from './domain-preferences';
+import { DEFAULT_CLAUSE_TAXONOMY_WEIGHTS, normalizeClauseTaxonomyWeights } from './clause-taxonomy';
+import { normalizeTextRetention, normalizeVersionHistory } from '@versioning/history-data';
+import { isHistoryDomain } from '@versioning/history-data';
 import {
-  DEFAULT_CLAUSE_TAXONOMY_WEIGHTS,
-  normalizeClauseTaxonomyWeights,
-} from './clause-taxonomy';
+  normalizePageAnalysis,
+  normalizePageAnalysisTabs,
+  normalizePendingNotifications,
+} from './page-state-validation';
 
 export interface CachedSummary {
   summary: StoredSummary;
   domain: string;
   textHash: string;
   timestamp: number;
+  contextHash?: string;
 }
 
 export interface StoredSummary {
@@ -42,6 +47,7 @@ export interface VersionEntry {
   summary: StoredSummary;
   timestamp: number;
   version: number;
+  sourceText?: string;
 }
 
 export interface PendingNotification {
@@ -57,6 +63,7 @@ export interface StorageSchema {
   pageAnalysis: Record<string, PageAnalysisRecord>;
   pageAnalysisTabs: Record<string, string>;
   versionHistory: Record<string, VersionEntry[]>;
+  textRetention: Record<string, boolean>;
   domainNotificationPreferences: Record<string, boolean>;
   domainPreferences: Record<string, DomainPreferences>;
   domainBlacklist: string[];
@@ -96,6 +103,7 @@ const STORAGE_DEFAULTS: StorageSchema = {
   pageAnalysis: {},
   pageAnalysisTabs: {},
   versionHistory: {},
+  textRetention: {},
   domainNotificationPreferences: {},
   domainPreferences: {},
   domainBlacklist: [],
@@ -108,14 +116,28 @@ const STORAGE_DEFAULTS: StorageSchema = {
 type MigrationFn = () => Promise<void>;
 
 const MIGRATIONS: Record<number, MigrationFn> = {
+  // 3 -> 4: text retention is local and opt-in; discard unknown/legacy text fields.
+  3: () =>
+    withStorageLock('versionHistory', async () => {
+      const raw = await chrome.storage.local.get(['versionHistory', 'textRetention']);
+      const textRetention = normalizeTextRetention(raw.textRetention);
+      await chrome.storage.local.set({
+        textRetention,
+        versionHistory: normalizeVersionHistory(raw.versionHistory, textRetention),
+      });
+    }),
   // 1 → 2: strip fullText from versionHistory entries
   1: async () => {
     const result = await chrome.storage.local.get('versionHistory');
-    const history = (result['versionHistory'] ?? {}) as Record<string, Array<Record<string, unknown>>>;
+    const history = (result['versionHistory'] ?? {}) as Record<
+      string,
+      Array<Record<string, unknown>>
+    >;
     let changed = false;
     for (const entries of Object.values(history)) {
+      if (!Array.isArray(entries)) continue;
       for (const entry of entries) {
-        if ('fullText' in entry) {
+        if (entry && typeof entry === 'object' && 'fullText' in entry) {
           delete entry['fullText'];
           changed = true;
         }
@@ -144,7 +166,8 @@ const MIGRATIONS: Record<number, MigrationFn> = {
           ...DEFAULT_SETTINGS.providers,
           ...providers,
         },
-        detectionSensitivity: settings['detectionSensitivity'] ?? DEFAULT_SETTINGS.detectionSensitivity,
+        detectionSensitivity:
+          settings['detectionSensitivity'] ?? DEFAULT_SETTINGS.detectionSensitivity,
         darkMode: settings['darkMode'] ?? DEFAULT_SETTINGS.darkMode,
         notifyOnChange: settings['notifyOnChange'] ?? DEFAULT_SETTINGS.notifyOnChange,
         corpusContribution: parseCorpusContributionSettings(settings['corpusContribution']),
@@ -178,6 +201,12 @@ export async function getStorage<K extends keyof StorageSchema>(
     if (key === 'settings') {
       return ok(normalizeSettings(value as Settings | undefined) as StorageSchema[K]);
     }
+    if (key === 'pageAnalysis') return ok(normalizePageAnalysis(value) as StorageSchema[K]);
+    if (key === 'pageAnalysisTabs') return ok(normalizePageAnalysisTabs(value) as StorageSchema[K]);
+    if (key === 'pendingNotifications')
+      return ok(normalizePendingNotifications(value) as StorageSchema[K]);
+    if (key === 'domainBlacklist')
+      return ok((Array.isArray(value) ? value.filter(isHistoryDomain) : []) as StorageSchema[K]);
     return ok(value ?? STORAGE_DEFAULTS[key]);
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
@@ -241,15 +270,20 @@ const writeLocks = new Map<string, Promise<void>>();
 export async function withStorageLock<T>(key: string, fn: () => Promise<T>): Promise<T> {
   const prev = writeLocks.get(key) ?? Promise.resolve();
   let resolve: () => void;
-  const next = new Promise<void>((r) => { resolve = r; });
+  const next = new Promise<void>((r) => {
+    resolve = r;
+  });
   writeLocks.set(key, next);
   await prev;
-  try { return await fn(); } finally { resolve!(); }
+  try {
+    return await fn();
+  } finally {
+    resolve!();
+    if (writeLocks.get(key) === next) writeLocks.delete(key);
+  }
 }
 
-export async function getPageAnalysis(
-  tabId: number
-): Promise<PageAnalysisRecord | null> {
+export async function getPageAnalysis(tabId: number): Promise<PageAnalysisRecord | null> {
   const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
     getStorage('pageAnalysis'),
     getStorage('pageAnalysisTabs'),
@@ -263,7 +297,8 @@ export async function getPageAnalysis(
 }
 
 export function setPageAnalysisRecord(
-  record: PageAnalysisRecord
+  record: PageAnalysisRecord,
+  isCurrent?: () => boolean
 ): Promise<Result<void, Error>> {
   return withStorageLock('pageAnalysis', async () => {
     const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
@@ -291,6 +326,7 @@ export function setPageAnalysisRecord(
     );
 
     try {
+      if (isCurrent && !isCurrent()) return err(new Error('Page analysis was superseded'));
       await chrome.storage.local.set({
         pageAnalysis,
         pageAnalysisTabs,
@@ -302,9 +338,7 @@ export function setPageAnalysisRecord(
   });
 }
 
-export function removePageAnalysis(
-  tabId: number
-): Promise<Result<void, Error>> {
+export function removePageAnalysis(tabId: number): Promise<Result<void, Error>> {
   return withStorageLock('pageAnalysis', async () => {
     const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
       getStorage('pageAnalysis'),
@@ -339,9 +373,7 @@ export function removePageAnalysis(
   });
 }
 
-export async function getPageAnalysisByUrl(
-  url: string
-): Promise<PageAnalysisRecord | null> {
+export async function getPageAnalysisByUrl(url: string): Promise<PageAnalysisRecord | null> {
   const result = await getStorage('pageAnalysis');
   if (!result.ok) return null;
 
@@ -360,23 +392,18 @@ export async function setPageAnalysisByUrl(
 
 export function prunePageAnalysisState(): Promise<Result<void, Error>> {
   return withStorageLock('pageAnalysis', async () => {
-    const [pageAnalysisResult, pageAnalysisTabsResult] = await Promise.all([
-      getStorage('pageAnalysis'),
-      getStorage('pageAnalysisTabs'),
-    ]);
-    if (!pageAnalysisResult.ok) return pageAnalysisResult;
-    if (!pageAnalysisTabsResult.ok) return pageAnalysisTabsResult;
-
-    const prunedState = prunePageAnalysisMaps(
-      pageAnalysisResult.data,
-      pageAnalysisTabsResult.data
-    );
-
     try {
-      await chrome.storage.local.set({
-        pageAnalysis: prunedState.pageAnalysis,
-        pageAnalysisTabs: prunedState.pageAnalysisTabs,
-      });
+      const raw = await chrome.storage.local.get(['pageAnalysis', 'pageAnalysisTabs']);
+      const prunedState = prunePageAnalysisMaps(
+        normalizePageAnalysis(raw.pageAnalysis),
+        normalizePageAnalysisTabs(raw.pageAnalysisTabs)
+      );
+      if (
+        JSON.stringify(prunedState.pageAnalysis) === JSON.stringify(raw.pageAnalysis ?? {}) &&
+        JSON.stringify(prunedState.pageAnalysisTabs) === JSON.stringify(raw.pageAnalysisTabs ?? {})
+      )
+        return ok(undefined);
+      await chrome.storage.local.set(prunedState);
       return ok(undefined);
     } catch (e) {
       return err(e instanceof Error ? e : new Error(String(e)));
@@ -384,9 +411,7 @@ export function prunePageAnalysisState(): Promise<Result<void, Error>> {
   });
 }
 
-export async function getDomainNotificationPreference(
-  domain: string
-): Promise<boolean> {
+export async function getDomainNotificationPreference(domain: string): Promise<boolean> {
   const result = await getStorage('domainNotificationPreferences');
   if (!result.ok) return true;
 
@@ -520,9 +545,6 @@ function enforcePageAnalysisLimits(
   return [...referencedEntries, ...keptUnreferencedEntries];
 }
 
-function isPageAnalysisStale(
-  record: PageAnalysisRecord,
-  now = Date.now()
-): boolean {
+function isPageAnalysisStale(record: PageAnalysisRecord, now = Date.now()): boolean {
   return now - record.updatedAt > PAGE_ANALYSIS_TTL_MS;
 }

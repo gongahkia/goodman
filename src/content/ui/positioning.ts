@@ -3,29 +3,48 @@ const OVERLAY_WIDTH = 380;
 const OVERLAY_MAX_WIDTH_RATIO = 0.92;
 const OVERLAY_HEIGHT = 500;
 
-export function positionOverlay(overlay: HTMLElement, anchor: HTMLElement): () => void {
+export function positionOverlay(
+  overlay: HTMLElement,
+  anchor: HTMLElement,
+  surface = overlay
+): () => void {
   const reposition = (): void => {
     const anchorRect = anchor.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const effectiveWidth = Math.min(OVERLAY_WIDTH, viewportWidth * OVERLAY_MAX_WIDTH_RATIO);
-    const effectiveHeight = Math.min(OVERLAY_HEIGHT, viewportHeight - VIEWPORT_MARGIN * 2);
-
-    let left = anchorRect.right + VIEWPORT_MARGIN;
-    let top = anchorRect.top + (anchorRect.height / 2) - (effectiveHeight / 2);
-
-    if (left + effectiveWidth > viewportWidth - VIEWPORT_MARGIN) {
-      left = anchorRect.left - effectiveWidth - VIEWPORT_MARGIN;
-    }
-    if (left < VIEWPORT_MARGIN) {
-      left = Math.max(VIEWPORT_MARGIN, (viewportWidth - effectiveWidth) / 2);
-    }
-    if (top + effectiveHeight > viewportHeight - VIEWPORT_MARGIN) {
-      top = viewportHeight - effectiveHeight - VIEWPORT_MARGIN;
-    }
-    if (top < VIEWPORT_MARGIN) {
-      top = VIEWPORT_MARGIN;
-    }
+    const rect = surface.getBoundingClientRect();
+    const effectiveWidth =
+      rect.width || Math.min(OVERLAY_WIDTH, viewportWidth * OVERLAY_MAX_WIDTH_RATIO);
+    const effectiveHeight =
+      rect.height || Math.min(OVERLAY_HEIGHT, viewportHeight - VIEWPORT_MARGIN * 2);
+    const right = Math.max(VIEWPORT_MARGIN, viewportWidth - effectiveWidth - VIEWPORT_MARGIN);
+    const bottom = Math.max(VIEWPORT_MARGIN, viewportHeight - effectiveHeight - VIEWPORT_MARGIN);
+    const nearTop = Math.max(VIEWPORT_MARGIN, Math.min(bottom, anchorRect.top));
+    const controls = Array.from(
+      document.querySelectorAll(
+        'input:not([type="hidden"]),textarea,select,button,a[href],[role="button"]'
+      )
+    )
+      .map((element) => element.getBoundingClientRect())
+      .filter((box) => box.width > 0 && box.height > 0);
+    const candidates = [
+      [right, nearTop],
+      [VIEWPORT_MARGIN, nearTop],
+      [right, bottom],
+      [VIEWPORT_MARGIN, bottom],
+      [right, VIEWPORT_MARGIN],
+      [VIEWPORT_MARGIN, VIEWPORT_MARGIN],
+    ];
+    const overlap = ([x = 0, y = 0]: number[]): number =>
+      controls.reduce(
+        (total, box) =>
+          total +
+          Math.max(0, Math.min(x + effectiveWidth, box.right) - Math.max(x, box.left)) *
+            Math.max(0, Math.min(y + effectiveHeight, box.bottom) - Math.max(y, box.top)),
+        0
+      );
+    candidates.sort((a, b) => overlap(a) - overlap(b));
+    const [left, top] = candidates[0] ?? [VIEWPORT_MARGIN, VIEWPORT_MARGIN];
 
     overlay.style.position = 'fixed';
     overlay.style.left = `${left}px`;
@@ -39,15 +58,22 @@ export function positionOverlay(overlay: HTMLElement, anchor: HTMLElement): () =
   let rafId = 0;
   const throttledReposition = (): void => {
     if (rafId) return;
-    rafId = requestAnimationFrame(() => { rafId = 0; reposition(); });
+    rafId = requestAnimationFrame(() => {
+      rafId = 0;
+      reposition();
+    });
   };
 
   window.addEventListener('scroll', throttledReposition, { passive: true });
   window.addEventListener('resize', throttledReposition, { passive: true });
 
   return () => {
-    window.removeEventListener('scroll', throttledReposition, { passive: true } as EventListenerOptions);
-    window.removeEventListener('resize', throttledReposition, { passive: true } as EventListenerOptions);
+    window.removeEventListener('scroll', throttledReposition, {
+      passive: true,
+    } as EventListenerOptions);
+    window.removeEventListener('resize', throttledReposition, {
+      passive: true,
+    } as EventListenerOptions);
     if (rafId) cancelAnimationFrame(rafId);
   };
 }

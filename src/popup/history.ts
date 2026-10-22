@@ -14,6 +14,7 @@ import {
   type DomainHistorySummary,
 } from '@versioning/schema';
 import { renderTimeline } from '@versioning/ui/timeline';
+const expandedHistoryEntries = new Set<string>();
 
 export async function renderHistoryPanel(
   container: HTMLElement,
@@ -25,7 +26,7 @@ export async function renderHistoryPanel(
     container,
     createSectionHeading(
       'Your T&C history',
-      'Browse locally saved terms snapshots across domains and export your own history as JSON.'
+      'Browse saved summaries and agreement comparisons. Exported JSON includes any agreement text you chose to save on this device.'
     )
   );
 
@@ -55,7 +56,7 @@ export async function renderHistoryPanel(
 
   select.addEventListener('change', async () => {
     await clearNotification(select.value);
-    const timeline = await renderTimeline(select.value);
+    const timeline = await renderTimeline(select.value, expandedHistoryEntries);
     timelineContainer.textContent = '';
     timelineContainer.appendChild(timeline);
     updateActiveDomainCard(domainList, select.value);
@@ -68,16 +69,18 @@ export async function renderHistoryPanel(
     select.value = selectedDomain;
     updateActiveDomainCard(domainList, selectedDomain);
     await clearNotification(selectedDomain);
-    const timeline = await renderTimeline(selectedDomain);
+    const timeline = await renderTimeline(selectedDomain, expandedHistoryEntries);
     timelineContainer.appendChild(timeline);
   }
 }
 
 function createHistoryToolbar(): HTMLElement {
   const toolbar = createElement('div', 'tc-history-toolbar');
-  toolbar.appendChild(createButton('Export JSON', 'secondary', () => {
-    void exportHistoryJson().catch(e => console.warn('[Goodman] history export failed:', e));
-  }));
+  toolbar.appendChild(
+    createButton('Export JSON', 'secondary', () => {
+      void exportHistoryJson().catch((e) => console.warn('[Goodman] history export failed:', e));
+    })
+  );
   return toolbar;
 }
 
@@ -88,14 +91,17 @@ function createDomainList(
 ): HTMLElement {
   const list = createElement('div', 'tc-history-domain-list');
   for (const summary of summaries) {
-    const card = createElement('button', 'tc-domain-row tc-history-domain-card') as HTMLButtonElement;
+    const card = createElement(
+      'button',
+      'tc-domain-row tc-history-domain-card'
+    ) as HTMLButtonElement;
     card.type = 'button';
     card.dataset['domain'] = summary.domain;
     card.addEventListener('click', async () => {
       select.value = summary.domain;
       await clearNotification(summary.domain);
       timelineContainer.textContent = '';
-      timelineContainer.appendChild(await renderTimeline(summary.domain));
+      timelineContainer.appendChild(await renderTimeline(summary.domain, expandedHistoryEntries));
       updateActiveDomainCard(list, summary.domain);
     });
 
@@ -151,10 +157,14 @@ function getDomainMeta(summary: DomainHistorySummary): string {
 
 function getTrendLabel(trend: DomainHistorySummary['severityTrend']): string {
   switch (trend) {
-    case 'up': return 'severity up';
-    case 'down': return 'severity down';
-    case 'unchanged': return 'severity unchanged';
-    case 'new': return 'new';
+    case 'up':
+      return 'severity up';
+    case 'down':
+      return 'severity down';
+    case 'unchanged':
+      return 'severity unchanged';
+    case 'new':
+      return 'new';
   }
 }
 

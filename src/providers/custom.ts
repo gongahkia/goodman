@@ -10,6 +10,7 @@ import {
 import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
+import { fetchBounded } from '@shared/network';
 
 const MAX_RETRIES = 2;
 const RETRY_DELAYS = [1000, 3000];
@@ -23,10 +24,7 @@ export class CustomEndpointProvider implements LLMProvider {
     private model: string = ''
   ) {}
 
-  async summarize(
-    text: string,
-    options: SummarizeOptions
-  ): Promise<Result<Summary, TCGuardError>> {
+  async summarize(text: string, options: SummarizeOptions): Promise<Result<Summary, TCGuardError>> {
     const url = `${this.baseUrl}/v1/chat/completions`;
     const body = {
       model: options.model || this.model || 'default',
@@ -48,12 +46,12 @@ export class CustomEndpointProvider implements LLMProvider {
       const headers: Record<string, string> = {};
       if (key) headers['Authorization'] = `Bearer ${key}`;
 
-      const response = await fetch(modelsUrl, { headers });
+      const response = await fetchBounded(modelsUrl, { headers });
       if (response.ok) return true;
 
       // Fallback: try a minimal chat completion
       const chatUrl = `${this.baseUrl}/v1/chat/completions`;
-      const chatResponse = await fetch(chatUrl, {
+      const chatResponse = await fetchBounded(chatUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...headers },
         body: JSON.stringify({
@@ -83,7 +81,7 @@ export class CustomEndpointProvider implements LLMProvider {
         headers['Authorization'] = `Bearer ${this.apiKey}`;
       }
 
-      const response = await fetch(url, {
+      const response = await fetchBounded(url, {
         method: 'POST',
         headers,
         signal,

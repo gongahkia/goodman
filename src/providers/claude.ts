@@ -10,6 +10,7 @@ import {
 import { isCancelledError, sleepWithAbort } from '@shared/cancellation';
 import type { LLMProvider, Summary, SummarizeOptions } from './types';
 import { parseSummaryResponse } from './response-parser';
+import { fetchBounded } from '@shared/network';
 
 const API_URL = 'https://api.anthropic.com/v1/messages';
 const MAX_RETRIES = 2;
@@ -23,10 +24,7 @@ export class ClaudeProvider implements LLMProvider {
     private defaultModel: string = 'claude-sonnet-4-20250514'
   ) {}
 
-  async summarize(
-    text: string,
-    options: SummarizeOptions
-  ): Promise<Result<Summary, TCGuardError>> {
+  async summarize(text: string, options: SummarizeOptions): Promise<Result<Summary, TCGuardError>> {
     const body = {
       model: options.model || this.defaultModel || 'claude-sonnet-4-20250514',
       max_tokens: options.maxTokens,
@@ -39,7 +37,7 @@ export class ClaudeProvider implements LLMProvider {
 
   async validateApiKey(key: string): Promise<boolean> {
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetchBounded(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -65,7 +63,7 @@ export class ClaudeProvider implements LLMProvider {
     signal?: AbortSignal
   ): Promise<Result<Summary, TCGuardError>> {
     try {
-      const response = await fetch(API_URL, {
+      const response = await fetchBounded(API_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
