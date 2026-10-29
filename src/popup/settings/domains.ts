@@ -112,6 +112,7 @@ async function createDomainPreferenceRow(domain: string): Promise<HTMLElement> {
   appendChildren(
     body,
     createElement('div', 'tc-domain-name', domain),
+    createAnalysisModeField(domain, preferences),
     createThresholdField(domain, preferences),
     createClauseWatchField(domain, preferences),
     createLanguageField(domain, preferences),
@@ -270,4 +271,28 @@ async function saveDomainPreferencePatch(
     ...preferences,
     ...patch,
   });
+}
+
+function createAnalysisModeField(domain: string, preferences: DomainPreferences): HTMLElement {
+  const field = createElement('label', 'tc-field');
+  const select = createElement('select', 'tc-select');
+  select.setAttribute('aria-label', `${domain} analysis mode`);
+  for (const [value, title] of [
+    ['inherit', 'Use default mode'],
+    ['detect_only', 'Detect only'],
+    ['ask', 'Ask before analysis'],
+    ['automatic', 'Automatically analyze'],
+  ]) {
+    const option = createElement('option', '', title);
+    option.value = value!;
+    select.appendChild(option);
+  }
+  select.value = preferences.analysisMode ?? 'inherit';
+  select.addEventListener('change', () => {
+    void saveDomainPreferencePatch(domain, {
+      analysisMode: select.value as DomainPreferences['analysisMode'],
+    });
+  });
+  appendChildren(field, createElement('span', 'tc-field-label', 'Analysis mode'), select);
+  return field;
 }

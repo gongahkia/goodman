@@ -69,7 +69,14 @@ export const CLAUSE_TAXONOMY: ClauseTaxonomyCategory[] = [
     description: 'Third-party data sharing, selling, government disclosure, or AI training.',
     color: '#2f855a',
     defaultWeight: 5,
-    providerCategories: ['data_selling', 'third_party_sharing', 'ai_training', 'government_disclosure', 'biometric_data', 'location_tracking'],
+    providerCategories: [
+      'data_selling',
+      'third_party_sharing',
+      'ai_training',
+      'government_disclosure',
+      'biometric_data',
+      'location_tracking',
+    ],
     keywords: ['data', 'third party', 'share', 'sell', 'ai training', 'biometric', 'location'],
   },
   {
@@ -128,7 +135,7 @@ export const CLAUSE_TAXONOMY: ClauseTaxonomyCategory[] = [
   },
 ];
 
-const TAXONOMY_IDS = new Set(CLAUSE_TAXONOMY.map(category => category.id));
+const TAXONOMY_IDS = new Set(CLAUSE_TAXONOMY.map((category) => category.id));
 const SEVERITY_RANK: Record<string, number> = {
   low: 1,
   medium: 2,
@@ -137,14 +144,14 @@ const SEVERITY_RANK: Record<string, number> = {
 };
 
 export const DEFAULT_CLAUSE_TAXONOMY_WEIGHTS: ClauseTaxonomyWeights = Object.fromEntries(
-  CLAUSE_TAXONOMY.map(category => [category.id, category.defaultWeight])
+  CLAUSE_TAXONOMY.map((category) => [category.id, category.defaultWeight])
 ) as ClauseTaxonomyWeights;
 
 export function normalizeClauseTaxonomyWeights(value: unknown): ClauseTaxonomyWeights {
   if (!value || typeof value !== 'object') return { ...DEFAULT_CLAUSE_TAXONOMY_WEIGHTS };
   const input = value as Record<string, unknown>;
   return Object.fromEntries(
-    CLAUSE_TAXONOMY.map(category => [
+    CLAUSE_TAXONOMY.map((category) => [
       category.id,
       normalizeWeight(input[category.id], category.defaultWeight),
     ])
@@ -171,24 +178,28 @@ export function groupRedFlagsByClauseTaxonomy(
     }
   }
 
-  return [...groups.values()].sort((left, right) =>
-    right.score - left.score || left.category.label.localeCompare(right.category.label)
+  return [...groups.values()].sort(
+    (left, right) =>
+      right.score - left.score || left.category.label.localeCompare(right.category.label)
   );
 }
 
 export function getClauseTaxonomyCategory(id: string): ClauseTaxonomyCategory | null {
   return TAXONOMY_IDS.has(id as ClauseTaxonomyId)
-    ? CLAUSE_TAXONOMY.find(category => category.id === id) ?? null
+    ? (CLAUSE_TAXONOMY.find((category) => category.id === id) ?? null)
     : null;
 }
 
 function matchesCategory(flag: ClauseFlag, category: ClauseTaxonomyCategory): boolean {
   const normalizedCategory = normalizeToken(flag.category);
-  const canonical = CLAUSE_TAXONOMY.find(group => group.providerCategories.some(item => normalizeToken(item) === normalizedCategory));
+  const canonical = CLAUSE_TAXONOMY.find((group) =>
+    group.providerCategories.some((item) => normalizeToken(item) === normalizedCategory)
+  );
   if (canonical) return category.id === canonical.id;
-  if (category.providerCategories.some(item => normalizeToken(item) === normalizedCategory)) return true;
+  if (category.providerCategories.some((item) => normalizeToken(item) === normalizedCategory))
+    return true;
   const haystack = `${flag.category} ${flag.description} ${flag.quote}`.toLowerCase();
-  return category.keywords.some(keyword => haystack.includes(keyword));
+  return category.keywords.some((keyword) => haystack.includes(keyword));
 }
 
 function normalizeWeight(value: unknown, fallback: number): number {
@@ -197,5 +208,8 @@ function normalizeWeight(value: unknown, fallback: number): number {
 }
 
 function normalizeToken(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }

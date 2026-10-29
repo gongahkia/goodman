@@ -3,9 +3,7 @@ import type { Message } from '@shared/messages';
 import type { PageAnalysisRecord } from '@shared/page-analysis';
 import { chrome, mockStorage } from '../mocks/chrome';
 
-function makePageAnalysisRecord(
-  overrides: Partial<PageAnalysisRecord> = {}
-): PageAnalysisRecord {
+function makePageAnalysisRecord(overrides: Partial<PageAnalysisRecord> = {}): PageAnalysisRecord {
   return {
     tabId: 42,
     url: 'https://example.com/checkout',
@@ -27,29 +25,26 @@ async function importBackground(): Promise<void> {
   await import('@background/index');
 }
 
-function getRuntimeListener(): (
-  message: Message,
-  sender: unknown
-) => Promise<unknown> {
+function getRuntimeListener(): (message: Message, sender: unknown) => Promise<unknown> {
   const raw = chrome.runtime.onMessage.addListener.mock.calls[0]?.[0] as (
     message: Message,
     sender: unknown,
     sendResponse: (response?: unknown) => void
   ) => boolean;
   return (message: Message, sender: unknown) =>
-    new Promise((resolve) => { raw(message, sender, resolve); });
+    new Promise((resolve) => {
+      raw(message, sender, resolve);
+    });
 }
 
 function getTabRemovedListener(): (tabId: number) => Promise<void> {
-  return chrome.tabs.onRemoved.addListener.mock.calls[0]?.[0] as (
-    tabId: number
-  ) => Promise<void>;
+  return chrome.tabs.onRemoved.addListener.mock.calls[0]?.[0] as (tabId: number) => Promise<void>;
 }
 
 function getActionClickListener(): (tab?: { windowId?: number }) => Promise<void> | void {
-  return chrome.action.onClicked.addListener.mock.calls[0]?.[0] as (
-    tab?: { windowId?: number }
-  ) => Promise<void> | void;
+  return chrome.action.onClicked.addListener.mock.calls[0]?.[0] as (tab?: {
+    windowId?: number;
+  }) => Promise<void> | void;
 }
 
 describe('background page analysis contracts', () => {
@@ -64,17 +59,17 @@ describe('background page analysis contracts', () => {
     const listener = getRuntimeListener();
     const record = makePageAnalysisRecord();
 
-    const saveResponse = await listener(
-      { type: 'SAVE_PAGE_ANALYSIS', payload: record },
-      {}
-    );
+    const saveResponse = await listener({ type: 'SAVE_PAGE_ANALYSIS', payload: record }, {});
     expect(saveResponse).toEqual({ ok: true, data: null });
 
     const getResponse = await listener(
       { type: 'GET_PAGE_ANALYSIS', payload: { tabId: record.tabId } },
       {}
     );
-    expect(getResponse).toEqual({ ok: true, data: record });
+    expect(getResponse).toMatchObject({
+      ok: true,
+      data: { ...record, frameId: 0, sourceFrameUrl: record.url },
+    });
   });
 
   it('opens the Goodman side panel when the action icon is clicked', async () => {
@@ -95,7 +90,10 @@ describe('background page analysis contracts', () => {
     const listener = getRuntimeListener();
 
     const response = await listener(
-      { type: 'OPEN_WORKSPACE_SURFACE', payload: { windowId: 22, route: 'history', domain: 'example.com' } },
+      {
+        type: 'OPEN_WORKSPACE_SURFACE',
+        payload: { windowId: 22, route: 'history', domain: 'example.com' },
+      },
       {}
     );
 
@@ -122,10 +120,10 @@ describe('background page analysis contracts', () => {
       { type: 'CANCEL_PAGE_ANALYSIS', payload: { tabId: record.tabId } },
       {}
     );
-    const getResponse = await listener(
+    const getResponse = (await listener(
       { type: 'GET_PAGE_ANALYSIS', payload: { tabId: record.tabId } },
       {}
-    ) as { ok: boolean; data: PageAnalysisRecord };
+    )) as { ok: boolean; data: PageAnalysisRecord };
 
     expect(cancelResponse).toEqual({ ok: true, data: { cancelled: true } });
     expect(getResponse.data.status).toBe('cancelled');

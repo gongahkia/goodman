@@ -22,8 +22,15 @@ import { cacheSummary, computeTextHash, getCachedSummary } from '@summarizer/cac
 import { chunkedSummarizeWithProvider } from '@summarizer/chunked';
 import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import { syncVersionHistory } from './version-tracking';
+import type { AgreementDocument } from '@shared/documents';
+import { groundSummary } from '@summarizer/evidence';
 
 export interface ProcessPageAnalysisInput {
+  document?: AgreementDocument;
+  availableDocuments?: AgreementDocument[];
+  analyzedDocumentIds?: string[];
+  frameId?: number;
+  sourceFrameUrl?: string;
   tabId: number;
   url: string;
   domain: string;
@@ -211,7 +218,7 @@ export async function processPageAnalysis(
     const cachedSummary = await getCachedSummary(textHash, input.domain, context.cacheHash);
     throwIfAborted(signal);
     if (cachedSummary) {
-      const summary = toSummary(cachedSummary.summary);
+      const summary = groundSummary(toSummary(cachedSummary.summary), input.text);
       await persistAnalysisUpdate(
         {
           status: 'analyzing',
@@ -224,7 +231,8 @@ export async function processPageAnalysis(
         'Loaded a cached summary and started syncing version history.',
         'success'
       );
-      await syncVersionHistory(input.domain, input.text, summary);
+      if (input.document?.kind !== 'selection')
+        await syncVersionHistory(input.domain, input.text, summary, input.document);
       throwIfAborted(signal);
       await persistAnalysisUpdate(
         {
@@ -367,9 +375,11 @@ export async function processPageAnalysis(
       'Saving results',
       'Summary received. Caching the result and syncing version history.'
     );
+    summaryResult.data = groundSummary(summaryResult.data, input.text);
     await cacheSummary(textHash, summaryResult.data, input.domain, context.cacheHash);
     throwIfAborted(signal);
-    await syncVersionHistory(input.domain, input.text, summaryResult.data);
+    if (input.document?.kind !== 'selection')
+      await syncVersionHistory(input.domain, input.text, summaryResult.data, input.document);
     throwIfAborted(signal);
     await persistAnalysisUpdate(
       {
@@ -450,6 +460,17 @@ function buildPageAnalysisRecord(
 ): PageAnalysisRecord {
   return {
     tabId: input.tabId,
+    ...(input.document ? { document: input.document } : {}),
+    ...(input.availableDocuments ? { availableDocuments: input.availableDocuments } : {}),
+    ...(input.frameId !== undefined
+      ? { frameId: input.frameId, sourceFrameUrl: input.sourceFrameUrl }
+      : {}),
+    analyzedDocumentIds: [
+      ...new Set([
+        ...(input.analyzedDocumentIds ?? []),
+        ...(overrides.status === 'ready' && input.document ? [input.document.id] : []),
+      ]),
+    ].slice(-20),
     url: input.url,
     domain: input.domain,
     status: overrides.status,

@@ -63,8 +63,7 @@ export const RED_FLAG_DESCRIPTIONS: Record<RedFlagCategory, string> = {
   arbitration_clause:
     'You waive your right to a jury trial and must resolve disputes through private arbitration.',
   class_action_waiver: 'You cannot join a class action lawsuit against the company.',
-  automatic_renewal:
-    'Your subscription auto-renews, potentially making cancellation difficult.',
+  automatic_renewal: 'Your subscription auto-renews, potentially making cancellation difficult.',
   biometric_data:
     'The company collects biometric data such as fingerprints, face scans, or voice prints.',
   third_party_sharing: 'Your data is shared with third-party companies (partners, advertisers).',
@@ -78,7 +77,8 @@ export const RED_FLAG_DESCRIPTIONS: Record<RedFlagCategory, string> = {
   location_tracking: 'The company tracks your physical location continuously.',
   data_retention: 'Your data may be retained indefinitely even after you delete your account.',
   ai_training: 'Your content may be used to train AI or machine learning models.',
-  government_disclosure: 'Your data may be broadly shared with government or law enforcement agencies.',
+  government_disclosure:
+    'Your data may be broadly shared with government or law enforcement agencies.',
 };
 
 export function buildSystemPrompt(language?: string): string {
@@ -89,9 +89,7 @@ Write user-facing TLDR, summary, keyPoints, and redFlag descriptions in ${langua
 }
 
 export function buildUserPrompt(text: string, language?: string): string {
-  const languageInstruction = language
-    ? `\nPreferred summary language: ${language}.`
-    : '';
+  const languageInstruction = language ? `\nPreferred summary language: ${language}.` : '';
   return `Analyze the following Terms & Conditions document:${languageInstruction}
 ---BEGIN T&C---
 ${text}

@@ -1,4 +1,4 @@
-import type { DetectionRoot } from './roots';
+import { isVisibleSurface, type DetectionRoot } from './roots';
 import { CONSENT_ACTION, LEGAL_PHRASES } from './signals';
 import type { DetectedElement } from './checkbox';
 import { detectConsentDarkPatterns } from './dark-patterns';
@@ -65,7 +65,7 @@ function findByPosition(root: DetectionRoot): DetectedElement[] {
       if (visited.has(el)) continue;
       visited.add(el);
       const text = (el.textContent ?? '').toLowerCase();
-      if (!TC_KEYWORDS.some(kw => text.includes(kw))) continue;
+      if (!TC_KEYWORDS.some((kw) => text.includes(kw))) continue;
       const style = getComputedStyle(el);
       if (style.position !== 'fixed' && style.position !== 'sticky') continue;
       const analysis = analyzeCandidate(el as HTMLElement);
@@ -77,12 +77,7 @@ function findByPosition(root: DetectionRoot): DetectedElement[] {
 }
 
 function analyzeCandidate(el: HTMLElement): DetectedElement | null {
-  if (el.closest('[hidden],[aria-hidden="true"],[inert],nav,[role="navigation"]')) return null;
-  const visibility = getComputedStyle(el).visibility;
-  if (visibility === 'hidden' || visibility === 'collapse') return null;
-  for (let ancestor: Element | null = el; ancestor; ancestor = ancestor.parentElement) {
-    if (getComputedStyle(ancestor).display === 'none') return null;
-  }
+  if (el.closest('nav,[role="navigation"]') || !isVisibleSurface(el)) return null;
   const text = (el.textContent ?? '').toLowerCase();
   if (text.trim().length < MIN_MODAL_TEXT_LENGTH) return null;
   const foundKeywords: string[] = [];
@@ -114,7 +109,10 @@ function analyzeCandidate(el: HTMLElement): DetectedElement | null {
   const darkPatterns = detectConsentDarkPatterns(el);
   score += getDarkPatternConfidenceBoost(darkPatterns);
   const confidence = Math.min(score, 1.0);
-  const nearestLink = [...el.querySelectorAll<HTMLAnchorElement>('a[href]')].find(a => TC_KEYWORDS.some(word => (a.textContent + ' ' + a.href).toLowerCase().includes(word)))?.href ?? null;
+  const nearestLink =
+    [...el.querySelectorAll<HTMLAnchorElement>('a[href]')].find((a) =>
+      TC_KEYWORDS.some((word) => (a.textContent + ' ' + a.href).toLowerCase().includes(word))
+    )?.href ?? null;
 
   const result: DetectedElement = {
     element: el,

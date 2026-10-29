@@ -30,6 +30,35 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
   const settings = settingsResult.data;
 
   container.textContent = '';
+  container.appendChild(
+    createSectionHeading(
+      'Analysis mode',
+      'Detection runs on your device. Provider analysis sends extracted text to your chosen connection and may incur usage charges.'
+    )
+  );
+  const mode = createElement('select', 'tc-select');
+  mode.setAttribute('aria-label', 'Default analysis mode');
+  for (const [value, title] of [
+    ['detect_only', 'Detect only — analyze manually'],
+    ['ask', 'Ask before analysis (recommended)'],
+    ['automatic', 'Automatically analyze detected agreements'],
+  ]) {
+    const option = createElement('option', '', title);
+    option.value = value!;
+    mode.appendChild(option);
+  }
+  mode.value = settings.analysisMode;
+  mode.addEventListener('change', () => {
+    void (async () => {
+      const current = await getStorage('settings');
+      if (current.ok)
+        await setStorage('settings', {
+          ...current.data,
+          analysisMode: mode.value as typeof settings.analysisMode,
+        });
+    })();
+  });
+  container.appendChild(mode);
 
   appendChildren(
     container,
@@ -76,7 +105,13 @@ export async function renderDetectionSettings(container: HTMLElement): Promise<v
   );
   const weightList = createElement('div', 'tc-field-group');
   for (const category of CLAUSE_TAXONOMY) {
-    weightList.appendChild(createTaxonomyWeightField(category.id, category.label, settings.clauseTaxonomyWeights[category.id]));
+    weightList.appendChild(
+      createTaxonomyWeightField(
+        category.id,
+        category.label,
+        settings.clauseTaxonomyWeights[category.id]
+      )
+    );
   }
   container.appendChild(weightList);
 }

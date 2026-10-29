@@ -14,7 +14,9 @@ export async function checkForChanges(
   documentId?: string
 ): Promise<ChangeResult> {
   const currentHash = await computeTextHash(currentText);
-  const history = (await getVersionHistory(domain)).filter(entry => entry.document?.id === documentId);
+  const history = (await getVersionHistory(domain)).filter(
+    (entry) => entry.document?.id === documentId
+  );
 
   if (history.length === 0) {
     return { changed: false, previousVersion: null, currentHash };

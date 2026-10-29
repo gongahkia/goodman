@@ -82,6 +82,7 @@ export const DEFAULT_PROVIDER_CONFIG: ProviderConfig = {
 };
 
 export const DEFAULT_SETTINGS: Settings = {
+  analysisMode: 'ask',
   activeProvider: 'openai',
   providers: {
     openai: { apiKey: '', model: 'gpt-4o' },
@@ -228,6 +229,9 @@ function normalizeSettings(settings: Settings | undefined): Settings {
 
   return {
     activeProvider,
+    analysisMode: ['detect_only', 'ask', 'automatic'].includes(settings.analysisMode)
+      ? settings.analysisMode
+      : 'ask',
     providers,
     detectionSensitivity: settings.detectionSensitivity ?? DEFAULT_SETTINGS.detectionSensitivity,
     darkMode: settings.darkMode ?? DEFAULT_SETTINGS.darkMode,

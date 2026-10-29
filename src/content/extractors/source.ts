@@ -5,10 +5,12 @@ import { extractLinkedText } from './linked';
 import { extractPdfText, isPdfUrl } from './pdf';
 import { ExtractionError } from '@shared/errors';
 import { fetchLegalDocument, isPdfDocument } from './fetch';
+import { createDocument, type AgreementDocument } from '@shared/documents';
 
 export interface ResolvedTextSource {
   text: string;
   sourceType: AnalysisSourceType;
+  document: AgreementDocument;
 }
 
 export async function resolveDetectionTextSource(
@@ -17,14 +19,23 @@ export async function resolveDetectionTextSource(
   const inlineText = extractInlineText(detection);
 
   if (!detection.nearestLink) {
-    return { text: inlineText, sourceType: 'inline' };
+    return {
+      text: inlineText,
+      sourceType: 'inline',
+      document: createDocument(
+        window.location.href,
+        document.title,
+        document.documentElement.lang,
+        detection.type !== 'fullpage'
+      ),
+    };
   }
 
   const resource = await fetchLegalDocument(detection.nearestLink);
   if (isPdfDocument(resource)) {
     const pdfResult = await extractPdfText(detection.nearestLink, resource.bytes);
     if (pdfResult.ok && pdfResult.data.trim()) {
-      return { text: pdfResult.data, sourceType: 'pdf' };
+      return { text: pdfResult.data, sourceType: 'pdf', document: createDocument(resource.url) };
     }
 
     throw new ExtractionError(
@@ -36,7 +47,15 @@ export async function resolveDetectionTextSource(
 
   const linkedResult = await extractLinkedText(detection.nearestLink, resource);
   if (linkedResult.ok && linkedResult.data.text.trim()) {
-    return { text: linkedResult.data.text, sourceType: 'linked' };
+    return {
+      text: linkedResult.data.text,
+      sourceType: 'linked',
+      document: createDocument(
+        resource.url,
+        linkedResult.data.title ?? '',
+        linkedResult.data.language ?? ''
+      ),
+    };
   }
 
   throw new ExtractionError(

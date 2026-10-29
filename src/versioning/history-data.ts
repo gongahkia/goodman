@@ -57,7 +57,9 @@ export function normalizeVersionHistory(
       const document = normalizeDocument(raw.document);
       const entry: VersionEntry = {
         ...(document ? { document } : {}),
-        ...(typeof raw.lastCheckedAt === "number" && Number.isFinite(raw.lastCheckedAt) ? { lastCheckedAt: raw.lastCheckedAt } : {}),
+        ...(typeof raw.lastCheckedAt === 'number' && Number.isFinite(raw.lastCheckedAt)
+          ? { lastCheckedAt: raw.lastCheckedAt }
+          : {}),
         domain,
         version: raw.version,
         textHash: raw.textHash,
@@ -70,7 +72,7 @@ export function normalizeVersionHistory(
         raw.sourceText.length <= MAX_INPUT_TEXT_LENGTH
       )
         entry.sourceText = raw.sourceText;
-      const key = JSON.stringify([document?.id ?? "legacy", entry.version]);
+      const key = JSON.stringify([document?.id ?? 'legacy', entry.version]);
       const previous = versions.get(key);
       if (!previous || entry.timestamp >= previous.timestamp) versions.set(key, entry);
     }
@@ -80,15 +82,31 @@ export function normalizeVersionHistory(
       groups.set(key, [...(groups.get(key) ?? []), entry]);
     }
     const sorted = [...groups.values()]
-      .sort((a, b) => Math.max(...b.map(e => e.timestamp)) - Math.max(...a.map(e => e.timestamp)))
-      .slice(0, 20).reverse()
-      .flatMap(entries => entries.sort((a, b) => a.version - b.version).slice(-MAX_VERSIONS_PER_DOMAIN));
+      .sort(
+        (a, b) => Math.max(...b.map((e) => e.timestamp)) - Math.max(...a.map((e) => e.timestamp))
+      )
+      .slice(0, 20)
+      .reverse()
+      .flatMap((entries) =>
+        entries.sort((a, b) => a.version - b.version).slice(-MAX_VERSIONS_PER_DOMAIN)
+      );
     if (sorted.length) history[domain] = sorted;
   }
   const domains = Object.keys(history).sort(
     (a, b) => (history[b]?.at(-1)?.timestamp ?? 0) - (history[a]?.at(-1)?.timestamp ?? 0)
   );
   for (const domain of domains.slice(MAX_TRACKED_DOMAINS)) delete history[domain];
+  // Document-specific histories must not multiply the previous global entry budget.
+  const keep = new Set(
+    Object.values(history)
+      .flat()
+      .sort((a, b) => b.timestamp - a.timestamp)
+      .slice(0, MAX_TRACKED_DOMAINS * MAX_VERSIONS_PER_DOMAIN)
+  );
+  for (const domain of Object.keys(history)) {
+    history[domain] = history[domain]!.filter((entry) => keep.has(entry));
+    if (!history[domain]!.length) delete history[domain];
+  }
   enforceTextBudget(history);
   return history;
 }

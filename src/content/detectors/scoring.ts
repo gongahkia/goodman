@@ -36,8 +36,7 @@ function deduplicateOverlapping(detections: ScoredDetection[]): ScoredDetection[
   for (const detection of detections) {
     const isOverlapping = result.some(
       (existing) =>
-        existing.element.contains(detection.element) ||
-        detection.element.contains(existing.element)
+        existing.element.contains(detection.element) || detection.element.contains(existing.element)
     );
     if (!isOverlapping) {
       result.push(detection);

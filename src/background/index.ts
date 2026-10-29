@@ -16,6 +16,9 @@ import {
   runMigrations,
   setPageAnalysisRecord,
   setStorage,
+  getPageAnalysisByUrl,
+  getDomainPreferences,
+  withStorageLock,
 } from '@shared/storage';
 // chrome.runtime.MessageSender replaced with chrome.runtime.MessageSender
 import { cancelPageAnalysis, discardPageAnalysis, processPageAnalysis } from './process-analysis';
@@ -25,10 +28,12 @@ import { fetchBounded } from '@shared/network';
 import { MAX_INPUT_TEXT_LENGTH } from '@shared/constants';
 import { setTextRetention } from '@versioning/schema';
 import { handleParsePdf } from './parse-pdf';
+import { normalizeDocument, mergeDocuments } from '@shared/documents';
 
 registerTabCleanup();
 registerKeepAlive();
 registerActionLauncher();
+registerReviewActions();
 void runMigrations()
   .then(() => {
     void prunePageAnalysisState().catch((e) =>
@@ -57,10 +62,7 @@ onMessage(
       case 'OPEN_WORKSPACE_SURFACE':
         return handleOpenWorkspaceSurface(msg.payload);
       case 'CANCEL_PAGE_ANALYSIS':
-        return handleCancelPageAnalysis(
-          sender.tab?.id ?? msg.payload.tabId,
-          msg.payload.expectedUrl
-        );
+        return cancelFromSender(sender, msg.payload);
       case 'SAVE_PAGE_ANALYSIS':
         return handleSavePageAnalysis(msg.payload, sender);
       case 'PROCESS_PAGE_ANALYSIS':
@@ -182,9 +184,53 @@ async function handleSavePageAnalysis(
     return { ok: false, error: 'Could not resolve tab id' };
   }
 
-  const result = await setPageAnalysisRecord({
-    ...record,
-    tabId,
+  const result = await withStorageLock('frameState', async () => {
+    const pageUrl =
+      sender.tab?.url && /^https?:/.test(sender.tab.url) ? sender.tab.url : record.url;
+    const previous = await getPageAnalysisByUrl(pageUrl);
+    const frameId = sender.frameId ?? 0;
+    const document = normalizeDocument(record.document);
+    const sources = (record.availableDocuments ?? [])
+      .map(normalizeDocument)
+      .filter((doc): doc is NonNullable<typeof doc> => Boolean(doc))
+      .map((doc) => ({ ...doc, frameId }));
+    let previousSources = previous?.availableDocuments ?? [];
+    if (
+      previous?.status === 'analyzing' &&
+      previous.frameId === frameId &&
+      document &&
+      previous.document &&
+      document.id !== previous.document.id &&
+      !sources.some((doc) => doc.id === previous.document!.id)
+    ) {
+      previousSources = previousSources.filter((doc) => doc.id !== previous.document!.id);
+    }
+    const availableDocuments = mergeDocuments(previousSources, sources);
+    // Passive discoveries never erase a reviewed document or a pending analysis from another frame.
+    const preserve =
+      previous &&
+      ((record.status === 'no_detection' &&
+        previous.status !== 'no_detection' &&
+        previous.frameId !== frameId) ||
+        (['needs_provider', 'needs_consent'].includes(record.status) &&
+          ['ready', 'analyzing'].includes(previous.status)));
+    if (frameId > 0 && record.status === 'no_detection')
+      return { ok: true as const, data: undefined };
+    return setPageAnalysisRecord(
+      preserve
+        ? { ...previous, availableDocuments }
+        : {
+            ...record,
+            tabId,
+            url: pageUrl,
+            domain: new URL(pageUrl).hostname,
+            frameId,
+            sourceFrameUrl: sender.url ?? record.url,
+            ...(document ? { document: { ...document, frameId } } : {}),
+            availableDocuments,
+            analyzedDocumentIds: previous?.analyzedDocumentIds ?? [],
+          }
+    );
   });
   if (!result.ok) {
     return { ok: false, error: 'Could not save page analysis' };
@@ -219,10 +265,31 @@ async function handleProcessPageAnalysis(
   }
 
   console.warn(`[Goodman:bg] starting analysis with provider=${payload.provider}`);
+  const pageUrl = sender.tab?.url && /^https?:/.test(sender.tab.url) ? sender.tab.url : url.href;
+  const settings = await getStorage('settings');
+  const preferences = await getDomainPreferences(new URL(pageUrl).hostname);
+  const mode =
+    preferences.analysisMode && preferences.analysisMode !== 'inherit'
+      ? preferences.analysisMode
+      : settings.ok
+        ? settings.data.analysisMode
+        : 'ask';
+  if (!payload.userInitiated && mode !== 'automatic')
+    return { ok: false, error: 'Choose Analyze to send this agreement to your provider.' };
+  if (sender.url && /^https?:/.test(sender.url) && sender.url !== payload.url)
+    return { ok: false, error: 'The page changed. Try again.' };
+  const previous = await getPageAnalysisByUrl(pageUrl);
+  const document = normalizeDocument(payload.document);
   const result = await processPageAnalysis({
     tabId,
     ...payload,
-    domain: url.hostname,
+    url: pageUrl,
+    domain: new URL(pageUrl).hostname,
+    document: document ? { ...document, frameId: sender.frameId ?? 0 } : undefined,
+    availableDocuments: previous?.availableDocuments,
+    analyzedDocumentIds: previous?.analyzedDocumentIds,
+    frameId: sender.frameId ?? 0,
+    sourceFrameUrl: sender.url ?? payload.url,
   });
   console.warn(
     `[Goodman:bg] processPageAnalysis done: ok=${result.ok} cancelled=${result.cancelled} error=${result.error ?? 'none'}`
@@ -385,4 +452,65 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(byte);
   }
   return btoa(binary);
+}
+
+async function cancelFromSender(
+  sender: chrome.runtime.MessageSender,
+  payload: { tabId: number; expectedUrl?: string }
+): Promise<MessageResponse> {
+  const tabId = sender.tab?.id ?? payload.tabId;
+  const record = await getPageAnalysis(tabId);
+  if (sender.tab && record?.frameId !== undefined && record.frameId !== (sender.frameId ?? 0))
+    return { ok: true, data: { cancelled: false } };
+  if (sender.frameId && payload.expectedUrl && record?.sourceFrameUrl !== payload.expectedUrl)
+    return { ok: true, data: { cancelled: false } };
+  return handleCancelPageAnalysis(tabId, sender.frameId ? record?.url : payload.expectedUrl);
+}
+
+function registerReviewActions(): void {
+  const install = (): void => {
+    if (!chrome.contextMenus) return;
+    chrome.contextMenus.removeAll(() => {
+      for (const [id, title, contexts] of [
+        ['goodman-selection', 'Explain selection with Goodman', ['selection']],
+        ['goodman-link', 'Analyze agreement with Goodman', ['link']],
+        ['goodman-page', 'Review this page with Goodman', ['page']],
+      ] as Array<
+        [string, string, [chrome.contextMenus.ContextType, ...chrome.contextMenus.ContextType[]]]
+      >) {
+        chrome.contextMenus.create({
+          id,
+          title,
+          contexts,
+          documentUrlPatterns: ['http://*/*', 'https://*/*'],
+        });
+      }
+    });
+  };
+  chrome.runtime.onInstalled?.addListener(install);
+  chrome.runtime.onStartup?.addListener(install);
+  chrome.contextMenus?.onClicked.addListener((info, tab) => {
+    if (typeof tab?.id !== 'number') return;
+    const input =
+      info.menuItemId === 'goodman-selection'
+        ? { text: info.selectionText }
+        : info.menuItemId === 'goodman-link'
+          ? { url: info.linkUrl }
+          : {};
+    void chrome.tabs
+      .sendMessage(
+        tab.id,
+        { type: 'MANUAL_ANALYSIS', payload: input },
+        { frameId: info.frameId ?? 0 }
+      )
+      .catch(() =>
+        openWorkspaceSurface({ tabId: tab.id, windowId: tab.windowId, route: 'current' })
+      );
+  });
+  chrome.commands?.onCommand.addListener(async (command) => {
+    if (command !== 'review-agreement') return;
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    if (tab)
+      await openWorkspaceSurface({ tabId: tab.id, windowId: tab.windowId, route: 'current' });
+  });
 }

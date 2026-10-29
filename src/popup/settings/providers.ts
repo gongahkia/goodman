@@ -1,3 +1,4 @@
+import { singleShotSummarizeWithProvider } from '@summarizer/singleshot';
 import {
   appendChildren,
   createButton,
@@ -13,7 +14,10 @@ import { getStorage, setStorage } from '@shared/storage';
 
 function debounce(fn: () => void, ms: number): () => void {
   let timer: ReturnType<typeof setTimeout>;
-  return () => { clearTimeout(timer); timer = setTimeout(fn, ms); };
+  return () => {
+    clearTimeout(timer);
+    timer = setTimeout(fn, ms);
+  };
 }
 
 const ADVANCED_PROVIDERS = ['openai', 'claude', 'gemini', 'ollama', 'custom'] as const;
@@ -35,18 +39,19 @@ const PROVIDER_DESCRIPTIONS: Record<ProviderName, string> = {
   custom: 'Connect any OpenAI-compatible endpoint or internal proxy.',
 };
 
-export async function renderProviderSettings(container: HTMLElement): Promise<void> {
+export async function renderProviderSettings(
+  container: HTMLElement,
+  onComplete?: () => void
+): Promise<void> {
   container.textContent = '';
   container.appendChild(createSkeletonGroup());
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return;
   renderProviderSettingsView(container, settingsResult.data);
+  if (onComplete) container.addEventListener('goodman-provider-ready', onComplete, { once: true });
 }
 
-function renderProviderSettingsView(
-  container: HTMLElement,
-  settings: Settings
-): void {
+function renderProviderSettingsView(container: HTMLElement, settings: Settings): void {
   container.textContent = '';
   container.appendChild(
     createSectionHeading(
@@ -120,11 +125,7 @@ function renderProviderConfig(
 
   appendChildren(
     container,
-    createElement(
-      'div',
-      'tc-callout-title',
-      `${PROVIDER_LABELS[name] ?? name} Configuration`
-    ),
+    createElement('div', 'tc-callout-title', `${PROVIDER_LABELS[name] ?? name} Configuration`),
     createElement(
       'p',
       'tc-callout-copy',
@@ -153,12 +154,50 @@ function renderProviderConfig(
 
   fieldGroup.appendChild(createModelField(name, draftConfig));
   container.appendChild(fieldGroup);
+  const test = createButton('Test', 'secondary', () => {
+    void runProviderValidation(name, test, draftConfig);
+  });
+  test.setAttribute('aria-label', `Test ${name} provider connection`);
+  const status = createElement('p', 'tc-option-copy');
+  status.setAttribute('role', 'status');
+  const sample = createButton('Analyze a sample', 'primary', () => {
+    sample.disabled = true;
+    status.textContent = 'Testing the selected model with a short sample…';
+    void (async () => {
+      await saveProviderConfig(name, draftConfig);
+      const result = await singleShotSummarizeWithProvider(
+        'The subscription automatically renews monthly. You can cancel at any time in account settings before the next billing date. Cancellation stops future renewal but does not refund the current month.',
+        name
+      );
+      if (!result.ok) throw new Error(result.error.userMessage ?? result.error.message);
+      status.textContent = `Sample analysis: ${result.data.summary}`;
+      container.appendChild(
+        createButton('Return to current page', 'primary', () =>
+          container.dispatchEvent(new CustomEvent('goodman-provider-ready', { bubbles: true }))
+        )
+      );
+    })()
+      .catch((error) => {
+        status.textContent = String(error);
+      })
+      .finally(() => {
+        sample.disabled = false;
+      });
+  });
+  appendChildren(
+    container,
+    test,
+    createElement(
+      'p',
+      'tc-option-copy',
+      'The sample sends only example text to this provider and may incur a small usage charge.'
+    ),
+    sample,
+    status
+  );
 }
 
-function createApiKeyField(
-  providerName: ProviderName,
-  draftConfig: ProviderConfig
-): HTMLElement {
+function createApiKeyField(providerName: ProviderName, draftConfig: ProviderConfig): HTMLElement {
   const field = createElement('div', 'tc-field');
   const inputId = `tc-apikey-${providerName}`;
   const label = createFieldLabel('API Key', inputId);
@@ -170,7 +209,13 @@ function createApiKeyField(
     inputId
   );
   input.style.flex = '1 1 180px';
-  const debouncedSaveApiKey = debounce(() => void saveProviderConfig(providerName, draftConfig).catch(e => console.warn('[Goodman] save provider config failed:', e)), 400);
+  const debouncedSaveApiKey = debounce(
+    () =>
+      void saveProviderConfig(providerName, draftConfig).catch((e) =>
+        console.warn('[Goodman] save provider config failed:', e)
+      ),
+    400
+  );
   input.addEventListener('input', () => {
     draftConfig.apiKey = input.value;
     debouncedSaveApiKey();
@@ -179,20 +224,18 @@ function createApiKeyField(
   const showButton = createButton('Show', 'secondary', () => {
     input.type = input.type === 'password' ? 'text' : 'password';
     showButton.textContent = input.type === 'password' ? 'Show' : 'Hide';
-    showButton.setAttribute('aria-label', `${input.type === 'password' ? 'Show' : 'Hide'} ${providerName} API key`);
+    showButton.setAttribute(
+      'aria-label',
+      `${input.type === 'password' ? 'Show' : 'Hide'} ${providerName} API key`
+    );
     showButton.setAttribute('aria-pressed', String(input.type !== 'password'));
   });
   showButton.setAttribute('aria-controls', inputId);
   showButton.setAttribute('aria-label', `Show ${providerName} API key`);
   showButton.setAttribute('aria-pressed', 'false');
 
-  const testButton = createButton('Test', 'secondary', () => {
-    void runProviderValidation(providerName, testButton).catch(e => console.warn('[Goodman] provider validation failed:', e));
-  });
-  testButton.setAttribute('aria-label', `Test ${providerName} provider connection`);
-
   appendChildren(field, label);
-  appendChildren(controls, input, showButton, testButton);
+  appendChildren(controls, input, showButton);
   field.appendChild(controls);
   return field;
 }
@@ -206,7 +249,13 @@ function createBaseUrlField(
   const inputId = `tc-baseurl-${providerName}`;
   const label = createFieldLabel('Base URL', inputId);
   const input = createInput('text', placeholder, draftConfig.baseUrl ?? '', inputId);
-  const debouncedSaveBaseUrl = debounce(() => void saveProviderConfig(providerName, draftConfig).catch(e => console.warn('[Goodman] save provider config failed:', e)), 400);
+  const debouncedSaveBaseUrl = debounce(
+    () =>
+      void saveProviderConfig(providerName, draftConfig).catch((e) =>
+        console.warn('[Goodman] save provider config failed:', e)
+      ),
+    400
+  );
   input.addEventListener('input', () => {
     draftConfig.baseUrl = input.value;
     debouncedSaveBaseUrl();
@@ -216,15 +265,18 @@ function createBaseUrlField(
   return field;
 }
 
-function createModelField(
-  providerName: ProviderName,
-  draftConfig: ProviderConfig
-): HTMLElement {
+function createModelField(providerName: ProviderName, draftConfig: ProviderConfig): HTMLElement {
   const field = createElement('div', 'tc-field');
   const inputId = `tc-model-${providerName}`;
   const label = createFieldLabel('Model', inputId);
   const input = createInput('text', 'Model name', draftConfig.model, inputId);
-  const debouncedSaveModel = debounce(() => void saveProviderConfig(providerName, draftConfig).catch(e => console.warn('[Goodman] save provider config failed:', e)), 400);
+  const debouncedSaveModel = debounce(
+    () =>
+      void saveProviderConfig(providerName, draftConfig).catch((e) =>
+        console.warn('[Goodman] save provider config failed:', e)
+      ),
+    400
+  );
   input.addEventListener('input', () => {
     draftConfig.model = input.value;
     debouncedSaveModel();
@@ -236,33 +288,37 @@ function createModelField(
 
 async function runProviderValidation(
   providerName: ProviderName,
-  button: HTMLButtonElement
+  button: HTMLButtonElement,
+  draftConfig?: ProviderConfig
 ): Promise<void> {
   button.textContent = 'Testing...';
   button.setAttribute('aria-label', `Testing ${providerName} provider connection`);
   button.disabled = true;
 
   try {
+    if (draftConfig) await saveProviderConfig(providerName, draftConfig);
     const valid = await validateProvider(providerName);
     button.textContent = valid ? 'Valid' : 'Invalid — check key';
-    button.setAttribute('aria-label', `${providerName} provider connection ${valid ? 'valid' : 'invalid'}`);
+    button.setAttribute(
+      'aria-label',
+      `${providerName} provider connection ${valid ? 'valid' : 'invalid'}`
+    );
     button.style.color = valid ? '#3f8f63' : '#b54745';
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'Unknown error';
-    const statusLabel = msg.includes('fetch') || msg.includes('network')
-      ? 'Unreachable'
-      : 'Error';
+    const statusLabel = msg.includes('fetch') || msg.includes('network') ? 'Unreachable' : 'Error';
     button.textContent = statusLabel;
-    button.setAttribute('aria-label', `${providerName} provider connection ${statusLabel.toLowerCase()}`);
+    button.setAttribute(
+      'aria-label',
+      `${providerName} provider connection ${statusLabel.toLowerCase()}`
+    );
     button.style.color = '#b54745';
   }
 
   button.disabled = false;
 }
 
-async function saveActiveProvider(
-  name: ProviderName
-): Promise<Settings | null> {
+async function saveActiveProvider(name: ProviderName): Promise<Settings | null> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return null;
 
@@ -276,10 +332,7 @@ async function saveActiveProvider(
   return nextSettings;
 }
 
-async function saveProviderConfig(
-  name: ProviderName,
-  config: ProviderConfig
-): Promise<void> {
+async function saveProviderConfig(name: ProviderName, config: ProviderConfig): Promise<void> {
   const settingsResult = await getStorage('settings');
   if (!settingsResult.ok) return;
 
@@ -288,7 +341,8 @@ async function saveProviderConfig(
     [name]: config,
   };
 
-  await setStorage('settings', { ...settingsResult.data, providers });
+  const saved = await setStorage('settings', { ...settingsResult.data, providers });
+  if (!saved.ok) throw saved.error;
 }
 
 function isVisibleProvider(name: Settings['activeProvider']): name is ProviderName {

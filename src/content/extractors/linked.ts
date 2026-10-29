@@ -7,6 +7,8 @@ import { decodeLegalDocument, fetchLegalDocument, type LegalDocument } from './f
 export interface LinkedTextResult {
   text: string;
   relatedLinks: RelatedLink[];
+  language?: string;
+  title?: string;
 }
 
 export interface RelatedLink {
@@ -26,20 +28,18 @@ export async function extractLinkedText(
     const html = decodeLegalDocument(resource);
     if (mime === 'text/plain')
       return ok({ text: normalizeExtractedText(html).text, relatedLinks: [] });
-    const text = extractMainContent(html);
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    const relatedLinks = extractRelatedLinks(doc, resource.url);
+    const title = doc.title.trim() || doc.querySelector('h1')?.textContent?.trim() || '';
+    const text = extractMainContent(doc);
     const normalized = normalizeExtractedText(text);
-    const relatedLinks = extractRelatedLinks(html, resource.url);
-
-    return ok({ text: normalized.text, relatedLinks });
+    return ok({ text: normalized.text, relatedLinks, language: doc.documentElement.lang, title });
   } catch (e) {
     return err(e instanceof Error ? e : new Error(String(e)));
   }
 }
 
-function extractMainContent(html: string): string {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-
+function extractMainContent(doc: Document): string {
   const selectors = ['main', 'article', '[role="main"]', 'body'];
   for (const selector of selectors) {
     const el = doc.querySelector(selector);
@@ -78,9 +78,7 @@ function removeNonContentElements(el: Element): void {
   }
 }
 
-function extractRelatedLinks(html: string, baseUrl: string): RelatedLink[] {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
+function extractRelatedLinks(doc: Document, baseUrl: string): RelatedLink[] {
   const links: RelatedLink[] = [];
   const legalPatterns = /privacy|terms|legal|eula|tos|policy|conditions/i;
 

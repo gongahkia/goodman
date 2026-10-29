@@ -1,5 +1,6 @@
 export function getOverlayStyles(): string {
   return `
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
     :host {
       all: initial;
     }
@@ -126,8 +127,8 @@ export function getOverlayStyles(): string {
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 32px;
-      height: 32px;
+      width: 40px;
+      height: 40px;
       border-radius: 10px;
       border: 1px solid transparent;
       background: transparent;

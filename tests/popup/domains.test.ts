@@ -25,9 +25,11 @@ describe('domain settings', () => {
     expect(container.textContent).toContain('Per-domain preferences');
     expect(container.textContent).toContain('spotify.com');
     expect(container.textContent).toContain('Arbitration');
-    expect(container.querySelector('select')?.getAttribute('aria-label')).toBe(
-      'spotify.com notification threshold'
-    );
+    expect(
+      container
+        .querySelector('select[aria-label="spotify.com notification threshold"]')
+        ?.getAttribute('aria-label')
+    ).toBe('spotify.com notification threshold');
   });
 
   it('saves watched clause and summary language overrides', async () => {

@@ -1,6 +1,18 @@
 import type { Result } from './result';
 import type { ClauseTaxonomyWeights } from './clause-taxonomy';
 import type { AnalysisSourceType, DetectionType, PageAnalysisRecord } from './page-analysis';
+import type { AgreementDocument } from './documents';
+
+export type AnalysisMode = 'detect_only' | 'ask' | 'automatic';
+export interface ManualAnalysisInput {
+  text?: string;
+  url?: string;
+  useSelection?: boolean;
+}
+export interface ManualAnalysisMessage {
+  type: 'MANUAL_ANALYSIS';
+  payload: ManualAnalysisInput;
+}
 
 export interface DetectTCMessage {
   type: 'DETECT_TC';
@@ -78,6 +90,9 @@ export interface SavePageAnalysisMessage {
 export interface ProcessPageAnalysisMessage {
   type: 'PROCESS_PAGE_ANALYSIS';
   payload: {
+    document?: AgreementDocument;
+    availableDocuments?: AgreementDocument[];
+    userInitiated?: boolean;
     text: string;
     provider: string;
     url: string;
@@ -99,6 +114,7 @@ export interface SetTextRetentionMessage {
 }
 
 export type Message =
+  | ManualAnalysisMessage
   | DetectTCMessage
   | CancelTCMessage
   | ExtractTextMessage
@@ -118,6 +134,7 @@ export type Message =
 export type MessageType = Message['type'];
 
 export interface Settings {
+  analysisMode: AnalysisMode;
   activeProvider: 'openai' | 'claude' | 'gemini' | 'ollama' | 'custom' | 'fixture';
   providers: Record<string, ProviderConfig>;
   detectionSensitivity: 'aggressive' | 'normal' | 'conservative';

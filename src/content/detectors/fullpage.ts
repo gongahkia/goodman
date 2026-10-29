@@ -3,13 +3,37 @@ import type { DetectedElement } from './checkbox';
 
 const LEGAL_KEYWORDS = [
   ...LEGAL_PHRASES,
-  'terms', 'conditions', 'privacy', 'policy', 'agreement', 'license',
-  'consent', 'liability', 'indemnify', 'arbitration', 'governing law',
-  'warranty', 'disclaimer', 'intellectual property', 'termination',
-  'confidential', 'jurisdiction', 'binding', 'waiver', 'compliance',
+  'terms',
+  'conditions',
+  'privacy',
+  'policy',
+  'agreement',
+  'license',
+  'consent',
+  'liability',
+  'indemnify',
+  'arbitration',
+  'governing law',
+  'warranty',
+  'disclaimer',
+  'intellectual property',
+  'termination',
+  'confidential',
+  'jurisdiction',
+  'binding',
+  'waiver',
+  'compliance',
 ];
 
-const LEGAL_PATH_SEGMENTS = ['/terms', '/tos', '/legal', '/privacy', '/eula', '/conditions', '/agreement'];
+const LEGAL_PATH_SEGMENTS = [
+  '/terms',
+  '/tos',
+  '/legal',
+  '/privacy',
+  '/eula',
+  '/conditions',
+  '/agreement',
+];
 
 const KEYWORD_DENSITY_THRESHOLD = 0.02;
 const MIN_TEXT_LENGTH = 2000;
@@ -47,7 +71,10 @@ export function detectFullPageTC(root: Element): DetectedElement | null {
 }
 
 function computeKeywordDensity(text: string): number {
-  const words = text.toLowerCase().split(/\s+/).filter((w) => w.length > 0);
+  const words = text
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w.length > 0);
   if (words.length === 0) return 0;
 
   let keywordCount = 0;

@@ -165,10 +165,7 @@ function findAssociatedLabel(checkbox: HTMLElement): HTMLElement | null {
   return parent as HTMLLabelElement | null;
 }
 
-function getCheckboxEvaluationRoot(
-  checkbox: HTMLElement,
-  label: HTMLElement | null
-): HTMLElement {
+function getCheckboxEvaluationRoot(checkbox: HTMLElement, label: HTMLElement | null): HTMLElement {
   const labeledParent = checkbox.closest('label');
   if (labeledParent instanceof HTMLElement) return labeledParent;
   if (checkbox.parentElement) return checkbox.parentElement;
@@ -198,7 +195,9 @@ function findNearestLink(el: Element): string | null {
 
 function findLinksWithinDistance(checkbox: HTMLElement, maxDistance: number): HTMLAnchorElement[] {
   const rect = checkbox.getBoundingClientRect();
-  const links = (checkbox.closest('form') ?? checkbox.getRootNode() as Document | ShadowRoot).querySelectorAll('a[href]');
+  const links = (
+    checkbox.closest('form') ?? (checkbox.getRootNode() as Document | ShadowRoot)
+  ).querySelectorAll('a[href]');
   const nearby: HTMLAnchorElement[] = [];
 
   for (const link of links) {
@@ -235,7 +234,10 @@ function looksLikeMarketingOptIn(text: string, nearestLink: string | null): bool
 }
 
 function countMatches(text: string, keywords: string[]): number {
-  return [...new Set(keywords)].reduce((count, keyword) => count + (text.includes(keyword) ? 1 : 0), 0);
+  return [...new Set(keywords)].reduce(
+    (count, keyword) => count + (text.includes(keyword) ? 1 : 0),
+    0
+  );
 }
 
 function isLegalLink(link: HTMLAnchorElement): boolean {

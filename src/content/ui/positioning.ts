@@ -8,6 +8,13 @@ export function positionOverlay(
   anchor: HTMLElement,
   surface = overlay
 ): () => void {
+  // Capture a bounded set once. Scrolling never queries/measures every control on the page.
+  const scope = anchor.closest('form,[role="dialog"],section') ?? document.body;
+  const controlsToAvoid = [
+    ...scope.querySelectorAll(
+      'input:not([type="hidden"]),textarea,select,button,a[href],[role="button"]'
+    ),
+  ].slice(0, 100);
   const reposition = (): void => {
     const anchorRect = anchor.getBoundingClientRect();
     const viewportWidth = window.innerWidth;
@@ -20,13 +27,12 @@ export function positionOverlay(
     const right = Math.max(VIEWPORT_MARGIN, viewportWidth - effectiveWidth - VIEWPORT_MARGIN);
     const bottom = Math.max(VIEWPORT_MARGIN, viewportHeight - effectiveHeight - VIEWPORT_MARGIN);
     const nearTop = Math.max(VIEWPORT_MARGIN, Math.min(bottom, anchorRect.top));
-    const controls = Array.from(
-      document.querySelectorAll(
-        'input:not([type="hidden"]),textarea,select,button,a[href],[role="button"]'
-      )
-    )
+    const controls = controlsToAvoid
+      .filter((element) => element.isConnected)
       .map((element) => element.getBoundingClientRect())
-      .filter((box) => box.width > 0 && box.height > 0);
+      .filter(
+        (box) => box.width > 0 && box.height > 0 && box.bottom > 0 && box.top < viewportHeight
+      );
     const candidates = [
       [right, nearTop],
       [VIEWPORT_MARGIN, nearTop],

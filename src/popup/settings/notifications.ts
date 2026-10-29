@@ -16,7 +16,7 @@ export async function renderNotificationSettings(container: HTMLElement): Promis
   container.appendChild(
     createSectionHeading(
       'Notification settings',
-      'Choose when Goodman should surface stored terms changes for domains you revisit.'
+      'Check for changes when you visit and analyze an agreement. Goodman does not periodically revisit websites in the background.'
     )
   );
 

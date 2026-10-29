@@ -85,7 +85,7 @@
         font-family: var(--tc-font); font-size: 13px; line-height: 1.45;
         color: var(--tc-text); background: var(--tc-bg); overflow-y: auto;
       }
-      body, button, input, select, textarea { font-family: inherit; }
+      button, input, select, textarea { font-family: inherit; }
       button, input, select, textarea { outline: none; }
       button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible, [role="button"]:focus-visible {
         box-shadow: 0 0 0 3px var(--tc-focus-ring);
@@ -175,7 +175,7 @@
       .tc-action-bar .tc-button { flex: 1; }
       .tc-icon-btn {
         display: inline-flex; align-items: center; justify-content: center;
-        width: 34px; height: 34px; flex-shrink: 0; border: 1px solid var(--tc-border);
+        width: 40px; height: 40px; flex-shrink: 0; border: 1px solid var(--tc-border);
         border-radius: var(--tc-radius-md); background: var(--tc-surface);
         color: var(--tc-text-secondary); cursor: pointer; transition: background var(--tc-transition), color var(--tc-transition);
       }
@@ -424,7 +424,7 @@
       }
       .tc-workspace-nav-label:first-child { margin-top: 0; }
       .tc-workspace-nav-button, .tc-workspace-domain-button {
-        display: flex; align-items: center; gap: 8px; width: 100%; min-height: 32px; padding: 6px 8px;
+        display: flex; align-items: center; gap: 8px; width: 100%; min-height: 40px; padding: 6px 8px;
         border: 0; border-radius: 6px; background: transparent; color: #ddd8ce; font: inherit; font-size: 12px;
         text-align: left; cursor: pointer;
       }
@@ -478,6 +478,60 @@
       }
       .tc-attribution a { color: var(--tc-text-secondary); text-decoration: underline; text-underline-offset: 2px; }
       .tc-attribution a:hover { color: var(--tc-text); }
+      .tc-source-picker,
+      .tc-manual-analysis {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        padding: 12px;
+        border: 1px solid var(--tc-border);
+        border-radius: 9px;
+      }
+      .tc-manual-analysis:not([open]) > :not(summary) {
+        display: none;
+      }
+      .tc-manual-analysis summary {
+        cursor: pointer;
+        min-height: 32px;
+        padding: 6px 0;
+        font-weight: 600;
+      }
+      .tc-source-link {
+        color: var(--tc-accent);
+        overflow-wrap: anywhere;
+      }
+      .tc-concern-count {
+        font-size: 18px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .tc-action-bar {
+        flex-wrap: wrap;
+      }
+      .tc-progress-percent,
+      .tc-log-time {
+        font-variant-numeric: tabular-nums;
+      }
+      body {
+        -webkit-font-smoothing: antialiased;
+      }
+      h1,
+      h2,
+      h3 {
+        text-wrap: balance;
+      }
+      .tc-state-copy,
+      .tc-summary-copy {
+        text-wrap: pretty;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+          animation: none !important;
+          transition: none !important;
+        }
+      }
     </style>
   </head>
   <body>

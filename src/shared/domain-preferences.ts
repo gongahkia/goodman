@@ -13,6 +13,7 @@ export type WatchClauseId =
 export type NotificationThreshold = 'any' | 'material' | 'red_flag_only';
 
 export interface DomainPreferences {
+  analysisMode?: 'inherit' | 'detect_only' | 'ask' | 'automatic';
   watchClauses: WatchClauseId[];
   notificationThreshold: NotificationThreshold;
   summaryLanguage: string;
@@ -27,6 +28,7 @@ export interface WatchClauseOption {
 }
 
 export const DEFAULT_DOMAIN_PREFERENCES: DomainPreferences = {
+  analysisMode: 'inherit',
   watchClauses: [],
   notificationThreshold: 'any',
   summaryLanguage: '',
@@ -55,7 +57,12 @@ export const WATCH_CLAUSE_OPTIONS: WatchClauseOption[] = [
   {
     id: 'data_share',
     label: 'Data sharing',
-    providerCategories: ['data_selling', 'third_party_sharing', 'ai_training', 'government_disclosure'],
+    providerCategories: [
+      'data_selling',
+      'third_party_sharing',
+      'ai_training',
+      'government_disclosure',
+    ],
     keywords: ['data', 'third party', 'share', 'sell', 'training'],
   },
   {
@@ -96,7 +103,7 @@ export const WATCH_CLAUSE_OPTIONS: WatchClauseOption[] = [
   },
 ];
 
-const WATCH_CLAUSE_IDS = new Set(WATCH_CLAUSE_OPTIONS.map(option => option.id));
+const WATCH_CLAUSE_IDS = new Set(WATCH_CLAUSE_OPTIONS.map((option) => option.id));
 const THRESHOLDS = new Set<NotificationThreshold>(['any', 'material', 'red_flag_only']);
 const MAX_IGNORE_PATTERNS = 10;
 const MAX_LANGUAGE_LENGTH = 40;
@@ -106,6 +113,9 @@ export function normalizeDomainPreferences(value: unknown): DomainPreferences {
   if (!value || typeof value !== 'object') return { ...DEFAULT_DOMAIN_PREFERENCES };
   const input = value as Record<string, unknown>;
   return {
+    analysisMode: ['detect_only', 'ask', 'automatic'].includes(String(input['analysisMode']))
+      ? (input['analysisMode'] as DomainPreferences['analysisMode'])
+      : 'inherit',
     watchClauses: normalizeWatchClauses(input['watchClauses']),
     notificationThreshold: normalizeThreshold(input['notificationThreshold']),
     summaryLanguage: normalizeSummaryLanguage(input['summaryLanguage']),
@@ -121,28 +131,34 @@ export function matchesWatchedClause(
   if (watchClauses.length === 0) return true;
   const normalizedCategory = normalizeToken(category);
   const normalizedText = text.toLowerCase();
-  const canonical = WATCH_CLAUSE_OPTIONS.find(option => option.providerCategories.some(item => normalizeToken(item) === normalizedCategory));
+  const canonical = WATCH_CLAUSE_OPTIONS.find((option) =>
+    option.providerCategories.some((item) => normalizeToken(item) === normalizedCategory)
+  );
   if (canonical) return watchClauses.includes(canonical.id);
-  return watchClauses.some(id => {
-    const option = WATCH_CLAUSE_OPTIONS.find(item => item.id === id);
+  return watchClauses.some((id) => {
+    const option = WATCH_CLAUSE_OPTIONS.find((item) => item.id === id);
     if (!option) return false;
-    if (option.providerCategories.some(item => normalizeToken(item) === normalizedCategory)) return true;
-    return option.keywords.some(keyword => normalizedText.includes(keyword));
+    if (option.providerCategories.some((item) => normalizeToken(item) === normalizedCategory))
+      return true;
+    return option.keywords.some((keyword) => normalizedText.includes(keyword));
   });
 }
 
 function normalizeWatchClauses(value: unknown): WatchClauseId[] {
   if (!Array.isArray(value)) return [];
-  return Array.from(new Set(
-    value.filter((item): item is WatchClauseId =>
-      typeof item === 'string' && WATCH_CLAUSE_IDS.has(item as WatchClauseId)
+  return Array.from(
+    new Set(
+      value.filter(
+        (item): item is WatchClauseId =>
+          typeof item === 'string' && WATCH_CLAUSE_IDS.has(item as WatchClauseId)
+      )
     )
-  ));
+  );
 }
 
 function normalizeThreshold(value: unknown): NotificationThreshold {
   return typeof value === 'string' && THRESHOLDS.has(value as NotificationThreshold)
-    ? value as NotificationThreshold
+    ? (value as NotificationThreshold)
     : DEFAULT_DOMAIN_PREFERENCES.notificationThreshold;
 }
 
@@ -155,11 +171,14 @@ function normalizeIgnorePatterns(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is string => typeof item === 'string')
-    .map(item => item.trim().slice(0, MAX_PATTERN_LENGTH))
+    .map((item) => item.trim().slice(0, MAX_PATTERN_LENGTH))
     .filter(Boolean)
     .slice(0, MAX_IGNORE_PATTERNS);
 }
 
 function normalizeToken(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
 }

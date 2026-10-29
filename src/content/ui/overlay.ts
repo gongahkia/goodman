@@ -1,3 +1,4 @@
+import { sourceQuoteUrl, type AgreementDocument } from '@shared/documents';
 import type { ScoredDetection } from '@content/detectors/scoring';
 import type { Summary } from '@providers/types';
 import { positionOverlay } from './positioning';
@@ -12,7 +13,8 @@ let positionCleanup: (() => void) | null = null;
 export function createOverlay(
   detection: ScoredDetection,
   summary: Summary,
-  themePreference: 'auto' | 'light' | 'dark'
+  themePreference: 'auto' | 'light' | 'dark',
+  sourceDocument?: AgreementDocument
 ): HTMLElement {
   removeOverlay();
   cachedSummary = summary;
@@ -43,7 +45,7 @@ export function createOverlay(
   }
 
   if (summary.redFlags.length > 0) {
-    container.appendChild(createRedFlags(summary.redFlags));
+    container.appendChild(createRedFlags(summary.redFlags, sourceDocument));
   }
 
   container.appendChild(createOverlayFooter());
@@ -53,7 +55,6 @@ export function createOverlay(
   positionCleanup = positionOverlay(host, detection.element, container);
   currentOverlay = host;
   document.addEventListener('keydown', handleEscape);
-  showSaulToast();
 
   return host;
 }
@@ -175,7 +176,8 @@ function createKeyPoints(points: string[]): HTMLElement {
 }
 
 function createRedFlags(
-  flags: Array<{ category: string; description: string; severity: string; quote: string }>
+  flags: Array<{ category: string; description: string; severity: string; quote: string }>,
+  sourceDocument?: AgreementDocument
 ): HTMLElement {
   const section = document.createElement('section');
   section.className = 'goodman-section';
@@ -224,8 +226,25 @@ function createRedFlags(
       quote.className = 'goodman-flag-quote';
       quote.textContent = flag.quote;
       details.appendChild(quote);
+      if (sourceDocument) {
+        const link = document.createElement('a');
+        link.href = sourceQuoteUrl(sourceDocument, flag.quote);
+        link.textContent = 'View original clause';
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.style.color = 'inherit';
+        link.addEventListener('click', (event) => event.stopPropagation());
+        details.appendChild(link);
+      }
     }
 
+    details.hidden = true;
+    if (!flag.quote) {
+      const note = document.createElement('p');
+      note.textContent =
+        'No verified quotation available. Check the original before relying on this finding.';
+      details.appendChild(note);
+    }
     card.appendChild(details);
 
     card.addEventListener('click', () => toggleCard(card, details));
@@ -245,7 +264,8 @@ function createRedFlags(
 function toggleCard(card: HTMLElement, details: HTMLElement): void {
   const expanded = card.getAttribute('aria-expanded') === 'true';
   card.setAttribute('aria-expanded', String(!expanded));
-  details.style.maxHeight = expanded ? '0' : '320px';
+  details.hidden = expanded;
+  details.style.maxHeight = expanded ? '0' : 'none';
 }
 
 function createOverlayFooter(): HTMLElement {
@@ -279,7 +299,15 @@ function handleCopy(): void {
       );
     }
   }
-  navigator.clipboard.writeText(lines.join('\n')).catch(() => {}); // silent fail if clipboard unavailable
+  const button = currentShadow?.querySelector<HTMLButtonElement>('.goodman-copy-btn');
+  void navigator.clipboard
+    .writeText(lines.join('\n'))
+    .then(() => {
+      if (button) button.textContent = 'Copied';
+    })
+    .catch(() => {
+      if (button) button.textContent = 'Copy failed — try again';
+    });
 }
 
 function normalizeSeverity(value: string): 'low' | 'medium' | 'high' | 'critical' {
@@ -299,62 +327,33 @@ function handleDismiss(): void {
   }
 }
 
-function showSaulToast(): void {
-  const existing = document.getElementById('goodman-saul-toast');
-  if (existing) existing.remove();
-  const toast = document.createElement('div');
-  toast.id = 'goodman-saul-toast';
-  const imgUrl = chrome.runtime?.getURL?.('icons/saul.png') ?? '';
-  if (!imgUrl) return;
-  toast.style.cssText = [
-    'position:fixed',
-    'bottom:24px',
-    'right:24px',
-    'z-index:2147483646',
-    'display:flex',
-    'align-items:center',
-    'gap:12px',
-    'padding:12px 18px',
-    'border-radius:16px',
-    'background:#fffbf5',
-    'border:1px solid #e6ddd0',
-    'box-shadow:0 12px 40px rgba(0,0,0,0.15)',
-    'font-family:ui-sans-serif,-apple-system,sans-serif',
-    'font-size:14px',
-    'color:#2c2c2c',
-    'animation:goodman-saul-in 400ms cubic-bezier(0.16,1,0.3,1)',
-    'cursor:pointer',
-  ].join(';');
-  const img = document.createElement('img');
-  img.src = imgUrl;
-  img.alt = 'Saul Goodman';
-  img.style.cssText = 'width:48px;height:48px;border-radius:10px;object-fit:cover';
-  const textWrap = document.createElement('div');
-  const text = document.createElement('span');
-  text.textContent = 'Better call Goodman!';
-  text.style.fontWeight = '600';
-  const subtitle = document.createElement('span');
-  subtitle.textContent = 'T&C summary ready';
-  subtitle.style.cssText = 'font-weight:400;font-size:12px;color:#8a8580;display:block';
-  textWrap.appendChild(text);
-  textWrap.appendChild(subtitle);
-  toast.appendChild(img);
-  toast.appendChild(textWrap);
+let chipHost: HTMLElement | null = null;
+let chipCleanup: (() => void) | null = null;
+export function removeSummaryChip(): void {
+  chipCleanup?.();
+  chipCleanup = null;
+  chipHost?.remove();
+  chipHost = null;
+}
+export function createSummaryChip(
+  detection: ScoredDetection,
+  label: string,
+  open: () => void
+): void {
+  removeSummaryChip();
+  const host = document.createElement('div');
+  host.id = 'goodman-summary-chip';
+  host.style.cssText = 'position:fixed;z-index:2147483645;pointer-events:none';
+  const shadow = host.attachShadow({ mode: 'open' });
   const style = document.createElement('style');
-  style.textContent = `
-    @keyframes goodman-saul-in { from { opacity:0; transform:translateY(20px) scale(0.95); } to { opacity:1; transform:translateY(0) scale(1); } }
-    @keyframes goodman-saul-out { from { opacity:1; transform:translateY(0); } to { opacity:0; transform:translateY(10px); } }
-  `;
-  document.head.appendChild(style);
-  document.body.appendChild(toast);
-  toast.addEventListener('click', () => {
-    toast.style.animation = 'goodman-saul-out 200ms ease forwards';
-    setTimeout(() => toast.remove(), 200);
-  });
-  setTimeout(() => {
-    if (toast.parentNode) {
-      toast.style.animation = 'goodman-saul-out 300ms ease forwards';
-      setTimeout(() => toast.remove(), 300);
-    }
-  }, 4000);
+  style.textContent =
+    ':host{all:initial}button{font:13px/1.4 system-ui,sans-serif;color:#30261b;background:#fffaf1;border:1px solid #cbbfa9;border-radius:20px;min-height:40px;padding:8px 14px;cursor:pointer;pointer-events:auto;box-shadow:0 2px 8px #0002;max-width:calc(100vw - 24px)}button:hover{background:#f0e8d8}button:focus-visible{outline:3px solid #976129;outline-offset:2px}';
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.textContent = `Goodman · ${label}`;
+  button.addEventListener('click', open);
+  shadow.append(style, button);
+  document.body.append(host);
+  chipHost = host;
+  chipCleanup = positionOverlay(host, detection.element, button);
 }

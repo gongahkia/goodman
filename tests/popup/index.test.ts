@@ -80,7 +80,10 @@ describe('popup index', () => {
       listener({ versionHistory: {} }, 'local');
       await vi.advanceTimersByTimeAsync(400);
       expect(vi.mocked(renderHistoryPanel).mock.calls.length).toBeGreaterThan(initialRenders);
-    } finally { vi.useRealTimers(); Reflect.deleteProperty(chrome.storage, 'onChanged'); }
+    } finally {
+      vi.useRealTimers();
+      Reflect.deleteProperty(chrome.storage, 'onChanged');
+    }
   });
   beforeEach(() => {
     window.history.replaceState({}, '', '/');
@@ -88,9 +91,7 @@ describe('popup index', () => {
     Object.keys(mockStorage).forEach((key) => delete mockStorage[key]);
     mockStorage.onboardingCompleted = true;
     vi.clearAllMocks();
-    chrome.tabs.query.mockResolvedValue([
-      { id: 7, url: 'https://example.com/checkout' },
-    ]);
+    chrome.tabs.query.mockResolvedValue([{ id: 7, url: 'https://example.com/checkout' }]);
   });
 
   it('renders persisted ready analysis on load', async () => {
@@ -102,9 +103,7 @@ describe('popup index', () => {
     document.dispatchEvent(new Event('DOMContentLoaded'));
     await flush();
 
-    expect(document.body.textContent).toContain(
-      'This page asks you to agree to terms.'
-    );
+    expect(document.body.textContent).toContain('This page asks you to agree to terms.');
     expect(document.body.textContent).toContain('inline');
     expect(document.body.textContent).toContain('Open Workspace');
   });
@@ -120,7 +119,9 @@ describe('popup index', () => {
 
     expect(document.body.textContent).toContain('Risk labels are flags, not legal advice.');
     expect(document.body.textContent).toContain('Arbitration');
-    expect(document.querySelector('.tc-flag-preview-row')?.getAttribute('title')).toContain('arbitration');
+    expect(document.querySelector('.tc-flag-preview-row')?.getAttribute('title')).toContain(
+      'arbitration'
+    );
   });
 
   it('opens a persistent workspace from the action bar', async () => {
@@ -333,10 +334,14 @@ describe('popup index', () => {
     cancelButton?.click();
     await flush();
 
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
-      type: 'CANCEL_TC',
-      payload: { tabId: 7, expectedUrl: 'https://example.com/checkout' },
-    });
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      {
+        type: 'CANCEL_TC',
+        payload: { tabId: 7, expectedUrl: 'https://example.com/checkout' },
+      },
+      { frameId: 0 }
+    );
     expect(chrome.runtime.sendMessage).toHaveBeenCalledWith({
       type: 'CANCEL_PAGE_ANALYSIS',
       payload: { tabId: 7, expectedUrl: 'https://example.com/checkout' },
@@ -370,13 +375,15 @@ describe('popup index', () => {
     analyzeButton?.click();
     await flush();
 
-    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(7, {
-      type: 'DETECT_TC',
-      payload: { tabId: 7 },
-    });
-    expect(document.body.textContent).toContain(
-      'This page asks you to agree to terms.'
+    expect(chrome.tabs.sendMessage).toHaveBeenCalledWith(
+      7,
+      {
+        type: 'DETECT_TC',
+        payload: { tabId: 7 },
+      },
+      { frameId: 0 }
     );
+    expect(document.body.textContent).toContain('This page asks you to agree to terms.');
   });
 
   it('renders a current-domain notification banner', async () => {

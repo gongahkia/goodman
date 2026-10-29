@@ -1,14 +1,7 @@
-import {
-  appendChildren,
-  createButton,
-  createElement,
-} from '@popup/ui';
+import { appendChildren, createButton, createElement } from '@popup/ui';
 import { setStorage } from '@shared/storage';
 
-export function renderOnboarding(
-  container: HTMLElement,
-  onComplete: () => void
-): void {
+export function renderOnboarding(container: HTMLElement, onComplete: () => void): void {
   container.className = 'tc-page';
   container.textContent = '';
   renderStep1(container, onComplete);
@@ -40,13 +33,17 @@ function renderStep2(container: HTMLElement, onComplete: () => void): void {
   const copy = createElement(
     'p',
     'tc-state-copy',
-    'Goodman needs your own provider credentials or a local Ollama endpoint before it can analyze legal text.'
+    'Consent detection works locally without an account. For summaries, connect your own provider or local Ollama model, test a sample, then return to this page. Text is sent only when you choose analysis unless you enable automatic analysis.'
   );
 
   const actions = createElement('div', 'tc-state-actions');
-  actions.appendChild(createButton('Open Settings to Configure', 'primary', () => {
-    void completeOnboarding(onComplete).catch(e => console.warn('[Goodman] onboarding completion failed:', e));
-  }));
+  actions.appendChild(
+    createButton('Open Settings to Configure', 'primary', () => {
+      void completeOnboarding(onComplete).catch((e) =>
+        console.warn('[Goodman] onboarding completion failed:', e)
+      );
+    })
+  );
 
   appendChildren(card, kicker, title, copy, actions);
   container.appendChild(card);

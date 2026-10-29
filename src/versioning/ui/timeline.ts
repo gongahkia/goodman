@@ -35,8 +35,12 @@ export async function renderTimeline(
 
   for (let index = 0; index < reversed.length; index += 1) {
     const entry = reversed[index]!;
-    const isLatest = !reversed.slice(0, index).some(other => other.document?.id === entry.document?.id);
-    const prevEntry = reversed.slice(index + 1).find(other => other.document?.id === entry.document?.id);
+    const isLatest = !reversed
+      .slice(0, index)
+      .some((other) => other.document?.id === entry.document?.id);
+    const prevEntry = reversed
+      .slice(index + 1)
+      .find((other) => other.document?.id === entry.document?.id);
     container.appendChild(createTimelineItem(entry, prevEntry, isLatest, expandedEntries));
   }
 
@@ -49,7 +53,12 @@ function createTimelineItem(
   isLatest: boolean,
   expandedEntries: Set<string>
 ): HTMLElement {
-  const expansionKey = JSON.stringify([entry.domain, entry.document?.id, entry.version, entry.textHash]);
+  const expansionKey = JSON.stringify([
+    entry.domain,
+    entry.document?.id,
+    entry.version,
+    entry.textHash,
+  ]);
   const node = createElement('div', 'tc-timeline-item');
   const trigger = createElement('button', 'tc-timeline-trigger');
   trigger.type = 'button';
@@ -70,11 +79,25 @@ function createTimelineItem(
   );
 
   if (entry.document) {
-    const source = createElement('p', 'tc-timeline-annotation', `${entry.document.title} · ${new URL(entry.document.url).pathname}`);
+    const source = createElement(
+      'p',
+      'tc-timeline-annotation',
+      `${entry.document.title} · ${new URL(entry.document.url).pathname}`
+    );
     trigger.appendChild(source);
   }
-  if (!entry.document) trigger.appendChild(createElement('p', 'tc-timeline-annotation', 'Legacy record · original document unknown'));
-  if (entry.lastCheckedAt) trigger.appendChild(createElement('p', 'tc-timeline-annotation', `Last checked ${formatDate(entry.lastCheckedAt)}`));
+  if (!entry.document)
+    trigger.appendChild(
+      createElement('p', 'tc-timeline-annotation', 'Legacy record · original document unknown')
+    );
+  if (entry.lastCheckedAt)
+    trigger.appendChild(
+      createElement(
+        'p',
+        'tc-timeline-annotation',
+        `Last checked ${formatDate(entry.lastCheckedAt)}`
+      )
+    );
   const annotation = previousEntry
     ? createElement('p', 'tc-timeline-annotation', formatAnnotation(previousEntry, entry))
     : createElement('p', 'tc-timeline-annotation', 'First recorded version');
@@ -86,7 +109,9 @@ function createTimelineItem(
   details.appendChild(summaryText);
   if (entry.document) {
     const source = createElement('a', 'tc-button tc-button--secondary', 'View original agreement');
-    source.href = sourceQuoteUrl(entry.document, ''); source.target = '_blank'; source.rel = 'noopener noreferrer';
+    source.href = sourceQuoteUrl(entry.document, '');
+    source.target = '_blank';
+    source.rel = 'noopener noreferrer';
     details.appendChild(source);
   }
 

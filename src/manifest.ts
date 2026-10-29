@@ -7,13 +7,14 @@ const baseManifest = {
   name: 'Goodman',
   description: 'Automatically detect, summarize, and track Terms & Conditions changes',
   version: '1.0.0',
-  permissions: ['activeTab', 'storage', 'scripting', 'alarms'],
+  permissions: ['activeTab', 'storage', 'scripting', 'alarms', 'contextMenus'],
   host_permissions: ['<all_urls>'],
   content_scripts: [
     {
       matches: ['<all_urls>'],
       js: ['src/content/index.ts'],
       run_at: 'document_idle',
+      all_frames: true,
     },
   ],
   action: {
@@ -22,6 +23,12 @@ const baseManifest = {
       '16': 'icons/goodman-16.png',
       '48': 'icons/goodman-48.png',
       '128': 'icons/goodman-128.png',
+    },
+  },
+  commands: {
+    'review-agreement': {
+      suggested_key: { default: 'Alt+Shift+G' },
+      description: 'Review this page with Goodman',
     },
   },
   icons: {

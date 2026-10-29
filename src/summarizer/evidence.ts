@@ -5,7 +5,7 @@ import { computeSeverity } from './severity';
 export function groundSummary(summary: Summary, text: string): Summary {
   const normalize = (value: string): string => value.normalize('NFC').replace(/\s+/g, ' ').trim();
   const source = normalize(text);
-  const redFlags = summary.redFlags.map(flag => ({
+  const redFlags = summary.redFlags.map((flag) => ({
     ...flag,
     quote: flag.quote.trim() && source.includes(normalize(flag.quote)) ? flag.quote : '',
   }));

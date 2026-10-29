@@ -1,3 +1,6 @@
+import { isProviderConfigured } from '@shared/provider-config';
+import { sourceQuoteUrl } from '@shared/documents';
+import type { ManualAnalysisInput } from '@shared/messages';
 import type { Summary } from '@providers/types';
 import { renderOnboarding } from '@popup/onboarding';
 import { renderHistoryPanel } from '@popup/history';
@@ -29,14 +32,13 @@ import {
 } from '@popup/icons';
 import type { Settings } from '@shared/messages';
 import type { WorkspaceRoute } from '@shared/messages';
-import type {
-  PageAnalysisLogEntry,
-  PageAnalysisRecord,
-} from '@shared/page-analysis';
+import type { PageAnalysisLogEntry, PageAnalysisRecord } from '@shared/page-analysis';
 import { RED_FLAG_DESCRIPTIONS } from '@providers/prompts';
 import type { RedFlagCategory } from '@providers/types';
 import type { PendingNotification } from '@shared/storage';
 import {
+  getDomainPreferences,
+  setDomainPreferences,
   getPageAnalysisByUrl,
   getStorage,
   prunePageAnalysisState,
@@ -63,7 +65,15 @@ interface PopupState {
   analysisStartedAt: number | null;
 }
 
-const WORKSPACE_ROUTES = ['current', 'history', 'providers', 'detection', 'monitoring', 'data', 'diagnostics'] as const satisfies readonly WorkspaceRoute[];
+const WORKSPACE_ROUTES = [
+  'current',
+  'history',
+  'providers',
+  'detection',
+  'monitoring',
+  'data',
+  'diagnostics',
+] as const satisfies readonly WorkspaceRoute[];
 
 function getSurfaceMode(): 'popup' | 'workspace' {
   const params = new URLSearchParams(window.location.search);
@@ -89,7 +99,7 @@ function getInitialWorkspaceDomain(): string | undefined {
 }
 
 function isWorkspaceRoute(value: string | null): value is WorkspaceRoute {
-  return typeof value === 'string' && WORKSPACE_ROUTES.some(route => route === value);
+  return typeof value === 'string' && WORKSPACE_ROUTES.some((route) => route === value);
 }
 
 let workspaceRoute: WorkspaceRoute = getInitialWorkspaceRoute();
@@ -115,7 +125,9 @@ async function init(): Promise<void> {
   if (!app) return;
   const onboardingResult = await getStorage('onboardingCompleted');
   if (surfaceMode === 'popup' && onboardingResult.ok && !onboardingResult.data) {
-    renderOnboarding(app, () => void initMain(app));
+    renderOnboarding(app, () => {
+      void initMain(app).then(() => showSettings());
+    });
     return;
   }
   await initMain(app);
@@ -125,21 +137,43 @@ async function initMain(app: HTMLElement): Promise<void> {
   await refreshActiveTabContext();
   await refreshPopupState();
   render(app);
-  try { await chrome.action?.setBadgeText?.({ text: '' }); } catch (e) { console.warn('[Goodman] failed to clear badge text:', e); }
+  try {
+    await chrome.action?.setBadgeText?.({ text: '' });
+  } catch (e) {
+    console.warn('[Goodman] failed to clear badge text:', e);
+  }
   if (chrome.storage?.onChanged) {
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== 'local') return;
       const readingHistory = surfaceMode === 'workspace' && workspaceRoute === 'history';
-      if (readingHistory && 'pendingNotifications' in changes && !('versionHistory' in changes) && !('textRetention' in changes)) {
-        void refreshNotifications().catch(e => console.warn('[Goodman] notification refresh failed:', e));
+      // Settings own their drafts. Background analyses must never replace focused forms.
+      if (
+        surfaceMode === 'workspace' &&
+        !['current', 'history', 'diagnostics'].includes(workspaceRoute)
+      )
+        return;
+      if (
+        readingHistory &&
+        'pendingNotifications' in changes &&
+        !('versionHistory' in changes) &&
+        !('textRetention' in changes)
+      ) {
+        void refreshNotifications().catch((e) =>
+          console.warn('[Goodman] notification refresh failed:', e)
+        );
         return;
       }
-      if ((!readingHistory && 'pageAnalysis' in changes) || 'pendingNotifications' in changes ||
-          (readingHistory && ('versionHistory' in changes || 'textRetention' in changes))) {
+      if (
+        (!readingHistory && 'pageAnalysis' in changes) ||
+        'pendingNotifications' in changes ||
+        (readingHistory && ('versionHistory' in changes || 'textRetention' in changes))
+      ) {
         if (refreshTimer) clearTimeout(refreshTimer);
         refreshTimer = setTimeout(() => {
-          void refreshPopupState().then(() => renderCurrentApp()).catch(e => console.warn('[Goodman] popup state refresh failed:', e));
+          void refreshPopupState()
+            .then(() => renderCurrentApp())
+            .catch((e) => console.warn('[Goodman] popup state refresh failed:', e));
         }, 300);
       }
     });
@@ -156,7 +190,9 @@ function render(container: HTMLElement): void {
   container.className = 'tc-page';
   container.textContent = '';
   if (state.analysis?.status === 'ready' && state.analysis.summary) {
-    announceStatus(`Analysis complete: ${state.analysis.summary.severity} risk with ${state.analysis.summary.redFlags.length} red flags.`);
+    announceStatus(
+      `Analysis complete: ${state.analysis.summary.severity} risk with ${state.analysis.summary.redFlags.length} red flags.`
+    );
   }
   if (!state.loading && state.analysis?.status !== 'analyzing' && loadingInterval) {
     clearInterval(loadingInterval);
@@ -166,6 +202,8 @@ function render(container: HTMLElement): void {
     renderWorkspace(container);
   } else {
     renderPopup(container);
+    if (!state.loading && state.analysis?.status !== 'analyzing')
+      container.appendChild(createManualAnalysis());
   }
   container.appendChild(createAttribution());
 }
@@ -174,6 +212,8 @@ function render(container: HTMLElement): void {
 
 function renderPopup(container: HTMLElement): void {
   container.appendChild(createCompactHeader());
+  const sourcePicker = createDocumentPicker();
+  if (sourcePicker) container.appendChild(sourcePicker);
   const banner = createNotificationBanner();
   if (banner) container.appendChild(banner);
 
@@ -209,43 +249,53 @@ function renderPopup(container: HTMLElement): void {
       container.appendChild(createAnalyzingCard('Analyzing this page...'));
       break;
     case 'needs_provider':
-      container.appendChild(createCompactActionState(
-        iconSettings(28),
-        'Provider setup required',
-        state.analysis.error ?? 'Configure a provider in Settings.',
-        'Open Settings', showSettings
-      ));
+      container.appendChild(
+        createCompactActionState(
+          iconSettings(28),
+          'Provider setup required',
+          state.analysis.error ?? 'Configure a provider in Settings.',
+          'Open Settings',
+          showSettings
+        )
+      );
       break;
     case 'needs_consent':
-      container.appendChild(createCompactActionState(
-        iconSettings(28),
-        'Provider setup required',
-        state.analysis.error ?? 'Configure a provider in Settings.',
-        'Open Settings', showSettings
-      ));
+      container.appendChild(createConsentState());
       break;
     case 'service_unavailable':
-      container.appendChild(createCompactActionState(
-        iconAlertTriangle(28),
-        'Provider unavailable',
-        state.analysis.error ?? 'Try again shortly or switch providers.',
-        'Retry', handleAnalyze, 'Settings', showSettings
-      ));
+      container.appendChild(
+        createCompactActionState(
+          iconAlertTriangle(28),
+          'Provider unavailable',
+          state.analysis.error ?? 'Try again shortly or switch providers.',
+          'Retry',
+          handleAnalyze,
+          'Settings',
+          showSettings
+        )
+      );
       break;
     case 'extraction_failed':
-      container.appendChild(createCompactActionState(
-        iconAlertTriangle(28),
-        'Could not extract text',
-        state.analysis.error ?? 'Legal surface detected but text extraction failed.',
-        'Retry', handleAnalyze
-      ));
+      container.appendChild(
+        createCompactActionState(
+          iconAlertTriangle(28),
+          'Could not extract text',
+          state.analysis.error ?? 'Legal surface detected but text extraction failed.',
+          'Retry',
+          handleAnalyze
+        )
+      );
       break;
     case 'cancelled':
-      container.appendChild(createCompactActionState(
-        iconShield(28), 'Analysis cancelled',
-        'The analysis was stopped before it could finish.',
-        'Analyze Again', handleAnalyze
-      ));
+      container.appendChild(
+        createCompactActionState(
+          iconShield(28),
+          'Analysis cancelled',
+          'The analysis was stopped before it could finish.',
+          'Analyze Again',
+          handleAnalyze
+        )
+      );
       container.appendChild(createActionBar());
       break;
     case 'error':
@@ -283,20 +333,43 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
   const wrapper = createElement('div');
   // score hero
   const hero = createElement('div', 'tc-score-hero');
-  const riskScore = Math.min(100, summary.redFlags.reduce((s, f) => s + ({ high: 30, medium: 15, low: 5 }[f.severity] ?? 0), 0));
-  const riskBucket = riskScore >= 70 ? 'critical' : riskScore >= 40 ? 'high' : riskScore >= 15 ? 'medium' : 'low';
-  const scoreEl = createElement('div', cx('tc-risk-score', `tc-risk-score--${riskBucket}`), `${riskScore}`);
-  hero.appendChild(scoreEl);
+  const significant = summary.redFlags.filter((flag) => flag.severity === 'high').length;
+  hero.appendChild(
+    createElement(
+      'div',
+      'tc-concern-count',
+      `${summary.redFlags.length} concern${summary.redFlags.length === 1 ? '' : 's'} · ${significant} significant`
+    )
+  );
   const icon = createElement('div', cx('tc-score-icon', `tc-score-icon--${summary.severity}`));
   icon.innerHTML = iconShieldCheck(26);
-  const label = createElement('div', cx('tc-score-label', `tc-score-label--${summary.severity}`), `${summary.severity} risk`);
+  const label = createElement(
+    'div',
+    cx('tc-score-label', `tc-score-label--${summary.severity}`),
+    summary.redFlags.length ? `${summary.severity} concern level` : 'No concerns identified'
+  );
   const stats = createElement('div', 'tc-stats-row');
-  const flagCount = createElement('span', undefined, `${summary.redFlags.length} red flag${summary.redFlags.length !== 1 ? 's' : ''}`);
+  const flagCount = createElement(
+    'span',
+    undefined,
+    `${summary.redFlags.length} red flag${summary.redFlags.length !== 1 ? 's' : ''}`
+  );
   const dot = createElement('span', 'tc-stats-dot');
-  const pointCount = createElement('span', undefined, `${summary.keyPoints.length} key point${summary.keyPoints.length !== 1 ? 's' : ''}`);
+  const pointCount = createElement(
+    'span',
+    undefined,
+    `${summary.keyPoints.length} key point${summary.keyPoints.length !== 1 ? 's' : ''}`
+  );
   appendChildren(stats, flagCount, dot, pointCount);
   appendChildren(hero, icon, label, stats);
   wrapper.appendChild(hero);
+  wrapper.appendChild(
+    createElement(
+      'p',
+      'tc-option-copy',
+      'AI summaries may miss clauses. Review the original agreement.'
+    )
+  );
   // summary excerpt
   const excerpt = createElement('p', 'tc-summary-excerpt', summary.summary);
   wrapper.appendChild(excerpt);
@@ -306,13 +379,30 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
     const highFlags = summary.redFlags.filter((f) => f.severity === 'high');
     const otherFlags = summary.redFlags.filter((f) => f.severity !== 'high');
     const maxPreview = 5;
-    const flagsToShow = [...highFlags, ...otherFlags].slice(0, Math.max(maxPreview, highFlags.length));
+    const flagsToShow = [...highFlags, ...otherFlags].slice(
+      0,
+      Math.max(maxPreview, highFlags.length)
+    );
     for (const flag of flagsToShow) {
-      const taxonomy = groupRedFlagsByClauseTaxonomy([flag], state.settings?.clauseTaxonomyWeights)[0];
-      const row = createElement('div', cx('tc-flag-preview-row', `tc-flag-preview-row--${flag.severity}`));
+      const taxonomy = groupRedFlagsByClauseTaxonomy(
+        [flag],
+        state.settings?.clauseTaxonomyWeights
+      )[0];
+      const row = createElement(
+        'div',
+        cx('tc-flag-preview-row', `tc-flag-preview-row--${flag.severity}`)
+      );
       if (taxonomy) row.title = taxonomy.category.description;
-      const fname = createElement('span', 'tc-flag-preview-name', taxonomy?.category.label ?? flag.category.replace(/_/g, ' '));
-      const fsev = createElement('span', cx('tc-flag-preview-severity', `tc-flag-preview-severity--${flag.severity}`), flag.severity);
+      const fname = createElement(
+        'span',
+        'tc-flag-preview-name',
+        flag.category.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+      );
+      const fsev = createElement(
+        'span',
+        cx('tc-flag-preview-severity', `tc-flag-preview-severity--${flag.severity}`),
+        flag.severity
+      );
       appendChildren(row, fname, fsev);
       flagSection.appendChild(row);
     }
@@ -320,14 +410,19 @@ function createScoreCard(summary: Summary, analysis: PageAnalysisRecord): HTMLEl
     if (hidden > 0) {
       flagSection.appendChild(createElement('span', 'tc-flag-preview-more', `+${hidden} more`));
     }
-    flagSection.appendChild(createElement('p', 'tc-flag-disclaimer', 'Risk labels are flags, not legal advice.'));
+    flagSection.appendChild(
+      createElement('p', 'tc-flag-disclaimer', 'Risk labels are flags, not legal advice.')
+    );
     wrapper.appendChild(flagSection);
   }
   // metadata
   const meta = createElement('div', 'tc-meta-row');
   meta.appendChild(createPill(`${formatToken(analysis.sourceType)}`, 'default'));
-  const confPill = createPill(`${formatConfidence(analysis.confidence)} detection confidence`, 'default');
-  confPill.title = 'How certain Goodman is that this page contains T&C text';
+  const confPill = createPill(
+    analysis.detectionType === 'manual' ? 'Selected by you' : 'Detected locally',
+    'default'
+  );
+  confPill.title = 'Detection identifies candidate text; it does not measure legal safety.';
   meta.appendChild(confPill);
   meta.appendChild(createPill(`Updated ${formatTimestamp(analysis.updatedAt)}`, 'muted'));
   wrapper.appendChild(meta);
@@ -338,7 +433,11 @@ function createCompactIdleState(): HTMLElement {
   const card = createElement('div', 'tc-state-card');
   const icon = createIcon(iconShield(32), 'tc-state-icon');
   const title = createElement('div', 'tc-state-title', 'No T&C detected');
-  const copy = createElement('p', 'tc-state-copy', 'Run a manual analysis if legal text loads late or requires interaction.');
+  const copy = createElement(
+    'p',
+    'tc-state-copy',
+    'Analyze this page, select text, or paste an agreement below. Automatic detection may miss some pages.'
+  );
   const actions = createElement('div', 'tc-state-actions');
   actions.appendChild(createButton('Analyze This Page', 'primary', handleAnalyze));
   appendChildren(card, icon, title, copy, actions);
@@ -349,7 +448,11 @@ function createCompactWelcome(): HTMLElement {
   const card = createElement('div', 'tc-state-card');
   const icon = createIcon(iconShield(32), 'tc-state-icon');
   const title = createElement('div', 'tc-state-title', 'Welcome to Goodman');
-  const copy = createElement('p', 'tc-state-copy', 'Configure your provider to detect, summarize, and track T&C changes.');
+  const copy = createElement(
+    'p',
+    'tc-state-copy',
+    'Configure your provider to detect, summarize, and track T&C changes.'
+  );
   const actions = createElement('div', 'tc-state-actions');
   actions.appendChild(createButton('Open Providers', 'primary', showSettings));
   actions.appendChild(createButton('Analyze This Page', 'secondary', handleAnalyze));
@@ -370,9 +473,13 @@ function createCompactErrorState(error: string): HTMLElement {
 }
 
 function createCompactActionState(
-  iconSvg: string, titleText: string, bodyText: string,
-  primaryLabel: string, primaryAction: () => void,
-  secondaryLabel?: string, secondaryAction?: () => void
+  iconSvg: string,
+  titleText: string,
+  bodyText: string,
+  primaryLabel: string,
+  primaryAction: () => void,
+  secondaryLabel?: string,
+  secondaryAction?: () => void
 ): HTMLElement {
   const card = createElement('div', 'tc-state-card');
   const icon = createIcon(iconSvg, 'tc-state-icon');
@@ -391,8 +498,14 @@ function createAnalyzingCard(label: string): HTMLElement {
   const card = createElement('div', 'tc-analyzing-card');
   const icon = createIcon(iconZap(36), 'tc-analyzing-icon');
   const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
-  const elapsed = state.analysisStartedAt ? Math.floor((Date.now() - state.analysisStartedAt) / 1000) : 0;
-  const title = createElement('div', 'tc-state-title', elapsed > 0 ? `${label} (${elapsed}s)` : label);
+  const elapsed = state.analysisStartedAt
+    ? Math.floor((Date.now() - state.analysisStartedAt) / 1000)
+    : 0;
+  const title = createElement(
+    'div',
+    'tc-state-title',
+    elapsed > 0 ? `${label} (${elapsed}s)` : label
+  );
   const progressWrap = createElement('div', 'tc-progress-compact');
   const track = createElement('div', 'tc-progress-track');
   const fill = createElement('div', 'tc-progress-fill');
@@ -404,7 +517,13 @@ function createAnalyzingCard(label: string): HTMLElement {
   const stageLine = createElement('div', 'tc-progress-label', stageLabel);
   appendChildren(progressWrap, track, pctLabel, stageLine);
   const actions = createElement('div', 'tc-state-actions');
-  actions.appendChild(createButton('Cancel Analysis', 'ghost', () => { void handleCancelAnalysis().catch(e => console.warn('[Goodman] cancel analysis failed:', e)); }));
+  actions.appendChild(
+    createButton('Cancel Analysis', 'ghost', () => {
+      void handleCancelAnalysis().catch((e) =>
+        console.warn('[Goodman] cancel analysis failed:', e)
+      );
+    })
+  );
   appendChildren(card, icon, title, progressWrap);
   const logs = getProgressLogs(state.analysis);
   if (logs.length > 0) card.appendChild(createLogStream(logs));
@@ -421,7 +540,9 @@ function createAnalyzingCard(label: string): HTMLElement {
 
 function createActionBar(): HTMLElement {
   const bar = createElement('div', 'tc-action-bar');
-  const detailBtn = createButton('Open Workspace', 'primary', () => { void handleKeepOpen('current').catch(e => console.warn('[Goodman] keep open failed:', e)); });
+  const detailBtn = createButton('Open Workspace', 'primary', () => {
+    void handleKeepOpen('current').catch((e) => console.warn('[Goodman] keep open failed:', e));
+  });
   const refreshBtn = createElement('button', 'tc-icon-btn') as HTMLButtonElement;
   refreshBtn.type = 'button';
   refreshBtn.setAttribute('aria-label', 'Re-analyze page');
@@ -449,23 +570,31 @@ function createActionBar(): HTMLElement {
 function createNotificationBanner(): HTMLElement | null {
   if (state.pendingNotifications.length === 0) return null;
   const currentDomain = getCurrentDomain();
-  const current = state.pendingNotifications.find(n => n.domain === currentDomain);
+  const current = state.pendingNotifications.find((n) => n.domain === currentDomain);
   const banner = createElement('div', 'tc-banner');
   banner.setAttribute('role', 'status');
   banner.setAttribute('aria-live', 'polite');
-  const text = createElement('span', 'tc-banner-text',
+  const text = createElement(
+    'span',
+    'tc-banner-text',
     current
       ? `Terms changed on ${current.domain}`
       : `${state.pendingNotifications.length} domain${state.pendingNotifications.length > 1 ? 's' : ''} with T&C changes`
   );
-  const btn = createButton('History', 'ghost', () => showHistory(resolveNotificationTargetDomain()));
+  const btn = createButton('History', 'ghost', () =>
+    showHistory(resolveNotificationTargetDomain())
+  );
   appendChildren(banner, text, btn);
   return banner;
 }
 
 // ========== PERSISTENT WORKSPACE ==========
 
-const WORKSPACE_NAVIGATION: Array<{ route: WorkspaceRoute; label: string; icon: (size?: number) => string }> = [
+const WORKSPACE_NAVIGATION: Array<{
+  route: WorkspaceRoute;
+  label: string;
+  icon: (size?: number) => string;
+}> = [
   { route: 'current', label: 'Current page', icon: iconShield },
   { route: 'history', label: 'History', icon: iconClock },
   { route: 'providers', label: 'Providers', icon: iconSettings },
@@ -476,12 +605,28 @@ const WORKSPACE_NAVIGATION: Array<{ route: WorkspaceRoute; label: string; icon: 
 ];
 
 const WORKSPACE_COPY: Record<WorkspaceRoute, { title: string; subtitle: string }> = {
-  current: { title: 'Current page', subtitle: 'Analyze the legal terms on the page you are viewing.' },
+  current: {
+    title: 'Current page',
+    subtitle: 'Analyze the legal terms on the page you are viewing.',
+  },
   history: { title: 'History', subtitle: 'Inspect saved versions and compare terms over time.' },
-  providers: { title: 'Providers', subtitle: 'Choose where Goodman sends legal text for analysis.' },
-  detection: { title: 'Detection', subtitle: 'Control how Goodman identifies terms and weights risk.' },
-  monitoring: { title: 'Monitoring', subtitle: 'Manage alerts, tracked domains, and domain-specific preferences.' },
-  data: { title: 'Data & privacy', subtitle: 'Review local data and corpus contribution preferences.' },
+  providers: {
+    title: 'Providers',
+    subtitle: 'Choose where Goodman sends legal text for analysis.',
+  },
+  detection: {
+    title: 'Detection',
+    subtitle: 'Control how Goodman identifies terms and weights risk.',
+  },
+  monitoring: {
+    title: 'Monitoring',
+    subtitle:
+      'Check for agreement changes when you visit and analyze. Goodman does not check sites while you are away.',
+  },
+  data: {
+    title: 'Data & privacy',
+    subtitle: 'Review local data and corpus contribution preferences.',
+  },
   diagnostics: { title: 'Diagnostics', subtitle: 'Review recent analysis pipeline activity.' },
 };
 
@@ -497,7 +642,7 @@ function renderWorkspace(container: HTMLElement): void {
   appendChildren(main, header, content);
   appendChildren(shell, sidebar, main);
   container.appendChild(shell);
-  void renderWorkspaceRoute(content).catch(e => {
+  void renderWorkspaceRoute(content).catch((e) => {
     console.warn('[Goodman] workspace route render failed:', e);
     content.textContent = '';
     content.appendChild(createPanelErrorState('Could not load this workspace view.'));
@@ -536,9 +681,15 @@ function createWorkspaceSidebar(): HTMLElement {
   return sidebar;
 }
 
-function createWorkspaceNavButton(item: { route: WorkspaceRoute; label: string; icon: (size?: number) => string }): HTMLButtonElement {
+function createWorkspaceNavButton(item: {
+  route: WorkspaceRoute;
+  label: string;
+  icon: (size?: number) => string;
+}): HTMLButtonElement {
   const button = createElement('button', 'tc-workspace-nav-button') as HTMLButtonElement;
   button.type = 'button';
+  button.setAttribute('aria-label', item.label);
+  button.title = item.label;
   button.classList.toggle('is-active', workspaceRoute === item.route);
   if (workspaceRoute === item.route) button.setAttribute('aria-current', 'page');
   button.appendChild(createIcon(item.icon(16), 'tc-workspace-nav-icon'));
@@ -551,14 +702,23 @@ async function renderWorkspaceDomains(container: HTMLElement): Promise<void> {
   const domains = await getAllTrackedDomains();
   container.textContent = '';
   if (domains.length === 0) {
-    container.appendChild(createElement('p', 'tc-workspace-domain-empty', 'No tracked domains yet.'));
+    container.appendChild(
+      createElement('p', 'tc-workspace-domain-empty', 'No tracked domains yet.')
+    );
     return;
   }
   for (const domain of domains.slice(0, 8)) {
-    const button = createElement('button', 'tc-workspace-domain-button', domain) as HTMLButtonElement;
+    const button = createElement(
+      'button',
+      'tc-workspace-domain-button',
+      domain
+    ) as HTMLButtonElement;
     button.type = 'button';
     button.title = domain;
-    button.classList.toggle('is-active', workspaceRoute === 'history' && workspaceDomain === domain);
+    button.classList.toggle(
+      'is-active',
+      workspaceRoute === 'history' && workspaceDomain === domain
+    );
     button.addEventListener('click', () => navigateWorkspace('history', domain));
     container.appendChild(button);
   }
@@ -575,7 +735,9 @@ function createWorkspaceHeader(): HTMLElement {
   );
   const actions = createElement('div', 'tc-workspace-header-actions');
   if (workspaceRoute === 'current') {
-    actions.appendChild(createButton(state.analysis ? 'Re-analyze' : 'Analyze page', 'primary', handleAnalyze));
+    actions.appendChild(
+      createButton(state.analysis ? 'Re-analyze' : 'Analyze page', 'primary', handleAnalyze)
+    );
   }
   appendChildren(header, titleGroup, actions);
   return header;
@@ -587,6 +749,8 @@ async function renderWorkspaceRoute(container: HTMLElement): Promise<void> {
     const banner = createNotificationBanner();
     if (banner) container.appendChild(banner);
     renderCurrentPageWorkspace(container);
+    if (!state.loading && state.analysis?.status !== 'analyzing')
+      container.appendChild(createManualAnalysis());
     return;
   }
 
@@ -595,7 +759,7 @@ async function renderWorkspaceRoute(container: HTMLElement): Promise<void> {
       await renderHistoryPanel(container, workspaceDomain ?? getCurrentDomain());
       break;
     case 'providers':
-      await renderProviderSettings(container);
+      await renderProviderSettings(container, () => navigateWorkspace('current'));
       break;
     case 'detection':
       await renderDetectionSettings(container);
@@ -637,6 +801,8 @@ function navigateWorkspace(route: WorkspaceRoute, domain?: string): void {
 // ========== WORKSPACE CURRENT-PAGE VIEW ==========
 
 function renderCurrentPageWorkspace(container: HTMLElement): void {
+  const sourcePicker = createDocumentPicker();
+  if (sourcePicker) container.appendChild(sourcePicker);
 
   if (state.loading) {
     container.appendChild(createPanelLoadingState('Analyzing this page...'));
@@ -666,24 +832,53 @@ function renderCurrentPageWorkspace(container: HTMLElement): void {
       container.appendChild(createPanelLoadingState('Analyzing this page...'));
       break;
     case 'needs_provider':
-      container.appendChild(createCompactActionState(iconSettings(28), 'Provider setup required',
-        state.analysis.error ?? 'Configure a provider in Settings.', 'Open Settings', showSettings));
+      container.appendChild(
+        createCompactActionState(
+          iconSettings(28),
+          'Provider setup required',
+          state.analysis.error ?? 'Configure a provider in Settings.',
+          'Open Settings',
+          showSettings
+        )
+      );
       break;
     case 'needs_consent':
-      container.appendChild(createCompactActionState(iconSettings(28), 'Provider setup required',
-        state.analysis.error ?? 'Configure a provider in Settings.', 'Open Settings', showSettings));
+      container.appendChild(createConsentState());
       break;
     case 'service_unavailable':
-      container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Provider unavailable',
-        state.analysis.error ?? 'Try again shortly.', 'Retry', handleAnalyze, 'Settings', showSettings));
+      container.appendChild(
+        createCompactActionState(
+          iconAlertTriangle(28),
+          'Provider unavailable',
+          state.analysis.error ?? 'Try again shortly.',
+          'Retry',
+          handleAnalyze,
+          'Settings',
+          showSettings
+        )
+      );
       break;
     case 'extraction_failed':
-      container.appendChild(createCompactActionState(iconAlertTriangle(28), 'Could not extract text',
-        state.analysis.error ?? 'Text extraction failed.', 'Retry', handleAnalyze));
+      container.appendChild(
+        createCompactActionState(
+          iconAlertTriangle(28),
+          'Could not extract text',
+          state.analysis.error ?? 'Text extraction failed.',
+          'Retry',
+          handleAnalyze
+        )
+      );
       break;
     case 'cancelled':
-      container.appendChild(createCompactActionState(iconShield(28), 'Analysis cancelled',
-        'The analysis was stopped before it could finish.', 'Analyze Again', handleAnalyze));
+      container.appendChild(
+        createCompactActionState(
+          iconShield(28),
+          'Analysis cancelled',
+          'The analysis was stopped before it could finish.',
+          'Analyze Again',
+          handleAnalyze
+        )
+      );
       break;
     case 'error':
       container.appendChild(createPanelErrorState(state.analysis.error ?? 'Could not analyze.'));
@@ -705,23 +900,33 @@ function createPanelSummaryView(summary: Summary, analysis: PageAnalysisRecord):
   appendChildren(card, topline, heading, metaRow, summaryCopy);
   if (summary.keyPoints.length > 0) {
     card.appendChild(createDivider());
-    card.appendChild(createKeyPointsSection(summary.keyPoints, `Key Points (${summary.keyPoints.length})`));
+    card.appendChild(
+      createKeyPointsSection(summary.keyPoints, `Key Points (${summary.keyPoints.length})`)
+    );
   }
   if (summary.redFlags.length > 0) {
     card.appendChild(createDivider());
-    card.appendChild(createRedFlagsSection(summary.redFlags, state.settings?.clauseTaxonomyWeights));
+    card.appendChild(
+      createRedFlagsSection(summary.redFlags, state.settings?.clauseTaxonomyWeights)
+    );
   }
   return card;
 }
 
 function createPanelLoadingState(label: string): HTMLElement {
   const stageLabel = state.analysis?.progressLabel ?? 'Preparing analysis';
-  const elapsed = state.analysisStartedAt ? Math.floor((Date.now() - state.analysisStartedAt) / 1000) : 0;
+  const elapsed = state.analysisStartedAt
+    ? Math.floor((Date.now() - state.analysisStartedAt) / 1000)
+    : 0;
   const timerLabel = elapsed > 0 ? `${label} (${elapsed}s)` : label;
   const card = createElement('div', cx('tc-state-card', 'tc-state-card--left'));
   const title = createElement('div', 'tc-state-title', timerLabel);
   card.appendChild(title);
-  const progressSection = createProgressSection(getProgressPercent(state.analysis), stageLabel, getProgressLogs(state.analysis));
+  const progressSection = createProgressSection(
+    getProgressPercent(state.analysis),
+    stageLabel,
+    getProgressLogs(state.analysis)
+  );
   card.appendChild(progressSection);
   const actions = createElement('div', 'tc-state-actions');
   actions.appendChild(createButton('Open Settings', 'ghost', showSettings));
@@ -741,14 +946,22 @@ function createPanelErrorState(error: string): HTMLElement {
   const title = createElement('div', 'tc-state-title', 'Something went wrong');
   const copy = createElement('p', 'tc-state-copy', mapErrorToActionable(error));
   const actions = createElement('div', 'tc-state-actions');
-  appendChildren(actions, createButton('Retry', 'primary', handleAnalyze), createButton('Settings', 'secondary', showSettings));
+  appendChildren(
+    actions,
+    createButton('Retry', 'primary', handleAnalyze),
+    createButton('Settings', 'secondary', showSettings)
+  );
   appendChildren(card, title, copy, actions);
   return card;
 }
 
 // ========== SHARED COMPONENTS ==========
 
-function createProgressSection(progressPercent: number, stageLabel: string, logs: PageAnalysisLogEntry[]): HTMLElement {
+function createProgressSection(
+  progressPercent: number,
+  stageLabel: string,
+  logs: PageAnalysisLogEntry[]
+): HTMLElement {
   const section = createElement('section', 'tc-progress-shell');
   const meta = createElement('div', 'tc-progress-meta');
   const stage = createElement('span', 'tc-progress-stage', stageLabel);
@@ -759,7 +972,11 @@ function createProgressSection(progressPercent: number, stageLabel: string, logs
   fill.style.width = `${progressPercent}%`;
   track.appendChild(fill);
   const latestLog = logs[logs.length - 1];
-  const caption = createElement('p', 'tc-progress-caption', latestLog?.message ?? 'Starting analysis pipeline.');
+  const caption = createElement(
+    'p',
+    'tc-progress-caption',
+    latestLog?.message ?? 'Starting analysis pipeline.'
+  );
   appendChildren(meta, stage, percent);
   appendChildren(section, meta, track, caption);
   if (logs.length > 0) section.appendChild(createLogStream(logs));
@@ -785,7 +1002,9 @@ function createLogStream(logs: PageAnalysisLogEntry[]): HTMLElement {
 
 function createKeyPointsSection(points: string[], title: string): HTMLElement {
   const section = createElement('section');
-  section.appendChild(createSectionHeading(title, 'Structured takeaways from the detected legal language.'));
+  section.appendChild(
+    createSectionHeading(title, 'Structured takeaways from the detected legal language.')
+  );
   const list = createElement('div', 'tc-list');
   for (const point of points) {
     const row = createElement('div', 'tc-list-item');
@@ -803,7 +1022,9 @@ function createRedFlagsSection(
   weights = DEFAULT_CLAUSE_TAXONOMY_WEIGHTS
 ): HTMLElement {
   const section = createElement('section');
-  section.appendChild(createSectionHeading(`Red Flags (${flags.length})`, 'Risk labels are flags, not legal advice.'));
+  section.appendChild(
+    createSectionHeading(`Red Flags (${flags.length})`, 'Risk labels are flags, not legal advice.')
+  );
   const stack = createElement('div', 'tc-flag-stack');
   const groups = groupRedFlagsByClauseTaxonomy(flags, weights);
   const groupedFlags = new Set<ClauseFlag>();
@@ -832,10 +1053,18 @@ function createRedFlagsSection(
   return section;
 }
 
-function createRedFlagCard(flag: { category: string; description: string; severity: string; quote: string }): HTMLElement {
-  const card = createElement('div', cx('tc-flag-card', isExpandableSeverity(flag.severity) && `tc-flag-card--${flag.severity}`));
+function createRedFlagCard(flag: {
+  category: string;
+  description: string;
+  severity: string;
+  quote: string;
+}): HTMLElement {
+  const card = createElement(
+    'div',
+    cx('tc-flag-card', isExpandableSeverity(flag.severity) && `tc-flag-card--${flag.severity}`)
+  );
   const categoryLabel = flag.category.replace(/_/g, ' ');
-  const detailsId = `tc-flag-details-${redFlagCardId += 1}`;
+  const detailsId = `tc-flag-details-${(redFlagCardId += 1)}`;
   card.setAttribute('role', 'button');
   card.setAttribute('tabindex', '0');
   card.setAttribute('aria-expanded', 'false');
@@ -851,20 +1080,47 @@ function createRedFlagCard(flag: { category: string; description: string; severi
   const details = createElement('div', 'tc-flag-details');
   details.id = detailsId;
   details.setAttribute('aria-hidden', 'true');
+  details.hidden = true;
   const desc = createElement('p', 'tc-flag-description', flag.description);
   appendChildren(header, titleWrap, severityPill);
   details.appendChild(desc);
-  if (flag.quote) details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
+  if (flag.quote) {
+    details.appendChild(createElement('blockquote', 'tc-flag-quote', flag.quote));
+    if (state.analysis?.document) {
+      const link = createElement('a', 'tc-source-link', 'View original clause');
+      link.href = sourceQuoteUrl(state.analysis.document, flag.quote);
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.addEventListener('click', (event) => event.stopPropagation());
+      details.appendChild(link);
+    }
+  } else
+    details.appendChild(
+      createElement(
+        'p',
+        'tc-flag-description',
+        'No verified quotation available. Check the original before relying on this finding.'
+      )
+    );
   appendChildren(card, header, details);
   const setExpanded = (expanded: boolean): void => {
     card.setAttribute('aria-expanded', String(expanded));
-    card.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} details for ${categoryLabel} (${flag.severity} risk)`);
+    card.setAttribute(
+      'aria-label',
+      `${expanded ? 'Collapse' : 'Expand'} details for ${categoryLabel} (${flag.severity} risk)`
+    );
     details.setAttribute('aria-hidden', String(!expanded));
-    details.style.maxHeight = expanded ? '320px' : '0';
+    details.hidden = !expanded;
+    details.style.maxHeight = expanded ? 'none' : '0';
   };
   const toggle = (): void => setExpanded(card.getAttribute('aria-expanded') !== 'true');
   card.addEventListener('click', toggle);
-  card.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+  card.addEventListener('keydown', (e) => {
+    if (e.target === card && (e.key === 'Enter' || e.key === ' ')) {
+      e.preventDefault();
+      toggle();
+    }
+  });
   return card;
 }
 
@@ -880,7 +1136,12 @@ function createMetadataRow(analysis: PageAnalysisRecord): HTMLElement {
   const row = createElement('div', 'tc-meta-row');
   row.appendChild(createPill(`Source: ${formatToken(analysis.sourceType)}`, 'default'));
   row.appendChild(createPill(`Detection: ${formatToken(analysis.detectionType)}`, 'default'));
-  row.appendChild(createPill(`Confidence: ${formatConfidence(analysis.confidence)}`, 'default'));
+  row.appendChild(
+    createPill(
+      analysis.detectionType === 'manual' ? 'Selected by you' : 'Detected locally',
+      'default'
+    )
+  );
   return row;
 }
 
@@ -895,6 +1156,14 @@ function createDivider(): HTMLElement {
 // ========== ACTIONS ==========
 
 async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void> {
+  if (
+    !settingsOverride &&
+    state.analysis?.status === 'ready' &&
+    state.analysis.document &&
+    ['linked', 'pdf'].includes(state.analysis.sourceType ?? '')
+  ) {
+    return handleManualAnalysis({ url: state.analysis.document.url }, state.analysis.frameId ?? 0);
+  }
   state.loading = true;
   state.error = null;
   state.analysisStartedAt = Date.now();
@@ -902,8 +1171,14 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
   renderCurrentApp();
   try {
     if (state.tabId === null) throw new Error('No active tab');
-    const payload = settingsOverride ? { tabId: state.tabId, settingsOverride } : { tabId: state.tabId };
-    const response = (await chrome.tabs.sendMessage(state.tabId, { type: 'DETECT_TC', payload })) as { ok?: boolean; error?: string } | undefined;
+    const payload = settingsOverride
+      ? { tabId: state.tabId, settingsOverride }
+      : { tabId: state.tabId };
+    const response = (await chrome.tabs.sendMessage(
+      state.tabId,
+      { type: 'DETECT_TC', payload },
+      { frameId: state.analysis?.frameId ?? 0 }
+    )) as { ok?: boolean; error?: string } | undefined;
     await refreshPopupState();
     if (response && response.ok === false && !state.analysis) {
       state.error = response.error ?? 'Could not analyze this page.';
@@ -916,7 +1191,10 @@ async function handleAnalyze(settingsOverride?: Partial<Settings>): Promise<void
   } finally {
     state.loading = false;
     state.analysisStartedAt = null;
-    if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+    if (loadingInterval) {
+      clearInterval(loadingInterval);
+      loadingInterval = null;
+    }
     renderCurrentApp();
   }
 }
@@ -925,12 +1203,21 @@ async function handleCancelAnalysis(): Promise<void> {
   if (state.tabId === null) return;
   const payload = { tabId: state.tabId, expectedUrl: state.tabUrl };
   try {
-    await chrome.tabs.sendMessage(state.tabId, { type: 'CANCEL_TC', payload });
+    await chrome.tabs.sendMessage(
+      state.tabId,
+      { type: 'CANCEL_TC', payload },
+      { frameId: state.analysis?.frameId ?? 0 }
+    );
     await sendToBackground({ type: 'CANCEL_PAGE_ANALYSIS', payload });
-  } catch (e) { console.warn('[Goodman] cancel analysis messaging failed:', e); }
+  } catch (e) {
+    console.warn('[Goodman] cancel analysis messaging failed:', e);
+  }
   state.loading = false;
   state.analysisStartedAt = null;
-  if (loadingInterval) { clearInterval(loadingInterval); loadingInterval = null; }
+  if (loadingInterval) {
+    clearInterval(loadingInterval);
+    loadingInterval = null;
+  }
   await refreshPopupState();
   renderCurrentApp();
 }
@@ -996,8 +1283,11 @@ async function renderDiagnosticsWorkspace(container: HTMLElement): Promise<void>
   for (const record of withLogs) {
     const run = createElement('div', 'tc-callout');
     const urlLabel = createElement('div', 'tc-callout-title', record.domain || record.url);
-    const meta = createElement('p', 'tc-callout-copy',
-      `${record.status} \u00b7 ${formatTimestamp(record.updatedAt)} \u00b7 ${record.progressLogs?.length ?? 0} steps`);
+    const meta = createElement(
+      'p',
+      'tc-callout-copy',
+      `${record.status} \u00b7 ${formatTimestamp(record.updatedAt)} \u00b7 ${record.progressLogs?.length ?? 0} steps`
+    );
     appendChildren(run, urlLabel, meta);
     if (record.error) {
       const errEl = createElement('p', 'tc-callout-copy');
@@ -1023,13 +1313,19 @@ async function refreshPopupState(): Promise<void> {
 }
 
 async function refreshPageAnalysis(): Promise<void> {
-  if (!state.tabUrl && state.tabId === null) { state.analysis = null; return; }
+  if (!state.tabUrl && state.tabId === null) {
+    state.analysis = null;
+    return;
+  }
   if (state.tabUrl) {
     const analysisByUrl = await getPageAnalysisByUrl(state.tabUrl);
     if (analysisByUrl) {
       state.analysis = { ...analysisByUrl, tabId: state.tabId ?? analysisByUrl.tabId };
       if (state.analysis.status === 'analyzing') {
-        state.analysisStartedAt = state.analysisStartedAt ?? state.analysis.progressLogs?.[0]?.timestamp ?? state.analysis.updatedAt;
+        state.analysisStartedAt =
+          state.analysisStartedAt ??
+          state.analysis.progressLogs?.[0]?.timestamp ??
+          state.analysis.updatedAt;
       } else if (!state.loading) {
         state.analysisStartedAt = null;
       }
@@ -1060,7 +1356,12 @@ async function refreshActiveTabContext(): Promise<void> {
   state.windowId = typeof tab?.windowId === 'number' ? tab.windowId : null;
   state.tabUrl = tab?.url ?? '';
   if (tab?.url) {
-    try { state.domain = new URL(tab.url).hostname; } catch (e) { console.warn('[Goodman] failed to parse tab URL:', tab.url, e); state.domain = 'unknown'; }
+    try {
+      state.domain = new URL(tab.url).hostname;
+    } catch (e) {
+      console.warn('[Goodman] failed to parse tab URL:', tab.url, e);
+      state.domain = 'unknown';
+    }
   } else {
     state.domain = 'unknown';
   }
@@ -1071,17 +1372,28 @@ async function refreshActiveTabContext(): Promise<void> {
 }
 
 function registerActiveTabSync(): void {
-  chrome.tabs.onActivated?.addListener(() => { void refreshForCurrentTab().catch(e => console.warn('[Goodman] tab activation refresh failed:', e)); });
+  chrome.tabs.onActivated?.addListener(() => {
+    void refreshForCurrentTab().catch((e) =>
+      console.warn('[Goodman] tab activation refresh failed:', e)
+    );
+  });
   chrome.tabs.onUpdated?.addListener((tabId, changeInfo) => {
     const navigated = typeof changeInfo.url === 'string' || changeInfo.status === 'complete';
     if (!navigated) return;
     if (state.tabId !== null && tabId !== state.tabId) return;
-    void refreshForCurrentTab().catch(e => console.warn('[Goodman] tab update refresh failed:', e));
+    void refreshForCurrentTab().catch((e) =>
+      console.warn('[Goodman] tab update refresh failed:', e)
+    );
   });
-  chrome.windows?.onFocusChanged?.addListener(() => { void refreshForCurrentTab().catch(e => console.warn('[Goodman] window focus refresh failed:', e)); });
+  chrome.windows?.onFocusChanged?.addListener(() => {
+    void refreshForCurrentTab().catch((e) =>
+      console.warn('[Goodman] window focus refresh failed:', e)
+    );
+  });
 }
 
 async function refreshForCurrentTab(): Promise<void> {
+  if (surfaceMode === 'workspace' && workspaceRoute !== 'current') return;
   await refreshActiveTabContext();
   await refreshPopupState();
   renderCurrentApp();
@@ -1090,6 +1402,14 @@ async function refreshForCurrentTab(): Promise<void> {
 async function getCurrentTargetTab(): Promise<chrome.tabs.Tab | undefined> {
   const preferred = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
   const preferredBrowserTab = preferred.find(isUserBrowsableTab);
+  if (!preferredBrowserTab && state.tabId !== null) {
+    try {
+      const previous = await chrome.tabs.get(state.tabId);
+      if (isUserBrowsableTab(previous)) return previous;
+    } catch {
+      /* Closed tab. */
+    }
+  }
   if (preferredBrowserTab) return preferredBrowserTab;
   const activeTabs = await chrome.tabs.query({ active: true });
   return activeTabs.find(isUserBrowsableTab) ?? activeTabs[0];
@@ -1098,17 +1418,28 @@ async function getCurrentTargetTab(): Promise<chrome.tabs.Tab | undefined> {
 function isUserBrowsableTab(tab: chrome.tabs.Tab): boolean {
   const url = tab.url ?? '';
   const extensionRoot = chrome.runtime.getURL('');
-  return url.length > 0 && !url.startsWith(extensionRoot) && !url.startsWith('chrome://') && !url.startsWith('edge://') && !url.startsWith('about:');
+  return (
+    url.length > 0 &&
+    !url.startsWith(extensionRoot) &&
+    !url.startsWith('chrome://') &&
+    !url.startsWith('edge://') &&
+    !url.startsWith('about:')
+  );
 }
 
 // ========== HELPERS ==========
 
 function mapErrorToActionable(error: string): string {
   const lower = error.toLowerCase();
-  if (lower.includes('network') || lower.includes('connect')) return 'Check your internet connection and try again.';
+  if (lower.includes('receiving end') || lower.includes('could not establish connection'))
+    return 'Refresh this webpage to enable Goodman. Browser settings pages and built-in PDF viewers may require opening the agreement link on a regular webpage.';
+  if (lower.includes('network') || lower.includes('connect'))
+    return 'Check your internet connection and try again.';
   if (lower.includes('rate limit')) return error;
-  if (lower.includes('invalid') && lower.includes('response')) return 'Unexpected format from AI. Try a different model in Settings.';
-  if (lower.includes('api key') || lower.includes('credentials') || lower.includes('401')) return 'Provider rejected the request. Check your API key in Settings.';
+  if (lower.includes('invalid') && lower.includes('response'))
+    return 'Unexpected format from AI. Try a different model in Settings.';
+  if (lower.includes('api key') || lower.includes('credentials') || lower.includes('401'))
+    return 'Provider rejected the request. Check your API key in Settings.';
   return error;
 }
 
@@ -1128,7 +1459,7 @@ function getCurrentDomain(): string {
 
 function resolveNotificationTargetDomain(): string {
   const cd = getCurrentDomain();
-  const match = state.pendingNotifications.find(n => n.domain === cd);
+  const match = state.pendingNotifications.find((n) => n.domain === cd);
   return match?.domain ?? state.pendingNotifications[0]?.domain ?? cd;
 }
 
@@ -1143,27 +1474,32 @@ function createAttribution(): HTMLElement {
   return footer;
 }
 
-function formatConfidence(value: number | null): string {
-  if (value === null) return 'n/a';
-  return `${Math.round(value * 100)}%`;
-}
-
 function formatToken(value: string | null): string {
   if (!value) return 'n/a';
   return value.replace(/_/g, ' ');
 }
 
 function formatTimestamp(timestamp: number): string {
-  return new Date(timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return new Date(timestamp).toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
 }
 
 function formatLogTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  return new Date(timestamp).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 function getProgressPercent(analysis: PageAnalysisRecord | null): number {
   const value = analysis?.progressPercent;
-  if (typeof value === 'number' && Number.isFinite(value)) return Math.max(0, Math.min(100, Math.round(value)));
+  if (typeof value === 'number' && Number.isFinite(value))
+    return Math.max(0, Math.min(100, Math.round(value)));
   return analysis?.status === 'analyzing' ? 15 : 0;
 }
 
@@ -1192,4 +1528,164 @@ if (document.readyState === 'loading') {
 }
 if (document.getElementById('app')) {
   queueMicrotask(bootstrap);
+}
+
+function createDocumentPicker(): HTMLElement | null {
+  const analysis = state.analysis;
+  if (!analysis?.document) return null;
+  const section = createElement('section', 'tc-source-picker');
+  const sources = analysis.availableDocuments?.length
+    ? analysis.availableDocuments
+    : [analysis.document];
+  const reviewed = sources.filter((source) =>
+    analysis.analyzedDocumentIds?.includes(source.id)
+  ).length;
+  const label = createElement(
+    'p',
+    'tc-option-copy',
+    `${reviewed} of ${sources.length} sources reviewed. Each summary covers one source.`
+  );
+  const source = createElement('a', 'tc-source-link', analysis.document.title);
+  source.href = analysis.document.url;
+  source.target = '_blank';
+  source.rel = 'noopener noreferrer';
+  appendChildren(section, label, source);
+  if (analysis.document.kind === 'selection')
+    section.appendChild(
+      createElement(
+        'p',
+        'tc-option-copy',
+        'This is an excerpt, not a complete agreement. It is not added to agreement version history.'
+      )
+    );
+  if (analysis.frameId)
+    section.appendChild(
+      createElement(
+        'p',
+        'tc-option-copy',
+        `Embedded consent from ${analysis.sourceFrameUrl ? new URL(analysis.sourceFrameUrl).hostname : 'a frame'}. Embedded sources require manual review.`
+      )
+    );
+  const agreements = sources.filter((doc) => doc.kind !== 'selection');
+  if (agreements.length > 1 || (analysis.document.kind === 'selection' && agreements.length > 0)) {
+    const select = createElement('select', 'tc-select');
+    select.setAttribute('aria-label', 'Agreement to review');
+    for (const doc of agreements) {
+      const option = createElement('option', '', `${doc.title} · ${new URL(doc.url).hostname}`);
+      option.value = doc.id;
+      option.selected = doc.id === analysis.document.id;
+      select.appendChild(option);
+    }
+    const button = createButton('Analyze selected agreement', 'secondary', () => {
+      const doc = agreements.find((item) => item.id === select.value);
+      if (doc) void handleManualAnalysis({ url: doc.url }, doc.frameId ?? 0);
+    });
+    appendChildren(section, select, button);
+  }
+  if (state.domain && !state.domain.startsWith('chrome')) {
+    const siteMode = createElement('select', 'tc-select');
+    siteMode.setAttribute('aria-label', 'Analysis mode for this site');
+    for (const [value, title] of [
+      ['inherit', 'This site: use default mode'],
+      ['detect_only', 'This site: detect only'],
+      ['ask', 'This site: ask before analysis'],
+      ['automatic', 'This site: automatically analyze'],
+    ]) {
+      const option = createElement('option', '', title);
+      option.value = value!;
+      siteMode.appendChild(option);
+    }
+    const domain = state.domain;
+    void getDomainPreferences(domain).then((preferences) => {
+      siteMode.value = preferences.analysisMode ?? 'inherit';
+    });
+    siteMode.addEventListener('change', () => {
+      void (async () => {
+        const preferences = await getDomainPreferences(domain);
+        await setDomainPreferences(domain, {
+          ...preferences,
+          analysisMode: siteMode.value as typeof preferences.analysisMode,
+        });
+      })();
+    });
+    section.appendChild(siteMode);
+  }
+  return section;
+}
+
+function createManualAnalysis(): HTMLElement {
+  const section = createElement('details', 'tc-manual-analysis');
+  const heading = createElement('summary', '', 'Analyze text or a link');
+  const help = createElement(
+    'p',
+    'tc-option-copy',
+    'Use this when detection misses an agreement. Text is sent only when you choose Analyze. Provider usage may be billed.'
+  );
+  const text = createElement('textarea', 'tc-input');
+  text.rows = 4;
+  text.placeholder = 'Paste agreement text';
+  text.setAttribute('aria-label', 'Agreement text');
+  const url = createElement('input', 'tc-input');
+  url.type = 'url';
+  url.placeholder = 'https://example.com/terms';
+  url.setAttribute('aria-label', 'Agreement URL');
+  const button = createButton('Analyze text or URL', 'primary', () => {
+    if (!text.value.trim() && !url.value.trim()) {
+      text.focus();
+      return;
+    }
+    void handleManualAnalysis(text.value.trim() ? { text: text.value } : { url: url.value });
+  });
+  const selection = createButton('Analyze selected page text', 'secondary', () => {
+    void handleManualAnalysis({ useSelection: true });
+  });
+  appendChildren(section, heading, help, text, url, button, selection);
+  return section;
+}
+
+async function handleManualAnalysis(input: ManualAnalysisInput, frameId = 0): Promise<void> {
+  if (state.tabId === null) return;
+  state.loading = true;
+  state.error = null;
+  renderCurrentApp();
+  try {
+    const response = (await chrome.tabs.sendMessage(
+      state.tabId,
+      { type: 'MANUAL_ANALYSIS', payload: input },
+      { frameId }
+    )) as { ok?: boolean; error?: string };
+    await refreshPopupState();
+    if (response?.ok === false) state.error = response.error ?? 'Could not analyze the agreement.';
+  } catch (error) {
+    state.error = mapErrorToActionable(String(error));
+    state.analysis = null;
+  } finally {
+    state.loading = false;
+    renderCurrentApp();
+  }
+}
+
+function createConsentState(): HTMLElement {
+  const settings = state.settings;
+  if (
+    !settings ||
+    !isProviderConfigured(settings.activeProvider, settings.providers[settings.activeProvider])
+  ) {
+    return createCompactActionState(
+      iconSettings(28),
+      'Provider setup required',
+      'Configure a provider in Settings.',
+      'Open Settings',
+      showSettings
+    );
+  }
+  return createCompactActionState(
+    iconShield(28),
+    'Agreement found',
+    'Detection happened on this device. Analyze to send this agreement to your selected provider; provider usage may be billed.',
+    'Analyze Agreement',
+    handleAnalyze,
+    'Settings',
+    showSettings
+  );
 }

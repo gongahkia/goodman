@@ -18,9 +18,26 @@ export function startObserver(
     for (const tree of getDetectionRoots(root)) {
       if (observed.has(tree)) continue;
       observed.add(tree);
-      observer?.observe(tree, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [
-        "hidden", "aria-hidden", "aria-checked", "aria-labelledby", "class", "style", "href", "for", "type", "role", "checked", "disabled",
-      ] });
+      observer?.observe(tree, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: [
+          'hidden',
+          'aria-hidden',
+          'aria-checked',
+          'aria-labelledby',
+          'class',
+          'style',
+          'href',
+          'for',
+          'type',
+          'role',
+          'checked',
+          'disabled',
+        ],
+      });
     }
   };
 
@@ -82,5 +99,7 @@ function isRelevantMutation(mutation: MutationRecord): boolean {
 }
 
 function isOverlayNode(node: Element): boolean {
-  return Boolean(node.closest('#goodman-overlay-host, #goodman-consent-warning-host'));
+  return Boolean(
+    node.closest('#goodman-overlay-host, #goodman-consent-warning-host, #goodman-summary-chip')
+  );
 }

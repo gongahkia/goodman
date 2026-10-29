@@ -42,13 +42,34 @@ beforeEach(() => vi.stubGlobal('TextDecoder', BrowserTextDecoder));
 afterEach(() => vi.unstubAllGlobals());
 
 describe('downloaded legal document boundaries', () => {
+  it('identifies query-routed policies using their fetched heading and language', async () => {
+    resource(
+      new TextEncoder().encode(
+        '<html lang="fr"><main><h1>Confidentialité</h1><p>Les données sont conservées pendant trente jours.</p></main></html>'
+      ),
+      'text/html',
+      'https://example.test/legal?doc=privacy'
+    );
+    const result = await resolveDetectionTextSource(detection('https://example.test/policy'));
+    expect(result.document).toMatchObject({
+      url: 'https://example.test/legal?doc=privacy',
+      kind: 'privacy',
+      language: 'fr',
+      title: 'Confidentialité',
+    });
+  });
+
   it('routes an extensionless PDF by response type and uses a single download', async () => {
     resource(
       new TextEncoder().encode('%PDF-1.7 synthetic bytes; real parsing separately native-tested'),
       'application/pdf'
     );
     const result = await resolveDetectionTextSource(detection('https://example.test/download'));
-    expect(result).toEqual({ sourceType: 'pdf', text: 'Exact PDF agreement clause.' });
+    expect(result).toMatchObject({
+      sourceType: 'pdf',
+      text: 'Exact PDF agreement clause.',
+      document: { url: 'https://example.test/nested/terms' },
+    });
     expect(chrome.runtime.sendMessage).toHaveBeenCalledOnce();
   });
 
