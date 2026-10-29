@@ -15,7 +15,7 @@ const statuses = new Set([
   'ready',
 ]);
 const sourceTypes = new Set(['inline', 'linked', 'pdf']);
-const detectionTypes = new Set(['checkbox', 'modal', 'banner', 'fullpage']);
+const detectionTypes = new Set(['checkbox', 'modal', 'banner', 'fullpage', 'implicit', 'manual']);
 const levels = new Set(['info', 'success', 'warning', 'error']);
 const finite = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value);
@@ -59,7 +59,7 @@ export function normalizePageAnalysis(value: unknown): Record<string, PageAnalys
         typeof raw.detectionType === 'string' && detectionTypes.has(raw.detectionType)
           ? (raw.detectionType as PageAnalysisRecord['detectionType'])
           : null,
-      confidence: finite(raw.confidence) ? raw.confidence : null,
+      confidence: finite(raw.confidence) ? Math.max(0, Math.min(1, raw.confidence)) : null,
       textHash: typeof raw.textHash === 'string' ? raw.textHash : null,
       summary:
         raw.summary === null

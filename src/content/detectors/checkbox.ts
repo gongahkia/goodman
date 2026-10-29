@@ -1,9 +1,11 @@
 import { detectConsentDarkPatterns } from './dark-patterns';
 import type { DarkPatternFinding } from '@shared/dark-patterns';
+import { type DetectionRoot, isVisibleSurface } from './roots';
+import { LEGAL_PHRASES, AGREEMENT_PHRASES } from './signals';
 
 export interface DetectedElement {
   element: HTMLElement;
-  type: 'checkbox' | 'modal' | 'banner' | 'fullpage';
+  type: 'checkbox' | 'modal' | 'banner' | 'fullpage' | 'implicit';
   confidence: number;
   keywords: string[];
   nearestLink: string | null;
@@ -11,6 +13,7 @@ export interface DetectedElement {
 }
 
 const LEGAL_KEYWORDS = [
+  ...LEGAL_PHRASES,
   'terms',
   'conditions',
   'terms of service',
@@ -25,6 +28,7 @@ const LEGAL_KEYWORDS = [
   'cancellation',
 ];
 const AGREEMENT_KEYWORDS = [
+  ...AGREEMENT_PHRASES,
   'agree',
   'accept',
   'consent',
@@ -49,12 +53,13 @@ const MARKETING_KEYWORDS = [
 const MAX_ANCESTOR_LEVELS = 5;
 const MAX_VERTICAL_DISTANCE = 200;
 
-export function detectCheckboxes(root: Element): DetectedElement[] {
-  const checkboxes = root.querySelectorAll('input[type="checkbox"]');
+export function detectCheckboxes(root: DetectionRoot): DetectedElement[] {
+  const checkboxes = root.querySelectorAll('input[type="checkbox"], [role="checkbox"]');
   const results: DetectedElement[] = [];
 
   for (const checkbox of checkboxes) {
-    const result = analyzeCheckbox(checkbox as HTMLInputElement);
+    if (!isVisibleSurface(checkbox)) continue;
+    const result = analyzeCheckbox(checkbox as HTMLElement);
     if (result) {
       results.push(result);
     }
@@ -63,7 +68,7 @@ export function detectCheckboxes(root: Element): DetectedElement[] {
   return results;
 }
 
-function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
+function analyzeCheckbox(checkbox: HTMLElement): DetectedElement | null {
   const foundKeywords: string[] = [];
   const contextSegments: string[] = [];
   let nearestLink: string | null = null;
@@ -143,9 +148,15 @@ function analyzeCheckbox(checkbox: HTMLInputElement): DetectedElement | null {
   return result;
 }
 
-function findAssociatedLabel(checkbox: HTMLInputElement): HTMLLabelElement | null {
+function findAssociatedLabel(checkbox: HTMLElement): HTMLElement | null {
+  const tree = checkbox.getRootNode() as Document | ShadowRoot;
+  const ids = checkbox.getAttribute('aria-labelledby')?.split(/\s+/) ?? [];
+  for (const id of ids) {
+    const label = tree.getElementById(id);
+    if (label) return label;
+  }
   if (checkbox.id) {
-    const label = Array.from(document.querySelectorAll('label')).find(
+    const label = Array.from(tree.querySelectorAll('label')).find(
       (item) => item.htmlFor === checkbox.id
     );
     if (label) return label as HTMLLabelElement;
@@ -155,8 +166,8 @@ function findAssociatedLabel(checkbox: HTMLInputElement): HTMLLabelElement | nul
 }
 
 function getCheckboxEvaluationRoot(
-  checkbox: HTMLInputElement,
-  label: HTMLLabelElement | null
+  checkbox: HTMLElement,
+  label: HTMLElement | null
 ): HTMLElement {
   const labeledParent = checkbox.closest('label');
   if (labeledParent instanceof HTMLElement) return labeledParent;
@@ -187,10 +198,11 @@ function findNearestLink(el: Element): string | null {
 
 function findLinksWithinDistance(checkbox: HTMLElement, maxDistance: number): HTMLAnchorElement[] {
   const rect = checkbox.getBoundingClientRect();
-  const links = document.querySelectorAll('a[href]');
+  const links = (checkbox.closest('form') ?? checkbox.getRootNode() as Document | ShadowRoot).querySelectorAll('a[href]');
   const nearby: HTMLAnchorElement[] = [];
 
   for (const link of links) {
+    if (!isLegalLink(link as HTMLAnchorElement)) continue;
     const linkRect = link.getBoundingClientRect();
     const verticalDistance = Math.abs(linkRect.top - rect.top);
     if (verticalDistance <= maxDistance) {
@@ -223,7 +235,7 @@ function looksLikeMarketingOptIn(text: string, nearestLink: string | null): bool
 }
 
 function countMatches(text: string, keywords: string[]): number {
-  return keywords.reduce((count, keyword) => count + (text.includes(keyword) ? 1 : 0), 0);
+  return [...new Set(keywords)].reduce((count, keyword) => count + (text.includes(keyword) ? 1 : 0), 0);
 }
 
 function isLegalLink(link: HTMLAnchorElement): boolean {

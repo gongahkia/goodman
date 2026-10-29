@@ -1,24 +1,14 @@
+import type { DetectionRoot } from './roots';
+import { CONSENT_ACTION, LEGAL_PHRASES } from './signals';
 import type { DetectedElement } from './checkbox';
 import { detectConsentDarkPatterns } from './dark-patterns';
 import { MIN_MODAL_TEXT_LENGTH } from '@shared/constants';
 
 const CONSENT_CLASS_PATTERN = /cookie|consent|gdpr|privacy|banner|notice/i;
-const TC_KEYWORDS = ['terms', 'conditions', 'privacy', 'policy', 'agree', 'consent', 'cookie'];
-const ACTION_KEYWORDS = [
-  'accept',
-  'agree',
-  'reject',
-  'manage',
-  'close',
-  'decline',
-  'allow',
-  'deny',
-  'got it',
-  'i understand',
-];
-const ACTION_PATTERN = new RegExp(`\\b(?:${ACTION_KEYWORDS.join('|')})\\b`, 'i');
+const TC_KEYWORDS = [...LEGAL_PHRASES, 'agree', 'consent', 'cookie'];
+const ACTION_PATTERN = CONSENT_ACTION;
 
-export function detectModals(root: Element): DetectedElement[] {
+export function detectModals(root: DetectionRoot): DetectedElement[] {
   const results: DetectedElement[] = [];
 
   const byClassOrId = findByClassOrId(root);
@@ -33,7 +23,7 @@ export function detectModals(root: Element): DetectedElement[] {
   return deduplicateByElement(results);
 }
 
-function findByClassOrId(root: Element): DetectedElement[] {
+function findByClassOrId(root: DetectionRoot): DetectedElement[] {
   const results: DetectedElement[] = [];
   const allElements = root.querySelectorAll('*');
 
@@ -49,7 +39,7 @@ function findByClassOrId(root: Element): DetectedElement[] {
   return results;
 }
 
-function findByRole(root: Element): DetectedElement[] {
+function findByRole(root: DetectionRoot): DetectedElement[] {
   const results: DetectedElement[] = [];
   const dialogs = root.querySelectorAll('[role="dialog"], [role="alertdialog"]');
 
@@ -64,20 +54,21 @@ function findByRole(root: Element): DetectedElement[] {
   return results;
 }
 
-function findByPosition(root: Element): DetectedElement[] {
+function findByPosition(root: DetectionRoot): DetectedElement[] {
   const results: DetectedElement[] = [];
-  const allElements = root.querySelectorAll('*');
-
-  for (const el of allElements) {
-    const htmlEl = el as HTMLElement;
-    const style = getComputedStyle(htmlEl);
-    const isFixedOrSticky = style.position === 'fixed' || style.position === 'sticky';
-
-    if (!isFixedOrSticky) continue;
-
-    const text = (htmlEl.textContent ?? '').toLowerCase();
-    if (TC_KEYWORDS.some((kw) => text.includes(kw))) {
-      const analysis = analyzeCandidate(htmlEl);
+  // Examine ancestors of actual consent actions, not computed styles for every DOM node.
+  const visited = new Set<Element>();
+  for (const action of root.querySelectorAll('button,[role="button"],input[type="submit"],a')) {
+    if (!ACTION_PATTERN.test(action.textContent ?? action.getAttribute('value') ?? '')) continue;
+    let el: Element | null = action.parentElement;
+    for (let depth = 0; el && depth < 6; depth++, el = el.parentElement) {
+      if (visited.has(el)) continue;
+      visited.add(el);
+      const text = (el.textContent ?? '').toLowerCase();
+      if (!TC_KEYWORDS.some(kw => text.includes(kw))) continue;
+      const style = getComputedStyle(el);
+      if (style.position !== 'fixed' && style.position !== 'sticky') continue;
+      const analysis = analyzeCandidate(el as HTMLElement);
       if (analysis) results.push(analysis);
     }
   }
@@ -123,7 +114,7 @@ function analyzeCandidate(el: HTMLElement): DetectedElement | null {
   const darkPatterns = detectConsentDarkPatterns(el);
   score += getDarkPatternConfidenceBoost(darkPatterns);
   const confidence = Math.min(score, 1.0);
-  const nearestLink = el.querySelector('a[href]')?.getAttribute('href') ?? null;
+  const nearestLink = [...el.querySelectorAll<HTMLAnchorElement>('a[href]')].find(a => TC_KEYWORDS.some(word => (a.textContent + ' ' + a.href).toLowerCase().includes(word)))?.href ?? null;
 
   const result: DetectedElement = {
     element: el,

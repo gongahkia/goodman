@@ -1,3 +1,4 @@
+import { getDetectionRoots, type DetectionRoot } from './roots';
 import { DEBOUNCE_MS } from '@shared/constants';
 
 let observer: MutationObserver | null = null;
@@ -12,8 +13,22 @@ export function startObserver(
     stopObserver();
   }
 
+  const observed = new WeakSet<DetectionRoot>();
+  const observeRoots = (root: DetectionRoot): void => {
+    for (const tree of getDetectionRoots(root)) {
+      if (observed.has(tree)) continue;
+      observed.add(tree);
+      observer?.observe(tree, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: [
+        "hidden", "aria-hidden", "aria-checked", "aria-labelledby", "class", "style", "href", "for", "type", "role", "checked", "disabled",
+      ] });
+    }
+  };
+
   observer = new MutationObserver((mutations: MutationRecord[]) => {
     const relevant = mutations.filter(isRelevantMutation);
+    for (const mutation of relevant) {
+      for (const node of mutation.addedNodes) if (node instanceof Element) observeRoots(node);
+    }
     if (relevant.length === 0) return;
 
     // Keep a bounded sample and flush even while a page changes continuously.
@@ -28,25 +43,7 @@ export function startObserver(
     }, DEBOUNCE_MS);
   });
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true,
-    attributes: true,
-    attributeFilter: [
-      'hidden',
-      'aria-hidden',
-      'class',
-      'style',
-      'href',
-      'for',
-      'type',
-      'role',
-      'aria-label',
-      'checked',
-      'disabled',
-    ],
-  });
+  observeRoots(document.body);
 
   return observer;
 }

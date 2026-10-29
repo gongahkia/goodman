@@ -9,7 +9,8 @@ const TYPE_WEIGHTS: Record<string, number> = {
   checkbox: 1.15,
   modal: 1.0,
   fullpage: 0.95,
-  banner: 0.75,
+  banner: 1.0,
+  implicit: 1.0,
 };
 
 export function scoreDetections(
@@ -20,7 +21,7 @@ export function scoreDetections(
 
   const scored = detections.map((d) => {
     const weight = TYPE_WEIGHTS[d.type] ?? 1.0;
-    const weightedConfidence = d.confidence * weight;
+    const weightedConfidence = Math.max(0, Math.min(1, d.confidence * weight));
     return { ...d, weightedConfidence };
   });
 

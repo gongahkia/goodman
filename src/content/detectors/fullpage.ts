@@ -1,6 +1,8 @@
+import { LEGAL_PHRASES } from './signals';
 import type { DetectedElement } from './checkbox';
 
 const LEGAL_KEYWORDS = [
+  ...LEGAL_PHRASES,
   'terms', 'conditions', 'privacy', 'policy', 'agreement', 'license',
   'consent', 'liability', 'indemnify', 'arbitration', 'governing law',
   'warranty', 'disclaimer', 'intellectual property', 'termination',

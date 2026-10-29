@@ -1,6 +1,6 @@
 import type { Summary } from '@providers/types';
 
-export type DetectionType = 'checkbox' | 'modal' | 'banner' | 'fullpage';
+export type DetectionType = 'checkbox' | 'modal' | 'banner' | 'fullpage' | 'implicit' | 'manual';
 export type AnalysisSourceType = 'inline' | 'linked' | 'pdf';
 export type PageAnalysisLogLevel = 'info' | 'success' | 'warning' | 'error';
 export type PageAnalysisStatus =

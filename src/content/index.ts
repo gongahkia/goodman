@@ -1,6 +1,8 @@
 import { onMessage, sendToBackground } from '@shared/messaging';
 import type { Message, MessageResponse } from '@shared/messages';
 // uses chrome.runtime.MessageSender via messaging module
+import { getDetectionRoots } from '@content/detectors/roots';
+import { detectImplicitConsent } from '@content/detectors/implicit';
 import { detectCheckboxes } from '@content/detectors/checkbox';
 import { detectModals } from '@content/detectors/modal';
 import { detectFullPageTC } from '@content/detectors/fullpage';
@@ -231,7 +233,9 @@ async function handleDetectTC(
     );
   }
 
-  const detections = [...detectCheckboxes(document.body), ...detectModals(document.body)];
+  const detections = getDetectionRoots(document.body).flatMap(root => [
+    ...detectCheckboxes(root), ...detectModals(root), ...detectImplicitConsent(root),
+  ]);
 
   const fullPage = detectFullPageTC(document.body);
   if (fullPage) detections.push(fullPage);
