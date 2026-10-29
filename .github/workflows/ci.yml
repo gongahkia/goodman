@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version-file: .nvmrc
 
       - uses: pnpm/action-setup@v4
 
@@ -31,5 +31,21 @@ jobs:
       - name: Test
         run: pnpm test
 
-      - name: Build
+      - name: Build Firefox
+        run: pnpm build:firefox
+
+      - name: Build Chrome
         run: pnpm build
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Packaged extension browser tests
+        run: xvfb-run --auto-servernum pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-test-results
+          path: test-results/
+          retention-days: 7

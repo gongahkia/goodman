@@ -5,3 +5,5 @@ dist/
 .DS_Store
 .tooling/
 AGENTS.md
+test-results/
+playwright-report/
