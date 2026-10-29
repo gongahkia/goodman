@@ -1,3 +1,4 @@
+import { groundSummary } from './evidence';
 import { ok } from '@shared/result';
 import type { Result } from '@shared/result';
 import type { TCGuardError } from '@shared/errors';
@@ -33,7 +34,7 @@ export async function singleShotSummarize(
 
   if (!result.ok) return result;
 
-  return ok(result.data);
+  return ok(groundSummary(result.data, text));
 }
 
 export async function singleShotSummarizeWithProvider(
@@ -62,7 +63,7 @@ export async function singleShotSummarizeWithProvider(
 
   if (!result.ok) return result;
 
-  return ok(result.data);
+  return ok(groundSummary(result.data, text));
 }
 
 async function getSummaryLanguage(metadata?: SummarizeOptions['metadata']): Promise<string> {

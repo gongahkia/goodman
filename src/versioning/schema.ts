@@ -1,3 +1,4 @@
+import type { AgreementDocument } from '@shared/documents';
 import { getStorage, setStorage, withStorageLock } from '@shared/storage';
 import type { VersionEntry } from '@shared/storage';
 import type { Summary } from '@providers/types';
@@ -27,7 +28,8 @@ export interface DomainHistorySummary {
 export async function addVersion(
   domain: string,
   text: string,
-  summary: Summary
+  summary: Summary,
+  document?: AgreementDocument
 ): Promise<VersionEntry | null> {
   if (!isHistoryDomain(domain) || text.length > MAX_INPUT_TEXT_LENGTH)
     throw new Error('Invalid or oversized history input');
@@ -35,14 +37,17 @@ export async function addVersion(
   return withStorageLock('versionHistory', async () => {
     const { history, retention } = await readHistory();
     const domainHistory = history[domain] ?? [];
-    const latest = domainHistory.at(-1);
+    const latest = domainHistory.filter(entry => entry.document?.id === document?.id).at(-1);
     if (latest?.textHash === textHash) {
+      latest.lastCheckedAt = Date.now();
       if (retention[domain] === true && latest.sourceText === undefined) {
         latest.sourceText = text;
         enforceTextBudget(history);
         const written = await setStorage('versionHistory', history);
         if (!written.ok) throw written.error;
       }
+      const checked = await setStorage('versionHistory', history);
+      if (!checked.ok) throw checked.error;
       return null;
     }
     const version = (latest?.version ?? 0) + 1;
@@ -53,6 +58,8 @@ export async function addVersion(
       version,
       summary: copyStoredSummary(summary),
       timestamp: Date.now(),
+      lastCheckedAt: Date.now(),
+      ...(document ? { document } : {}),
       ...(retention[domain] === true ? { sourceText: text } : {}),
     };
     domainHistory.push(entry);
@@ -113,8 +120,9 @@ async function readHistory(): Promise<{
   return { history, retention };
 }
 
-export async function getVersionHistory(domain: string): Promise<VersionEntry[]> {
-  return (await readHistory()).history[domain] ?? [];
+export async function getVersionHistory(domain: string, documentId?: string): Promise<VersionEntry[]> {
+  const entries = (await readHistory()).history[domain] ?? [];
+  return documentId ? entries.filter(entry => entry.document?.id === documentId) : entries;
 }
 
 export async function getAllTrackedDomains(): Promise<string[]> {
@@ -138,7 +146,7 @@ export async function getDomainHistorySummaries(): Promise<DomainHistorySummary[
     .map(([domain, entries]) => {
       const latest = entries[entries.length - 1];
       if (!latest) return null;
-      const previous = entries[entries.length - 2] ?? null;
+      const previous = entries.slice(0, -1).filter(entry => entry.document?.id === latest.document?.id).at(-1) ?? null;
       return {
         domain,
         versionCount: entries.length,

@@ -184,6 +184,8 @@ export function getClauseTaxonomyCategory(id: string): ClauseTaxonomyCategory | 
 
 function matchesCategory(flag: ClauseFlag, category: ClauseTaxonomyCategory): boolean {
   const normalizedCategory = normalizeToken(flag.category);
+  const canonical = CLAUSE_TAXONOMY.find(group => group.providerCategories.some(item => normalizeToken(item) === normalizedCategory));
+  if (canonical) return category.id === canonical.id;
   if (category.providerCategories.some(item => normalizeToken(item) === normalizedCategory)) return true;
   const haystack = `${flag.category} ${flag.description} ${flag.quote}`.toLowerCase();
   return category.keywords.some(keyword => haystack.includes(keyword));

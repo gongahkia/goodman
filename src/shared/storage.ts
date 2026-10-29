@@ -4,6 +4,7 @@ import type { Result } from './result';
 import type { Settings, ProviderConfig } from './messages';
 import { STORAGE_VERSION } from './constants';
 import type { PageAnalysisRecord } from './page-analysis';
+import type { AgreementDocument } from './documents';
 import {
   DEFAULT_DOMAIN_PREFERENCES,
   normalizeDomainPreferences,
@@ -42,6 +43,8 @@ export interface StoredRedFlag {
 }
 
 export interface VersionEntry {
+  document?: AgreementDocument;
+  lastCheckedAt?: number;
   domain: string;
   textHash: string;
   summary: StoredSummary;

@@ -1,3 +1,4 @@
+import { normalizeDocument } from '@shared/documents';
 import {
   MAX_INPUT_TEXT_LENGTH,
   MAX_RETAINED_TEXT_BYTES,
@@ -36,7 +37,7 @@ export function normalizeVersionHistory(
   if (!value || typeof value !== 'object' || Array.isArray(value)) return history;
   for (const [domain, entries] of Object.entries(value)) {
     if (!isHistoryDomain(domain) || !Array.isArray(entries)) continue;
-    const versions = new Map<number, VersionEntry>();
+    const versions = new Map<string, VersionEntry>();
     for (const raw of entries) {
       if (
         !raw ||
@@ -53,7 +54,10 @@ export function normalizeVersionHistory(
         !isStoredSummary(raw.summary)
       )
         continue;
+      const document = normalizeDocument(raw.document);
       const entry: VersionEntry = {
+        ...(document ? { document } : {}),
+        ...(typeof raw.lastCheckedAt === "number" && Number.isFinite(raw.lastCheckedAt) ? { lastCheckedAt: raw.lastCheckedAt } : {}),
         domain,
         version: raw.version,
         textHash: raw.textHash,
@@ -66,12 +70,19 @@ export function normalizeVersionHistory(
         raw.sourceText.length <= MAX_INPUT_TEXT_LENGTH
       )
         entry.sourceText = raw.sourceText;
-      const previous = versions.get(entry.version);
-      if (!previous || entry.timestamp >= previous.timestamp) versions.set(entry.version, entry);
+      const key = JSON.stringify([document?.id ?? "legacy", entry.version]);
+      const previous = versions.get(key);
+      if (!previous || entry.timestamp >= previous.timestamp) versions.set(key, entry);
     }
-    const sorted = [...versions.values()]
-      .sort((a, b) => a.version - b.version)
-      .slice(-MAX_VERSIONS_PER_DOMAIN);
+    const groups = new Map<string, VersionEntry[]>();
+    for (const entry of versions.values()) {
+      const key = entry.document?.id ?? 'legacy';
+      groups.set(key, [...(groups.get(key) ?? []), entry]);
+    }
+    const sorted = [...groups.values()]
+      .sort((a, b) => Math.max(...b.map(e => e.timestamp)) - Math.max(...a.map(e => e.timestamp)))
+      .slice(0, 20).reverse()
+      .flatMap(entries => entries.sort((a, b) => a.version - b.version).slice(-MAX_VERSIONS_PER_DOMAIN));
     if (sorted.length) history[domain] = sorted;
   }
   const domains = Object.keys(history).sort(

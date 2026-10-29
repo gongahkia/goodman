@@ -1,6 +1,7 @@
 import type { PageAnalysisLogEntry, PageAnalysisRecord } from './page-analysis';
 import type { PendingNotification } from './storage';
 import { copyStoredSummary, isStoredSummary } from './summary-validation';
+import { normalizeDocument } from './documents';
 
 const statuses = new Set([
   'idle',
@@ -47,6 +48,11 @@ export function normalizePageAnalysis(value: unknown): Record<string, PageAnalys
       continue;
     }
     const record: PageAnalysisRecord = {
+      ...(normalizeDocument(raw.document) ? { document: normalizeDocument(raw.document) } : {}),
+      ...(Array.isArray(raw.availableDocuments) ? { availableDocuments: raw.availableDocuments.map(normalizeDocument).filter((d): d is NonNullable<typeof d> => Boolean(d)).slice(0, 20) } : {}),
+      ...(Array.isArray(raw.analyzedDocumentIds) ? { analyzedDocumentIds: raw.analyzedDocumentIds.filter((id): id is string => typeof id === 'string' && id.length <= 5000).slice(0, 20) } : {}),
+      ...(Number.isInteger(raw.frameId) && (raw.frameId as number) >= 0 ? { frameId: raw.frameId as number } : {}),
+      ...(typeof raw.sourceFrameUrl === 'string' ? { sourceFrameUrl: raw.sourceFrameUrl.slice(0, 4096) } : {}),
       tabId: raw.tabId as number,
       url: key,
       domain: url.hostname,

@@ -1,3 +1,4 @@
+import { sourceQuoteUrl } from '@shared/documents';
 import {
   appendChildren,
   createElement,
@@ -34,8 +35,8 @@ export async function renderTimeline(
 
   for (let index = 0; index < reversed.length; index += 1) {
     const entry = reversed[index]!;
-    const isLatest = index === 0;
-    const prevEntry = reversed[index + 1];
+    const isLatest = !reversed.slice(0, index).some(other => other.document?.id === entry.document?.id);
+    const prevEntry = reversed.slice(index + 1).find(other => other.document?.id === entry.document?.id);
     container.appendChild(createTimelineItem(entry, prevEntry, isLatest, expandedEntries));
   }
 
@@ -48,11 +49,11 @@ function createTimelineItem(
   isLatest: boolean,
   expandedEntries: Set<string>
 ): HTMLElement {
-  const expansionKey = JSON.stringify([entry.domain, entry.version, entry.textHash]);
+  const expansionKey = JSON.stringify([entry.domain, entry.document?.id, entry.version, entry.textHash]);
   const node = createElement('div', 'tc-timeline-item');
   const trigger = createElement('button', 'tc-timeline-trigger');
   trigger.type = 'button';
-  const detailsId = `tc-timeline-summary-${entry.domain.replace(/[^a-z0-9_-]/gi, '-')}-${entry.version}`;
+  const detailsId = `tc-timeline-summary-${Math.random().toString(36).slice(2)}`;
   node.style.setProperty('--tc-line-color', getSeverityColor(entry.summary.severity));
   trigger.setAttribute('role', 'button');
   trigger.setAttribute('aria-expanded', 'false');
@@ -68,6 +69,12 @@ function createTimelineItem(
     isLatest ? createPill('LATEST', 'blue') : null
   );
 
+  if (entry.document) {
+    const source = createElement('p', 'tc-timeline-annotation', `${entry.document.title} · ${new URL(entry.document.url).pathname}`);
+    trigger.appendChild(source);
+  }
+  if (!entry.document) trigger.appendChild(createElement('p', 'tc-timeline-annotation', 'Legacy record · original document unknown'));
+  if (entry.lastCheckedAt) trigger.appendChild(createElement('p', 'tc-timeline-annotation', `Last checked ${formatDate(entry.lastCheckedAt)}`));
   const annotation = previousEntry
     ? createElement('p', 'tc-timeline-annotation', formatAnnotation(previousEntry, entry))
     : createElement('p', 'tc-timeline-annotation', 'First recorded version');
@@ -77,6 +84,11 @@ function createTimelineItem(
   details.setAttribute('aria-hidden', 'true');
   const summaryText = createElement('p', '', entry.summary.summary);
   details.appendChild(summaryText);
+  if (entry.document) {
+    const source = createElement('a', 'tc-button tc-button--secondary', 'View original agreement');
+    source.href = sourceQuoteUrl(entry.document, ''); source.target = '_blank'; source.rel = 'noopener noreferrer';
+    details.appendChild(source);
+  }
 
   if (previousEntry) {
     const prevSummary = toSummary(previousEntry.summary);

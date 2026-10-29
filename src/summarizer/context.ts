@@ -31,7 +31,7 @@ export async function resolveAnalysisContext(providerName: string, domain: strin
   // Only the fingerprint is cached; credentials and endpoint remain in the existing settings store.
   const cacheHash = await computeTextHash(
     JSON.stringify({
-      pipeline: 'snapshot-map-reduce-v1',
+      pipeline: 'grounded-documents-v2',
       extensionVersion: chrome.runtime.getManifest().version,
       providerName,
       config,

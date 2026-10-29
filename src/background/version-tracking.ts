@@ -1,3 +1,4 @@
+import type { AgreementDocument } from '@shared/documents';
 import type { Summary } from '@providers/types';
 import type { StoredSummary } from '@shared/storage';
 import { withStorageLock } from '@shared/storage';
@@ -18,11 +19,12 @@ export interface VersionTrackingResult {
 export async function syncVersionHistory(
   domain: string,
   text: string,
-  summary: Summary
+  summary: Summary,
+  document?: AgreementDocument
 ): Promise<VersionTrackingResult> {
   return withStorageLock('versionTracking', async () => {
-    const changeResult = await checkForChanges(domain, text);
-    const versionEntry = await addVersion(domain, text, summary);
+    const changeResult = await checkForChanges(domain, text, document?.id);
+    const versionEntry = await addVersion(domain, text, summary, document);
 
     if (!changeResult.previousVersion) {
       return {

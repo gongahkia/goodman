@@ -10,10 +10,11 @@ export interface ChangeResult {
 
 export async function checkForChanges(
   domain: string,
-  currentText: string
+  currentText: string,
+  documentId?: string
 ): Promise<ChangeResult> {
   const currentHash = await computeTextHash(currentText);
-  const history = await getVersionHistory(domain);
+  const history = (await getVersionHistory(domain)).filter(entry => entry.document?.id === documentId);
 
   if (history.length === 0) {
     return { changed: false, previousVersion: null, currentHash };

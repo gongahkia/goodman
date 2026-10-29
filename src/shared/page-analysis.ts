@@ -1,4 +1,5 @@
 import type { Summary } from '@providers/types';
+import type { AgreementDocument } from './documents';
 
 export type DetectionType = 'checkbox' | 'modal' | 'banner' | 'fullpage' | 'implicit' | 'manual';
 export type AnalysisSourceType = 'inline' | 'linked' | 'pdf';
@@ -23,6 +24,11 @@ export interface PageAnalysisLogEntry {
 }
 
 export interface PageAnalysisRecord {
+  document?: AgreementDocument;
+  availableDocuments?: AgreementDocument[];
+  analyzedDocumentIds?: string[];
+  frameId?: number;
+  sourceFrameUrl?: string;
   tabId: number;
   url: string;
   domain: string;

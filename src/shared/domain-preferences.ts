@@ -121,6 +121,8 @@ export function matchesWatchedClause(
   if (watchClauses.length === 0) return true;
   const normalizedCategory = normalizeToken(category);
   const normalizedText = text.toLowerCase();
+  const canonical = WATCH_CLAUSE_OPTIONS.find(option => option.providerCategories.some(item => normalizeToken(item) === normalizedCategory));
+  if (canonical) return watchClauses.includes(canonical.id);
   return watchClauses.some(id => {
     const option = WATCH_CLAUSE_OPTIONS.find(item => item.id === id);
     if (!option) return false;
